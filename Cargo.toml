@@ -1,0 +1,11 @@
+[package]
+name = "coroutine"
+version = "0.1.0"
+authors = ["Xudong Huang <huangxu008@hotmail.com>"]
+
+[dependencies]
+[dependencies.generator]
+path ="../generator-rs"
+
+[profile.release]
+opt-level=3
