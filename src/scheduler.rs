@@ -1,7 +1,26 @@
-use generator::Gn;
+use std::sync::{Once, ONCE_INIT};
 use queue::{BulkPop, BLOCK_SIZE};
 use queue::mpmc::Queue as CoQueue;
-use super::{Coroutine, EventSource, EventSubscriber};
+use coroutine::Coroutine;
+
+#[inline]
+pub fn get_scheduler() -> &'static Scheduler {
+    static mut sched: *const Scheduler = 0 as *const _;
+    static ONCE: Once = ONCE_INIT;
+    ONCE.call_once(|| {
+        let b: Box<Scheduler> = Scheduler::new();
+        unsafe {
+            sched = Box::into_raw(b);
+        }
+    });
+    unsafe { &*sched }
+}
+
+#[inline]
+pub fn sched_run() {
+    get_scheduler().run_to_complete();
+}
+
 
 pub struct Scheduler {
     ready_list: CoQueue<Coroutine>,
@@ -39,36 +58,5 @@ impl Scheduler {
     #[inline]
     pub fn schedule(&self, co: Coroutine) {
         self.ready_list.push(co);
-    }
-
-    pub fn make_co<F: FnOnce() + 'static>(&self, f: F) -> Coroutine {
-        struct Done;
-        impl EventSource for Done {
-            fn subscribe(&mut self, _co: Coroutine) {
-                // just consume the coroutine
-                // println!("done()");
-            }
-        }
-
-        static DONE: Done = Done {};
-        let done = &DONE as &EventSource as *const _ as *mut EventSource;
-        let mut g = Gn::new(move || {
-            f();
-            EventSubscriber { resource: done }
-        });
-
-        {
-            // this will set the scheduler as the context extra data
-            let context = g.get_context();
-            context.extra = self as *const _ as *mut _;
-        }
-
-        g
-    }
-
-    pub fn spawn<F: FnOnce() + 'static>(&self, f: F) {
-        let co = self.make_co(f);
-        // put the coroutine to ready list
-        self.schedule(co);
     }
 }

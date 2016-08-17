@@ -1,16 +1,15 @@
 use std::mem;
-use generator::{get_context, yield_with};
-use super::{Coroutine, EventSource, EventSubscriber, Scheduler};
+use generator::yield_with;
+use coroutine::{Coroutine, EventSource, EventSubscriber};
+use scheduler::get_scheduler;
 
 pub struct Yield {
-    sched: *mut Scheduler,
 }
 
 impl EventSource for Yield {
     fn subscribe(&mut self, co: Coroutine) {
         // just repush the coroutine to the ready list
-        let sched = unsafe { &mut *self.sched };
-        sched.schedule(co);
+        get_scheduler().schedule(co);
         // println!("yield_out()");
     }
 }
@@ -22,10 +21,9 @@ pub fn _yield_with(es: EventSubscriber) {
 
 #[inline]
 pub fn yield_out() {
-    let context = get_context();
-    let mut y = Yield { sched: context.extra as *mut _ };
+    let mut y = Yield {};
     // it's safe to use the stack value here
     let r = unsafe { mem::transmute(&mut y as &mut EventSource) };
-    let es = EventSubscriber { resource: r };
+    let es = EventSubscriber::new(r);
     _yield_with(es);
 }

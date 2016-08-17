@@ -2,60 +2,61 @@
 extern crate test;
 extern crate coroutine;
 
-use coroutine::*;
-
+use coroutine::yield_out;
 
 #[test]
 fn one_coroutine() {
-    let sched = Scheduler::new();
-    sched.spawn(move || {
+    coroutine::spawn(move || {
         println!("hello, coroutine");
     });
-    sched.run_to_complete();
+    coroutine::sched_run();
 }
 
 #[test]
 fn multi_coroutine() {
-    let sched = Scheduler::new();
     for i in 0..10 {
-        sched.spawn(move || {
+        coroutine::spawn(move || {
             println!("hi, coroutine{}", i);
         });
     }
-    sched.run_to_complete();
+    coroutine::sched_run();
 }
 
 #[test]
 fn test_yield() {
-    let sched = Scheduler::new();
-    sched.spawn(move || {
+    coroutine::spawn(move || {
         println!("hello, coroutine");
         yield_out();
         println!("goodbye, coroutine");
     });
-    sched.run_to_complete();
+    coroutine::sched_run();
 }
 
 #[test]
 fn multi_yield() {
-    let sched = Scheduler::new();
     for i in 0..10 {
-        sched.spawn(move || {
+        coroutine::spawn(move || {
             println!("hi, coroutine{}", i);
             yield_out();
             println!("bye, coroutine{}", i);
         });
     }
-    sched.run_to_complete();
-}/*
+    coroutine::sched_run();
+}
 
 #[test]
 fn spawn_inside() {
-    let sched = Scheduler::new();
-    sched.spawn(move || {
-        println!("hi, coroutine{}", i);
+    coroutine::spawn(move || {
+        println!("hi, I'm parent");
+        for i in 0..10 {
+            coroutine::spawn(move || {
+                println!("hi, I'm child{:?}", i);
+                yield_out();
+                println!("bye from child{:?}", i);
+            });
+        }
         yield_out();
-        println!("bye, coroutine{}", i);
+        println!("bye from parent");
     });
-    sched.run_to_complete();
-}*/
+    coroutine::sched_run();
+}
