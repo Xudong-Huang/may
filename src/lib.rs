@@ -6,14 +6,12 @@ extern crate queue;
 use std::mem;
 
 use generator::{Gn, Generator, get_context, yield_with};
-
 use queue::{BulkPop, /* McQueueExt, */ BLOCK_SIZE};
 // use queue::mpmc::Queue as mpmc;
 // use queue::mpsc::Queue as mpsc;
 use queue::spsc::Queue as spsc;
 
 pub struct EventResult {
-
 }
 
 pub struct EventSubscriber {
@@ -34,18 +32,8 @@ pub trait EventSource {
     fn subscribe(&mut self, _c: Coroutine) {}
 }
 
-pub type Coroutine = Generator<'static, EventResult, EventSubscriber>;
 // coroutines are static generator, the para type is EventResult, the result type is EventSubscriber
-// pub struct Coroutine {
-//     handler: Generator<'static, EventResult, EventSubscriber>,
-// }
-//
-// impl Coroutine {
-//     #[inline]
-//     pub fn resume(&mut self) -> Option<EventSubscriber> {
-//         self.handler.resume()
-//     }
-// }
+pub type Coroutine = Generator<'static, EventResult, EventSubscriber>;
 
 #[inline]
 pub fn yield_out() {
@@ -58,6 +46,7 @@ pub fn yield_out() {
             // just repush the coroutine to the ready list
             let sched = unsafe { &mut *self.sched };
             sched.schedule(co);
+            // println!("yield_out()");
         }
     }
 
@@ -84,13 +73,12 @@ impl Scheduler {
     }
 
     pub fn run_to_complete(&self) {
+        let mut vec = Vec::with_capacity(BLOCK_SIZE);
         loop {
-            let mut vec = Vec::with_capacity(BLOCK_SIZE);
-            // let mut vec = Vec::new();
             let size = self.ready_list.bulk_pop(&mut vec);
             if size == 0 {
                 break;
-            }/*
+            }
             vec.drain(0..size)
                 .fold((), |_, mut coroutine| {
                     let event_subscriber = coroutine.resume().unwrap();
@@ -98,16 +86,7 @@ impl Scheduler {
                     // basically it just register the coroutine somewhere within the 'resource'
                     // 'resource' is just any type that live within the coroutine's stack
                     event_subscriber.subscribe(coroutine);
-                    println!("aaaaa {:?}", size);
-                });*/
-            for mut coroutine in vec {
-                let event_subscriber = coroutine.resume().unwrap();
-                // the coroutine will sink into the subscriber's resouce
-                // basically it just register the coroutine somewhere within the 'resource'
-                // 'resource' is just any type that live within the coroutine's stack
-                // println!("{:?}", self.ready_list);
-                event_subscriber.subscribe(coroutine);
-            }
+                });
         }
     }
 
@@ -124,7 +103,12 @@ impl Scheduler {
 
     pub fn make_co<F: FnOnce() + 'static>(&self, f: F) -> Coroutine {
         struct Done;
-        impl EventSource for Done {}
+        impl EventSource for Done {
+            fn subscribe(&mut self, _co: Coroutine) {
+                // just consume the coroutine
+                // println!("done()");
+            }
+        }
 
         static DONE: Done = Done {};
         let done = &DONE as &EventSource as *const _ as *mut EventSource;
