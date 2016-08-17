@@ -38,14 +38,13 @@ impl Scheduler {
             if size == 0 {
                 break;
             }
-            vec.drain(0..size)
-                .fold((), |_, mut coroutine| {
-                    let event_subscriber = coroutine.resume().unwrap();
-                    // the coroutine will sink into the subscriber's resouce
-                    // basically it just register the coroutine somewhere within the 'resource'
-                    // 'resource' is just any type that live within the coroutine's stack
-                    event_subscriber.subscribe(coroutine);
-                });
+            vec.drain(0..size).fold((), |_, mut coroutine| {
+                let event_subscriber = coroutine.resume().unwrap();
+                // the coroutine will sink into the subscriber's resouce
+                // basically it just register the coroutine somewhere within the 'resource'
+                // 'resource' is just any type that live within the coroutine's stack
+                event_subscriber.subscribe(coroutine);
+            });
         }
     }
 
