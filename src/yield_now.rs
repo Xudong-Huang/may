@@ -20,7 +20,7 @@ pub fn _yield_with(es: EventSubscriber) {
 }
 
 #[inline]
-pub fn yield_out() {
+pub fn yield_now() {
     let mut y = Yield {};
     // it's safe to use the stack value here
     let r = unsafe { mem::transmute(&mut y as &mut EventSource) };

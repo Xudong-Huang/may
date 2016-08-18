@@ -2,7 +2,7 @@
 extern crate test;
 extern crate coroutine;
 
-use coroutine::yield_out;
+use coroutine::yield_now;
 
 #[test]
 fn one_coroutine() {
@@ -26,7 +26,7 @@ fn multi_coroutine() {
 fn test_yield() {
     coroutine::spawn(move || {
         println!("hello, coroutine");
-        yield_out();
+        yield_now();
         println!("goodbye, coroutine");
     });
     coroutine::sched_run();
@@ -37,7 +37,7 @@ fn multi_yield() {
     for i in 0..10 {
         coroutine::spawn(move || {
             println!("hi, coroutine{}", i);
-            yield_out();
+            yield_now();
             println!("bye, coroutine{}", i);
         });
     }
@@ -51,11 +51,11 @@ fn spawn_inside() {
         for i in 0..10 {
             coroutine::spawn(move || {
                 println!("hi, I'm child{:?}", i);
-                yield_out();
+                yield_now();
                 println!("bye from child{:?}", i);
             });
         }
-        yield_out();
+        yield_now();
         println!("bye from parent");
     });
     coroutine::sched_run();
