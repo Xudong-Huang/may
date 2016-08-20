@@ -60,3 +60,27 @@ fn spawn_inside() {
     });
     coroutine::sched_run();
 }
+
+#[test]
+fn wait_join() {
+    coroutine::spawn(move || {
+        println!("hi, I'm parent");
+        let mut join = Vec::new();
+        for i in 0..10 {
+            let j = coroutine::spawn(move || {
+                println!("hi, I'm child{:?}", i);
+                yield_now();
+                println!("bye from child{:?}", i);
+            });
+            join.push(j);
+        }
+
+        for j in join {
+            println!("wait for child");
+            j.join();
+        }
+
+        println!("bye from parent");
+    });
+    coroutine::sched_run();
+}

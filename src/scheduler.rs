@@ -48,11 +48,6 @@ impl Scheduler {
         }
     }
 
-    // pub fn start(&self, c: Coroutine) {
-    //     self.ready_list.push(c);
-    //     self.run_to_complete();
-    // }
-
     /// put the coroutine to ready list so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: Coroutine) {

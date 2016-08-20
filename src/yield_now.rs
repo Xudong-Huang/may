@@ -1,4 +1,3 @@
-use std::mem;
 use generator::yield_with;
 use coroutine::{Coroutine, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
@@ -14,16 +13,19 @@ impl EventSource for Yield {
     }
 }
 
+/// yield internal EventSource ref
+/// it's ok to return a ref of object on the generator's stack
+/// just like return the ref of a struct member
 #[inline]
-pub fn _yield_with(es: EventSubscriber) {
-    yield_with::<EventSubscriber>(es);
+pub fn _yield_with<T: EventSource>(resource: &T) {
+    let r = resource as &EventSource as *const _ as *mut _;
+    let es = EventSubscriber::new(r);
+    yield_with(es);
 }
 
 #[inline]
 pub fn yield_now() {
-    let mut y = Yield {};
+    let y = Yield {};
     // it's safe to use the stack value here
-    let r = unsafe { mem::transmute(&mut y as &mut EventSource) };
-    let es = EventSubscriber::new(r);
-    _yield_with(es);
+    _yield_with(&y);
 }
