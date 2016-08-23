@@ -1,6 +1,6 @@
 use std::thread;
 use std::sync::Arc;
-use std::cell::UnsafeCell;
+use std::cell::{UnsafeCell, RefCell};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use coroutine::{Coroutine, EventSource};
 use generator::get_context;
@@ -101,13 +101,25 @@ impl Join {
     }
 }
 
-// Join resource wrapper
-pub struct JoinHandler(pub Arc<UnsafeCell<Join>>);
+/// A join handle to a coroutine
+pub struct JoinHandle<T> {
+    inner: Arc<UnsafeCell<Join>>,
+    packet: Arc<RefCell<Option<T>>>,
+}
 
-impl JoinHandler {
-    // TODO: here should return a result?
-    pub fn join(self) {
-        let join = unsafe { &mut *self.0.get() };
+pub fn make_join_handle<T>(inner: Arc<UnsafeCell<Join>>,
+                           packet: Arc<RefCell<Option<T>>>)
+                           -> JoinHandle<T> {
+    JoinHandle {
+        inner: inner,
+        packet: packet,
+    }
+}
+
+impl<T> JoinHandle<T> {
+    /// Join the coroutine, returning the result it produced.
+    pub fn join(self) -> T {
+        let join = unsafe { &mut *self.inner.get() };
         if get_context().is_generator() {
             let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
@@ -119,13 +131,14 @@ impl JoinHandler {
             join.thread_wait();
         }
 
+        self.packet.borrow_mut().take().unwrap()
     }
 }
 
-impl EventSource for JoinHandler {
+impl<T> EventSource for JoinHandle<T> {
     fn subscribe(&mut self, co: Coroutine) {
         // register the coroutine
-        let join = unsafe { &mut *self.0.get() };
+        let join = unsafe { &mut *self.inner.get() };
         join.subscribe(co);
     }
 }

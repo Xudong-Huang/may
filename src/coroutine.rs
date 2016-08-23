@@ -1,8 +1,8 @@
 use std::sync::Arc;
-use std::cell::UnsafeCell;
+use std::cell::{UnsafeCell, RefCell};
 use generator::{Gn, Generator};
 use scheduler::get_scheduler;
-use join::{Join, JoinHandler};
+use join::{Join, JoinHandle, make_join_handle};
 
 pub struct EventResult {
 }
@@ -41,21 +41,26 @@ impl EventSource for Done {
     }
 }
 
-pub fn spawn<F: FnOnce() + 'static>(f: F) -> JoinHandler {
+pub fn spawn<F, T>(f: F) -> JoinHandle<T>
+    where F: FnOnce() -> T + Send + 'static,
+          T: Send + 'static
+{
     static DONE: Done = Done {};
     let done = &DONE as &EventSource as *const _ as *mut EventSource;
     // create a join resource, shared by waited coroutine and *this* coroutine
-    let my_join = Arc::new(UnsafeCell::new(Join::new()));
-    let their_join = my_join.clone();
+    let join = Arc::new(UnsafeCell::new(Join::new()));
+    let packet = Arc::new(RefCell::new(None));
+    let their_join = join.clone();
+    let their_packet = packet.clone();
     let co = Gn::new(move || {
-        f();
+        *their_packet.borrow_mut() = Some(f());
         // trigger the JoinHandler
-        let join = unsafe { &mut *my_join.get() };
+        let join = unsafe { &mut *their_join.get() };
         join.trigger();
         EventSubscriber { resource: done }
     });
 
     // put the coroutine to ready list
     get_scheduler().schedule(co);
-    JoinHandler(their_join)
+    make_join_handle(join, packet)
 }

@@ -14,6 +14,17 @@ fn one_coroutine() {
     j.join();
 }
 
+
+#[test]
+fn coroutine_result() {
+    let j = coroutine::spawn(move || {
+        println!("hello, coroutine");
+        100
+    });
+
+    assert_eq!(j.join(), 100);
+}
+
 #[test]
 fn multi_coroutine() {
     for i in 0..10 {
