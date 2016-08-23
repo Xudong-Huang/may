@@ -1,4 +1,6 @@
 #![feature(test)]
+use std::thread;
+use std::time::Duration;
 extern crate test;
 extern crate coroutine;
 
@@ -6,10 +8,10 @@ use coroutine::yield_now;
 
 #[test]
 fn one_coroutine() {
-    coroutine::spawn(move || {
+    let j = coroutine::spawn(move || {
         println!("hello, coroutine");
     });
-    coroutine::sched_run();
+    j.join();
 }
 
 #[test]
@@ -19,17 +21,17 @@ fn multi_coroutine() {
             println!("hi, coroutine{}", i);
         });
     }
-    coroutine::sched_run();
+    thread::park_timeout(Duration::from_millis(200));
 }
 
 #[test]
 fn test_yield() {
-    coroutine::spawn(move || {
+    let j = coroutine::spawn(move || {
         println!("hello, coroutine");
         yield_now();
         println!("goodbye, coroutine");
     });
-    coroutine::sched_run();
+    j.join();
 }
 
 #[test]
@@ -41,12 +43,12 @@ fn multi_yield() {
             println!("bye, coroutine{}", i);
         });
     }
-    coroutine::sched_run();
+    thread::park_timeout(Duration::from_millis(200));
 }
 
 #[test]
 fn spawn_inside() {
-    coroutine::spawn(move || {
+    let j = coroutine::spawn(move || {
         println!("hi, I'm parent");
         for i in 0..10 {
             coroutine::spawn(move || {
@@ -58,12 +60,12 @@ fn spawn_inside() {
         yield_now();
         println!("bye from parent");
     });
-    coroutine::sched_run();
+    j.join();
 }
 
 #[test]
 fn wait_join() {
-    coroutine::spawn(move || {
+    let j = coroutine::spawn(move || {
         println!("hi, I'm parent");
         let mut join = Vec::new();
         for i in 0..10 {
@@ -76,11 +78,10 @@ fn wait_join() {
         }
 
         for j in join {
-            println!("wait for child");
             j.join();
         }
 
         println!("bye from parent");
     });
-    coroutine::sched_run();
+    j.join();
 }
