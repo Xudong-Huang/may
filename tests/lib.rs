@@ -95,3 +95,19 @@ fn wait_join() {
     });
     j.join();
 }
+
+#[test]
+fn scoped_coroutine() {
+    let mut array = [1, 2, 3];
+    coroutine::scope(|scope| {
+        for i in &mut array {
+            scope.spawn(move || {
+                *i += 1;
+            });
+        }
+    });
+
+    assert_eq!(array[0], 2);
+    assert_eq!(array[1], 3);
+    assert_eq!(array[2], 4);
+}

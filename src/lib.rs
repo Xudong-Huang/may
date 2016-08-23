@@ -1,10 +1,11 @@
 extern crate generator;
 extern crate queue;
 
+mod join;
+mod scoped;
 mod scheduler;
 mod yield_now;
 mod coroutine;
-mod join;
-pub use yield_now::yield_now;
+pub use scoped::scope;
 pub use coroutine::spawn;
-// pub use join::JoinHandler;
+pub use yield_now::yield_now;
