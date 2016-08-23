@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use coroutine::{Coroutine, EventSource};
 use generator::get_context;
 use scheduler::get_scheduler;
-use yield_now::_yield_with;
+use yield_now::yield_with;
 
 pub struct Join {
     // the coroutine that waiting for this join handler
@@ -47,6 +47,7 @@ impl Join {
             get_scheduler().schedule(co);
         }
 
+        // wake up the waiting thread
         let t_state = self.t_state.fetch_add(1, Ordering::Relaxed);
         if t_state == WAIT {
             let th = self.wait_thread.take().unwrap();
@@ -111,7 +112,7 @@ impl JoinHandler {
             let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
             if state == INIT {
-                _yield_with(&self);
+                yield_with(&self);
             }
         } else {
             // this is from thread context!

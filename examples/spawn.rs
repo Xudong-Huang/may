@@ -3,17 +3,23 @@ extern crate coroutine;
 use coroutine::yield_now;
 
 fn main() {
-    let co = coroutine::spawn(move || {
+    let h = coroutine::spawn(move || {
         println!("hi, I'm parent");
-        for i in 0..10 {
-            coroutine::spawn(move || {
-                println!("hi, I'm child{:?}", i);
-                yield_now();
-                println!("bye from child{:?}", i);
-            });
-        }
+        let v = (0..100)
+            .map(|i| {
+                coroutine::spawn(move || {
+                    println!("hi, I'm child{:?}", i);
+                    yield_now();
+                    println!("bye from child{:?}", i);
+                })
+            })
+            .collect::<Vec<_>>();
         yield_now();
+        // wait child finish
+        for i in v {
+            i.join();
+        }
         println!("bye from parent");
     });
-    co.join();
+    h.join();
 }

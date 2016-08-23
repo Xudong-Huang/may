@@ -48,7 +48,7 @@ fn multi_yield() {
 
 #[test]
 fn spawn_inside() {
-    let j = coroutine::spawn(move || {
+    coroutine::spawn(move || {
         println!("hi, I'm parent");
         for i in 0..10 {
             coroutine::spawn(move || {
@@ -60,27 +60,26 @@ fn spawn_inside() {
         yield_now();
         println!("bye from parent");
     });
-    j.join();
+    thread::park_timeout(Duration::from_millis(200));
 }
 
 #[test]
 fn wait_join() {
     let j = coroutine::spawn(move || {
         println!("hi, I'm parent");
-        let mut join = Vec::new();
-        for i in 0..10 {
-            let j = coroutine::spawn(move || {
-                println!("hi, I'm child{:?}", i);
-                yield_now();
-                println!("bye from child{:?}", i);
-            });
-            join.push(j);
-        }
+        let join = (0..10)
+            .map(|i| {
+                coroutine::spawn(move || {
+                    println!("hi, I'm child{:?}", i);
+                    yield_now();
+                    println!("bye from child{:?}", i);
+                })
+            })
+            .collect::<Vec<_>>();
 
         for j in join {
             j.join();
         }
-
         println!("bye from parent");
     });
     j.join();
