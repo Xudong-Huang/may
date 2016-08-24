@@ -14,7 +14,7 @@ pub fn get_scheduler() -> &'static Scheduler {
             sched = Box::into_raw(b);
         }
         // run the scheduler in background
-        for _i in 0..2 {
+        for _i in 0..4 {
             thread::spawn(move || {
                 let s = unsafe { &*sched };
                 s.run();

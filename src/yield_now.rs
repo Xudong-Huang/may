@@ -1,4 +1,4 @@
-use generator::yield_with as gen_yield;
+use generator::co_yield_with;
 use coroutine::{Coroutine, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
 
@@ -20,7 +20,7 @@ impl EventSource for Yield {
 pub fn yield_with<T: EventSource>(resource: &T) {
     let r = resource as &EventSource as *const _ as *mut _;
     let es = EventSubscriber::new(r);
-    gen_yield(es);
+    co_yield_with(es);
 }
 
 #[inline]

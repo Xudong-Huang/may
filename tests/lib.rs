@@ -3,8 +3,10 @@ use std::thread;
 use std::time::Duration;
 extern crate test;
 extern crate coroutine;
+extern crate generator;
 
 use coroutine::yield_now;
+use generator::Gn;
 
 #[test]
 fn one_coroutine() {
@@ -110,4 +112,27 @@ fn scoped_coroutine() {
     assert_eq!(array[0], 2);
     assert_eq!(array[1], 3);
     assert_eq!(array[2], 4);
+}
+
+#[test]
+fn yield_from_gen() {
+    let mut a = 0;
+    coroutine::scope(|scope| {
+        scope.spawn(|| {
+            let g = Gn::<()>::new_scoped(|mut scope| {
+                while a < 10 {
+                    scope.yield_(a);
+                    a += 1;
+                }
+                a
+            });
+            g.fold((), |_, i| {
+                println!("got {:?}", i);
+                // this is yield from the generator context!
+                yield_now();
+            });
+        });
+    });
+
+    assert_eq!(a, 10);
 }

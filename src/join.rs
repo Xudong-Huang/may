@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::cell::{UnsafeCell, RefCell};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use coroutine::{Coroutine, EventSource};
-use generator::get_context;
+use generator::is_generator;
 use scheduler::get_scheduler;
 use yield_now::yield_with;
 
@@ -120,7 +120,7 @@ impl<T> JoinHandle<T> {
     /// Join the coroutine, returning the result it produced.
     pub fn join(self) -> T {
         let join = unsafe { &mut *self.inner.get() };
-        if get_context().is_generator() {
+        if is_generator() {
             let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
             if state == INIT {
