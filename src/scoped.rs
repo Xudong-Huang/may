@@ -1,17 +1,18 @@
 // modified from crossbeam
 
+use std::thread;
 use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use spawn;
+use coroutine::Coroutine;
 use join::JoinHandle;
+use sync::AtomicOption;
 
-struct SyncCell<T>(pub RefCell<T>);
-unsafe impl<T: Send> Send for SyncCell<T> {}
-unsafe impl<T: Send> Sync for SyncCell<T> {}
 
 #[doc(hidden)]
 trait FnBox {
@@ -53,7 +54,11 @@ impl JoinState {
         let mut state = JoinState::Joined;
         mem::swap(self, &mut state);
         if let JoinState::Running(handle) = state {
-            handle.join();
+            let res = handle.join();
+
+            if !thread::panicking() {
+                res.unwrap();
+            }
         }
     }
 }
@@ -61,7 +66,8 @@ impl JoinState {
 /// A handle to a scoped coroutine
 pub struct ScopedJoinHandle<T> {
     inner: Rc<RefCell<JoinState>>,
-    packet: Arc<SyncCell<Option<T>>>,
+    packet: Arc<AtomicOption<T>>,
+    co: Coroutine,
 }
 
 /// Create a new `scope`, for deferred destructors.
@@ -254,15 +260,16 @@ impl<'a> Scope<'a> {
         where F: FnOnce() -> T + Send + 'a,
               T: Send + 'a
     {
-        let their_packet = Arc::new(SyncCell(RefCell::new(None)));
+        let their_packet = Arc::new(AtomicOption::new());
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
             spawn_unsafe(move || {
-                *their_packet.0.borrow_mut() = Some(f());
+                their_packet.swap(f(), Ordering::Relaxed);
             })
         };
 
+        let co = join_handle.coroutine().clone();
         let deferred_handle = Rc::new(RefCell::new(JoinState::Running(join_handle)));
         let my_handle = deferred_handle.clone();
 
@@ -274,6 +281,7 @@ impl<'a> Scope<'a> {
         ScopedJoinHandle {
             inner: my_handle,
             packet: my_packet,
+            co: co,
         }
     }
 }
@@ -282,7 +290,12 @@ impl<T> ScopedJoinHandle<T> {
     /// Join the scoped thread, returning the result it produced.
     pub fn join(self) -> T {
         self.inner.borrow_mut().join();
-        self.packet.0.borrow_mut().take().unwrap()
+        self.packet.take(Ordering::Relaxed).unwrap()
+    }
+
+    /// Get the underlying thread handle.
+    pub fn coroutine(&self) -> &Coroutine {
+        &self.co
     }
 }
 

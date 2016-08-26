@@ -13,9 +13,8 @@ fn one_coroutine() {
     let j = coroutine::spawn(move || {
         println!("hello, coroutine");
     });
-    j.join();
+    j.join().unwrap();
 }
-
 
 #[test]
 fn coroutine_result() {
@@ -24,7 +23,7 @@ fn coroutine_result() {
         100
     });
 
-    assert_eq!(j.join(), 100);
+    assert_eq!(j.join().unwrap(), 100);
 }
 
 #[test]
@@ -44,7 +43,7 @@ fn test_yield() {
         yield_now();
         println!("goodbye, coroutine");
     });
-    j.join();
+    j.join().unwrap();
 }
 
 #[test]
@@ -91,11 +90,11 @@ fn wait_join() {
             .collect::<Vec<_>>();
 
         for j in join {
-            j.join();
+            j.join().unwrap();
         }
         println!("bye from parent");
     });
-    j.join();
+    j.join().unwrap();
 }
 
 #[test]

@@ -2,7 +2,7 @@ use std::thread;
 use std::sync::{Once, ONCE_INIT};
 use queue::{BulkPop, BLOCK_SIZE};
 use queue::wait_queue::Queue as CoQueue;
-use coroutine::Coroutine;
+use coroutine::CoroutineImpl;
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
@@ -25,7 +25,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 pub struct Scheduler {
-    ready_list: CoQueue<Coroutine>,
+    ready_list: CoQueue<CoroutineImpl>,
 }
 
 impl Scheduler {
@@ -69,7 +69,7 @@ impl Scheduler {
 
     /// put the coroutine to ready list so that next time it can be scheduled
     #[inline]
-    pub fn schedule(&self, co: Coroutine) {
+    pub fn schedule(&self, co: CoroutineImpl) {
         self.ready_list.push(co);
     }
 }

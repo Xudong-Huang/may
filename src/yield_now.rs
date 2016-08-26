@@ -1,12 +1,12 @@
 use generator::co_yield_with;
-use coroutine::{Coroutine, EventSource, EventSubscriber};
+use coroutine::{CoroutineImpl, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
 
 struct Yield {
 }
 
 impl EventSource for Yield {
-    fn subscribe(&mut self, co: Coroutine) {
+    fn subscribe(&mut self, co: CoroutineImpl) {
         // just repush the coroutine to the ready list
         get_scheduler().schedule(co);
         // println!("yield_out()");

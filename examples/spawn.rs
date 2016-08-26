@@ -17,9 +17,9 @@ fn main() {
         yield_now();
         // wait child finish
         for i in v {
-            i.join();
+            i.join().unwrap();
         }
         println!("bye from parent");
     });
-    h.join();
+    h.join().unwrap();
 }

@@ -1,15 +1,17 @@
 use std::thread;
+use std::result;
+use std::any::Any;
 use std::sync::Arc;
 use std::cell::{UnsafeCell, RefCell};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use coroutine::{Coroutine, EventSource};
+use coroutine::{CoroutineImpl, Coroutine, EventSource};
 use generator::is_generator;
 use scheduler::get_scheduler;
 use yield_now::yield_with;
 
 pub struct Join {
     // the coroutine that waiting for this join handler
-    wait_co: Option<Coroutine>,
+    wait_co: Option<CoroutineImpl>,
     // the flag indicate if the host coroutine is finished
     state: AtomicUsize,
 
@@ -55,7 +57,7 @@ impl Join {
         }
     }
 
-    fn subscribe(&mut self, co: Coroutine) {
+    fn subscribe(&mut self, co: CoroutineImpl) {
         let state = self.state.load(Ordering::Relaxed);
         // if the state is INIT, register co to this resource, otherwise do nothing
         if state == INIT {
@@ -103,23 +105,33 @@ impl Join {
 
 /// A join handle to a coroutine
 pub struct JoinHandle<T> {
-    inner: Arc<UnsafeCell<Join>>,
+    co: Coroutine,
+    join: Arc<UnsafeCell<Join>>,
     packet: Arc<RefCell<Option<T>>>,
 }
 
-pub fn make_join_handle<T>(inner: Arc<UnsafeCell<Join>>,
+/// create a JoinHandle
+pub fn make_join_handle<T>(co: Coroutine,
+                           join: Arc<UnsafeCell<Join>>,
                            packet: Arc<RefCell<Option<T>>>)
                            -> JoinHandle<T> {
     JoinHandle {
-        inner: inner,
+        co: co,
+        join: join,
         packet: packet,
     }
 }
 
+pub type Result<T> = result::Result<T, Box<Any + Send + 'static>>;
+
 impl<T> JoinHandle<T> {
+    /// Extracts a handle to the underlying coroutine
+    pub fn coroutine(&self) -> &Coroutine {
+        &self.co
+    }
     /// Join the coroutine, returning the result it produced.
-    pub fn join(self) -> T {
-        let join = unsafe { &mut *self.inner.get() };
+    pub fn join(self) -> Result<T> {
+        let join = unsafe { &mut *self.join.get() };
         if is_generator() {
             let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
@@ -131,14 +143,15 @@ impl<T> JoinHandle<T> {
             join.thread_wait();
         }
 
-        self.packet.borrow_mut().take().unwrap()
+        // TODO: need to fully support Result
+        Ok(self.packet.borrow_mut().take().unwrap())
     }
 }
 
 impl<T> EventSource for JoinHandle<T> {
-    fn subscribe(&mut self, co: Coroutine) {
+    fn subscribe(&mut self, co: CoroutineImpl) {
         // register the coroutine
-        let join = unsafe { &mut *self.inner.get() };
+        let join = unsafe { &mut *self.join.get() };
         join.subscribe(co);
     }
 }
