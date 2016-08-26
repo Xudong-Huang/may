@@ -11,5 +11,5 @@ mod yield_now;
 mod coroutine;
 
 pub use scoped::scope;
-pub use coroutine::{spawn, park, current};
+pub use coroutine::{Builder, spawn, park, current};
 pub use yield_now::yield_now;
