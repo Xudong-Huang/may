@@ -74,17 +74,6 @@ pub struct ScopedJoinHandle<T> {
 ///
 /// Scopes, in particular, support scoped coroutine spawning.
 ///
-/// # Examples
-///
-/// Creating and using a scope:
-///
-/// ```
-/// coroutine::scope(|scope| {
-///     scope.defer(|| println!("Exiting scope"));
-///     scope.spawn(|| println!("Running child coroutine in scope"))
-/// });
-/// // Prints messages in the reverse order written
-/// ```
 pub fn scope<'a, F, R>(f: F) -> R
     where F: FnOnce(&Scope<'a>) -> R
 {
@@ -150,112 +139,6 @@ impl<'a> Scope<'a> {
     /// before the current stack frame goes away, allowing you to reference the parent stack frame
     /// directly. This is ensured by having the parent thread join on the child thread before the
     /// scope exits.
-    ///
-    /// # Examples
-    ///
-    /// A basic scoped thread:
-    ///
-    /// ```
-    /// coroutine::scope(|scope| {
-    ///     scope.spawn(|| {
-    ///         println!("Hello from a scoped coroutine!");
-    ///     });
-    /// });
-    /// ```
-    ///
-    /// When writing concurrent Rust programs, you'll sometimes see a pattern like this, using
-    /// [`std::thread::spawn`][spawn]:
-    ///
-    /// ```ignore
-    /// let array = [1, 2, 3];
-    /// let mut guards = vec![];
-    ///
-    /// for i in &array {
-    ///     let guard = std::thread::spawn(move || {
-    ///         println!("element: {}", i);
-    ///     });
-    ///
-    ///     guards.push(guard);
-    /// }
-    ///
-    /// for guard in guards {
-    ///     guard.join().unwrap();
-    /// }
-    /// ```
-    ///
-    /// The basic pattern is:
-    ///
-    /// 1. Iterate over some collection.
-    /// 2. Spin up a thread to operate on each part of the collection.
-    /// 3. Join all the threads.
-    ///
-    /// However, this code actually gives an error:
-    ///
-    /// ```text
-    /// error: `array` does not live long enough
-    /// for i in &array {
-    ///           ^~~~~
-    /// in expansion of for loop expansion
-    /// note: expansion site
-    /// note: reference must be valid for the static lifetime...
-    /// note: ...but borrowed value is only valid for the block suffix following statement 0 at ...
-    ///     let array = [1, 2, 3];
-    ///     let mut guards = vec![];
-    ///
-    ///     for i in &array {
-    ///         let guard = std::thread::spawn(move || {
-    ///             println!("element: {}", i);
-    /// ...
-    /// error: aborting due to previous error
-    /// ```
-    ///
-    /// Because [`std::thread::spawn`][spawn] doesn't know about this scope, it requires a
-    /// `'static` lifetime. One way of giving it a proper lifetime is to use an [`Arc`][arc]:
-    ///
-    /// [arc]: http://doc.rust-lang.org/stable/std/sync/struct.Arc.html
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// let array = Arc::new([1, 2, 3]);
-    /// let mut guards = vec![];
-    ///
-    /// for i in (0..array.len()) {
-    ///     let a = array.clone();
-    ///
-    ///     let guard = std::thread::spawn(move || {
-    ///         println!("element: {}", a[i]);
-    ///     });
-    ///
-    ///     guards.push(guard);
-    /// }
-    ///
-    /// for guard in guards {
-    ///     guard.join().unwrap();
-    /// }
-    /// ```
-    ///
-    /// But this introduces unnecessary allocation, as `Arc<T>` puts its data on the heap, and we
-    /// also end up dealing with reference counts. We know that we're joining the threads before
-    /// our function returns, so just taking a reference _should_ be safe. Rust can't know that,
-    /// though.
-    ///
-    /// Enter scoped coroutine. Here's our original example, using `spawn` from scope rather
-    /// than from `coroutine::spawn`:
-    ///
-    /// ```
-    /// let array = [1, 2, 3];
-    ///
-    /// coroutine::scope(|scope| {
-    ///     for i in &array {
-    ///         scope.spawn(move || {
-    ///             println!("element: {}", i);
-    ///         });
-    ///     }
-    /// });
-    /// ```
-    ///
-    /// Much more straightforward.
     pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
         where F: FnOnce() -> T + Send + 'a,
               T: Send + 'a

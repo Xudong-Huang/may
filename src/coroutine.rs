@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 use std::cell::{UnsafeCell, RefCell};
 use park::Park;
@@ -99,6 +100,11 @@ impl Coroutine {
     }
 }
 
+impl fmt::Debug for Coroutine {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.name(), f)
+    }
+}
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Builder

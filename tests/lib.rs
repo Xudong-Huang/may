@@ -33,7 +33,7 @@ fn multi_coroutine() {
             println!("hi, coroutine{}", i);
         });
     }
-    thread::park_timeout(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(200));
 }
 
 #[test]
@@ -55,13 +55,14 @@ fn multi_yield() {
             println!("bye, coroutine{}", i);
         });
     }
-    thread::park_timeout(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(200));
 }
 
 #[test]
 fn spawn_inside() {
-    coroutine::spawn(move || {
-        println!("hi, I'm parent");
+    coroutine::Builder::new().name("parent".to_owned()).spawn(move || {
+        let me = coroutine::current();
+        println!("hi, I'm parent: {:?}", me);
         for i in 0..10 {
             coroutine::spawn(move || {
                 println!("hi, I'm child{:?}", i);
@@ -70,9 +71,9 @@ fn spawn_inside() {
             });
         }
         yield_now();
-        println!("bye from parent");
+        println!("bye from parent: {:?}", me);
     });
-    thread::park_timeout(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(200));
 }
 
 #[test]
@@ -131,6 +132,27 @@ fn yield_from_gen() {
                 yield_now();
             });
         });
+    });
+
+    assert_eq!(a, 10);
+}
+
+#[test]
+fn unpark() {
+    let mut a = 0;
+    coroutine::scope(|scope| {
+        let h = scope.spawn(|| {
+            let co = coroutine::current();
+            println!("child coroutine name:{:?}", co);
+            co.unpark();
+            a = 5;
+            coroutine::park();
+            a = 10;
+            coroutine::park();
+        });
+
+        thread::sleep(Duration::from_millis(10));
+        h.coroutine().unpark();
     });
 
     assert_eq!(a, 10);
