@@ -144,16 +144,12 @@ impl<T> JoinHandle<T> {
                 yield_with(&self); // next would call subscribe in the schedule
             }
             // println!("join state: {:?}", state);
-            Ok(self.packet.take(Ordering::Acquire).expect("asasdfasdfadsfas"))
         } else {
             // this is from thread context!
             join.thread_wait();
-            Ok(self.packet.take(Ordering::Acquire).expect("aaaaaaaaaaaaaaaaaa"))
         }
-
-
-
         // TODO: need to fully support Result
+        Ok(self.packet.take(Ordering::Acquire).expect("take packet error!"))
     }
 }
 

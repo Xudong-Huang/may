@@ -4,7 +4,7 @@ use std::thread;
 use std::cell::{UnsafeCell, Cell};
 use std::sync::{Once, ONCE_INIT};
 use std::sync::mpsc::{channel, Sender};
-use queue::{BulkPop, BLOCK_SIZE};
+use queue::BLOCK_SIZE;
 use queue::wait_queue::Queue as CoQueue;
 use coroutine::CoroutineImpl;
 
@@ -52,7 +52,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         Box::new(Scheduler {
-            ready_list: CoQueue::new(),
+            ready_list: CoQueue::new(workers),
             tx: UnsafeCell::new(unsafe { mem::uninitialized() }),
         })
     }
@@ -61,7 +61,7 @@ impl Scheduler {
     pub fn run(&self, id: usize) {
         let mut vec = Vec::with_capacity(BLOCK_SIZE);
         loop {
-            let size = self.ready_list.bulk_pop(&mut vec);
+            let size = self.ready_list.bulk_pop(id, &mut vec);
             vec.drain(0..size).fold((), |_, mut coroutine| {
                 let event_subscriber = coroutine.resume().unwrap();
                 // the coroutine will sink into the subscriber's resouce
@@ -80,18 +80,16 @@ impl Scheduler {
         if id == 0 {
             // unsafe to push the co to the list so we make it through a mpsc channel
             let tx = unsafe { &*self.tx.get() };
-            // let tx = tx.as_ref().map(|t| t.clone());
-            // tx = 4;
-            // .map(|t| t.clone());
             tx.send(co).unwrap();
             return;
         }
-        self.ready_list.push(co);
+        self.ready_list.push(id, co);
     }
 
+    /// this function is only for queue slot 0, used only by the proxy thread
     #[inline]
     fn schedule_0(&self, co: CoroutineImpl) {
-        self.ready_list.push(co);
+        self.ready_list.push(0, co);
     }
 
     // set the tx for normal thread
