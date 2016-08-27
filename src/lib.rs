@@ -1,9 +1,10 @@
 extern crate generator;
 extern crate queue;
 
-mod sync;
 mod join;
 mod park;
+mod pool;
+mod sync;
 mod local;
 mod scoped;
 mod scheduler;

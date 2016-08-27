@@ -48,7 +48,7 @@ pub trait EventSource {
 /// Coroutine destruction
 /// /////////////////////////////////////////////////////////////////////////////
 
-struct Done;
+pub struct Done;
 
 impl EventSource for Done {
     fn subscribe(&mut self, co: CoroutineImpl) {
@@ -57,6 +57,11 @@ impl EventSource for Done {
         // destroy the local storage
         unsafe {
             Box::from_raw(co.get_local_data() as *mut CoroutineLocal);
+        }
+        // recycle the coroutine
+        let (size, _) = co.stack_usage();
+        if size == DEFAULT_STACK_SIZE {
+            get_scheduler().pool.put(co);
         }
     }
 }
@@ -161,7 +166,9 @@ impl Builder {
         let packet = Arc::new(AtomicOption::new());
         let their_join = join.clone();
         let their_packet = packet.clone();
-        let mut co = Gn::new_opt(stack_size, move || {
+        let sched = get_scheduler();
+
+        let closure = move || {
             // set the return packet
             their_packet.swap(f(), Ordering::Release);
 
@@ -169,8 +176,16 @@ impl Builder {
             let join = unsafe { &mut *their_join.get() };
             join.trigger();
             EventSubscriber { resource: done }
-        });
+        };
 
+        let mut co;
+        if stack_size == DEFAULT_STACK_SIZE {
+            co = sched.pool.get();
+            // re-init the closure
+            co.init(closure);
+        } else {
+            co = Gn::new_opt(stack_size, closure);
+        };
 
         let handle = Coroutine::new(name);
         // create the local storage
@@ -179,7 +194,7 @@ impl Builder {
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
         // put the coroutine to ready list
-        get_scheduler().schedule(co);
+        sched.schedule(co);
         make_join_handle(handle, join, packet)
     }
 }

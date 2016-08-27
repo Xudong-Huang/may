@@ -7,6 +7,7 @@ use std::sync::mpsc::{channel, Sender};
 use queue::BLOCK_SIZE;
 use queue::wait_queue::Queue as CoQueue;
 use coroutine::CoroutineImpl;
+use pool::CoroutinePool;
 
 thread_local!{static ID: Cell<usize> = Cell::new(0);}
 
@@ -45,6 +46,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 pub struct Scheduler {
+    pub pool: CoroutinePool,
     ready_list: CoQueue<CoroutineImpl>,
     tx: UnsafeCell<Sender<CoroutineImpl>>,
 }
@@ -52,6 +54,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         Box::new(Scheduler {
+            pool: CoroutinePool::new(),
             ready_list: CoQueue::new(workers),
             tx: UnsafeCell::new(unsafe { mem::uninitialized() }),
         })
