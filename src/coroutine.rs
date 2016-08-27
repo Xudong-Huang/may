@@ -1,7 +1,9 @@
 use std::fmt;
 use std::sync::Arc;
-use std::cell::{UnsafeCell, RefCell};
+use std::cell::UnsafeCell;
+use std::sync::atomic::Ordering;
 use park::Park;
+use sync::AtomicOption;
 use generator::{Gn, Generator, get_local_data};
 use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
@@ -156,11 +158,13 @@ impl Builder {
         let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
         // create a join resource, shared by waited coroutine and *this* coroutine
         let join = Arc::new(UnsafeCell::new(Join::new()));
-        let packet = Arc::new(RefCell::new(None));
+        let packet = Arc::new(AtomicOption::new());
         let their_join = join.clone();
         let their_packet = packet.clone();
         let mut co = Gn::new_opt(stack_size, move || {
-            *their_packet.borrow_mut() = Some(f());
+            // set the return packet
+            their_packet.swap(f(), Ordering::Release);
+
             // trigger the JoinHandler
             let join = unsafe { &mut *their_join.get() };
             join.trigger();
