@@ -1,6 +1,6 @@
 use coroutine::{DEFAULT_STACK_SIZE, Done, CoroutineImpl, EventSource, EventSubscriber};
 use generator::Gn;
-use queue::mpmc_bounded_queue::Queue;
+use queue::mpmc_bounded::Queue;
 
 const DEFAULT_POOL_CAPACITY: usize = 100000;
 

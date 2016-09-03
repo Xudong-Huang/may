@@ -1,15 +1,16 @@
-use std::ptr;
-use std::mem;
 use std::thread;
-use std::cell::{UnsafeCell, Cell};
+use std::cell::Cell;
 use std::sync::{Once, ONCE_INIT};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use queue::BLOCK_SIZE;
-use queue::wait_queue::Queue as CoQueue;
+use queue::mpmc::Queue as CoQueue;
+use queue::mpmc_v1::Queue as mpmc;
+use queue::mpmc_bounded::Queue as WaitList;
 use coroutine::CoroutineImpl;
 use pool::CoroutinePool;
 
-thread_local!{static ID: Cell<usize> = Cell::new(0);}
+const ID_INIT: usize = ::std::usize::MAX;
+thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
@@ -18,20 +19,9 @@ pub fn get_scheduler() -> &'static Scheduler {
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
         let b: Box<Scheduler> = Scheduler::new(workers);
-        let (tx, rx) = channel();
-        b.set_co_tx(tx.clone());
         unsafe {
             sched = Box::into_raw(b);
         }
-
-        // one thread to collect coroutine created from normal thread context
-        // this thread is a proxy for normal thread
-        // do we have a better design?
-        thread::spawn(move || {
-            let s = unsafe { &*sched };
-            // we can't call schedule here recursively
-            rx.iter().fold((), |_, co| s.schedule_0(co));
-        });
 
         // run the scheduler in background
         for id in 0..workers {
@@ -48,7 +38,10 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     pub pool: CoroutinePool,
     ready_list: CoQueue<CoroutineImpl>,
-    tx: UnsafeCell<Sender<CoroutineImpl>>,
+    spawn_list: mpmc<CoroutineImpl>,
+    wait_list: WaitList<thread::Thread>,
+    cnt: AtomicUsize,
+    workers: usize,
 }
 
 impl Scheduler {
@@ -56,15 +49,36 @@ impl Scheduler {
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             ready_list: CoQueue::new(workers),
-            tx: UnsafeCell::new(unsafe { mem::uninitialized() }),
+            // timer_list: mpsc::new(workers),
+            // event_list: mpsc::new(workers),
+            spawn_list: mpmc::new(workers),
+            wait_list: WaitList::with_capacity(256),
+            cnt: AtomicUsize::new(0),
+            workers: workers,
         })
     }
 
-    #[allow(dead_code)]
     pub fn run(&self, id: usize) {
         let mut vec = Vec::with_capacity(BLOCK_SIZE);
         loop {
-            let size = self.ready_list.bulk_pop(id, &mut vec);
+            self.run_once(id, &mut vec);
+        }
+    }
+
+    #[inline]
+    fn run_once(&self, id: usize, vec: &mut Vec<CoroutineImpl>) {
+        let mut size = self.spawn_list.size() / self.workers;
+        size = self.spawn_list.bulk_pop_expect(id, size, vec);
+        if size > 0 {
+            vec.drain(0..size).fold((), |_, mut coroutine| {
+                let event_subscriber = coroutine.resume().unwrap();
+                event_subscriber.subscribe(coroutine);
+            });
+            // self.cnt.fetch_sub(size, Ordering::Relaxed);
+        }
+
+        size = self.ready_list.bulk_pop(id, vec);
+        if size > 0 {
             vec.drain(0..size).fold((), |_, mut coroutine| {
                 let event_subscriber = coroutine.resume().unwrap();
                 // the coroutine will sink into the subscriber's resouce
@@ -72,6 +86,20 @@ impl Scheduler {
                 // 'resource' is just any type that live within the coroutine's stack
                 event_subscriber.subscribe(coroutine);
             });
+            // self.cnt.fetch_sub(size, Ordering::Relaxed);
+        } else {
+            let mut handle = thread::current();
+            loop {
+                match self.wait_list.push(handle) {
+                    Ok(_) => {
+                        break;
+                    }
+                    Err(h) => {
+                        handle = h;
+                    }
+                }
+            }
+            thread::park();
         }
     }
 
@@ -80,25 +108,14 @@ impl Scheduler {
     pub fn schedule(&self, co: CoroutineImpl) {
         // only worker thread has none zero id
         let id = ID.with(|m_id| m_id.get());
-        if id == 0 {
-            // unsafe to push the co to the list so we make it through a mpsc channel
-            let tx = unsafe { &*self.tx.get() };
-            tx.send(co).unwrap();
-            return;
+        if id == ID_INIT {
+            self.spawn_list.push(co);
+        } else {
+            self.ready_list.push(id, co);
         }
-        self.ready_list.push(id, co);
-    }
 
-    /// this function is only for queue slot 0, used only by the proxy thread
-    #[inline]
-    fn schedule_0(&self, co: CoroutineImpl) {
-        self.ready_list.push(0, co);
-    }
-
-    // set the tx for normal thread
-    fn set_co_tx(&self, tx: Sender<CoroutineImpl>) {
-        unsafe {
-            ptr::write(self.tx.get(), tx);
-        }
+        // self.cnt.fetch_add(1, Ordering::Relaxed);
+        // signal one waiting thread if any
+        self.wait_list.pop().map(|t| t.unpark());
     }
 }
