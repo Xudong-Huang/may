@@ -25,18 +25,43 @@ fn yield_bench(b: &mut Bencher) {
 
 #[bench]
 fn spawn_bench(b: &mut Bencher) {
+    get_scheduler();
     b.iter(|| {
-        let threads = 5;
+        let total_work = 1000;
+        let threads = 2;
         let mut vec = Vec::with_capacity(threads);
         for _t in 0..threads {
-            let j = std::thread::spawn(|| {
+            let j = std::thread::spawn(move || {
                 scope(|scope| {
-                    for _i in 0..200 {
+                    for _i in 0..total_work / threads {
                         scope.spawn(|| {
-                            yield_now();
+                            // yield_now();
                         });
                     }
                 });
+            });
+            vec.push(j);
+        }
+        for j in vec {
+            j.join().unwrap();
+        }
+    });
+}
+
+#[bench]
+fn spawn_bench_1(b: &mut Bencher) {
+    get_scheduler();
+    b.iter(|| {
+        let total_work = 1000;
+        let threads = 2;
+        let mut vec = Vec::with_capacity(threads);
+        for _t in 0..threads {
+            let work = total_work / threads;
+            let j = std::thread::spawn(move || {
+                let v = (0..work).map(|_| coroutine::spawn(|| {})).collect::<Vec<_>>();
+                for h in v {
+                    h.join().unwrap();
+                }
             });
             vec.push(j);
         }
