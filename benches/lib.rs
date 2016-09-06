@@ -104,7 +104,7 @@ fn smoke_bench_1(b: &mut Bencher) {
         for _t in 0..threads {
             let j = std::thread::spawn(|| {
                 scope(|scope| {
-                    for _i in 0..20000 {
+                    for _i in 0..2000 {
                         scope.spawn(|| {
                             for _j in 0..10 {
                                 yield_now();
@@ -126,7 +126,7 @@ fn smoke_bench_2(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             // create a main coroutine, let it spawn 10 sub coroutine
-            for _ in 0..10000 {
+            for _ in 0..1000 {
                 s.spawn(|| {
                     scope(|ss| {
                         for _ in 0..10 {
