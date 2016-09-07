@@ -106,7 +106,7 @@ fn smoke_bench_1(b: &mut Bencher) {
                 scope(|scope| {
                     for _i in 0..2000 {
                         scope.spawn(|| {
-                            for _j in 0..10 {
+                            for _j in 0..4 {
                                 yield_now();
                             }
                         });
@@ -126,13 +126,13 @@ fn smoke_bench_2(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             // create a main coroutine, let it spawn 10 sub coroutine
-            for _ in 0..1000 {
+            for _ in 0..100 {
                 s.spawn(|| {
                     scope(|ss| {
-                        for _ in 0..10 {
+                        for _ in 0..100 {
                             ss.spawn(|| {
                                 // each task yield 10 times
-                                for _ in 0..10 {
+                                for _ in 0..4 {
                                     yield_now();
                                 }
                             });

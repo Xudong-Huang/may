@@ -158,6 +158,10 @@ impl Builder {
               T: Send + 'static
     {
         static DONE: Done = Done {};
+        let sched = get_scheduler();
+        let _co = sched.pool.get();
+        _co.prefetch();
+
         let done = &DONE as &EventSource as *const _ as *mut EventSource;
         let Builder { name, stack_size } = self;
         let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
@@ -166,7 +170,6 @@ impl Builder {
         let packet = Arc::new(AtomicOption::new());
         let their_join = join.clone();
         let their_packet = packet.clone();
-        let sched = get_scheduler();
 
         let closure = move || {
             // set the return packet
@@ -180,12 +183,13 @@ impl Builder {
 
         let mut co;
         if stack_size == DEFAULT_STACK_SIZE {
-            co = sched.pool.get();
+            co = _co;
             // re-init the closure
             co.init(closure);
         } else {
+            sched.pool.put(_co);
             co = Gn::new_opt(stack_size, closure);
-        };
+        }
 
         let handle = Coroutine::new(name);
         // create the local storage
@@ -194,7 +198,7 @@ impl Builder {
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
         // put the coroutine to ready list
-        sched.spawn(co);
+        sched.schedule(co);
         make_join_handle(handle, join, packet)
     }
 }
