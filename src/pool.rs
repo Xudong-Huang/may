@@ -1,4 +1,4 @@
-use coroutine::{DEFAULT_STACK_SIZE, Done, CoroutineImpl, EventSource, EventSubscriber};
+use coroutine::{DEFAULT_STACK_SIZE, CoroutineImpl};
 use generator::Gn;
 use queue::mpmc_bounded::Queue;
 
@@ -13,11 +13,8 @@ pub struct CoroutinePool {
 
 impl CoroutinePool {
     fn create_dummy_coroutine() -> CoroutineImpl {
-        static DONE: Done = Done {};
-        let done = &DONE as &EventSource as *const _ as *mut EventSource;
         let co = Gn::new_opt(DEFAULT_STACK_SIZE, move || {
-            // this is a dummy one
-            EventSubscriber::new(done)
+            unreachable!("dummy coroutine should never be called");
         });
         co
     }
@@ -35,7 +32,10 @@ impl CoroutinePool {
     /// get a raw coroutine from the pool
     #[inline]
     pub fn get(&self) -> CoroutineImpl {
-        self.pool.pop().unwrap_or(Self::create_dummy_coroutine())
+        match self.pool.pop() {
+            Some(co) => co,
+            None => Self::create_dummy_coroutine(),
+        }
     }
 
     /// put a raw courinte inot the pool

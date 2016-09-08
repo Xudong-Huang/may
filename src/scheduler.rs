@@ -59,7 +59,7 @@ impl Scheduler {
     }
 
     fn run_coroutines(&self, vec: &mut Vec<CoroutineImpl>) {
-        for ref coroutine in vec.iter() {
+        for coroutine in vec.iter() {
             coroutine.prefetch();
         }
 
