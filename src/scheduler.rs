@@ -58,18 +58,36 @@ impl Scheduler {
         })
     }
 
-    fn run_coroutines(&self, vec: &mut Vec<CoroutineImpl>) {
-        for coroutine in vec.iter() {
-            coroutine.prefetch();
+    fn run_coroutines(&self, vec: &mut Vec<CoroutineImpl>, size: usize) {
+        const PREFTCH_SIZE: usize = 2;
+        let mut drain = vec.drain(0..size);
+        let mut old = Vec::with_capacity(PREFTCH_SIZE);
+        // prefech one coroutine
+        let mut j = 0;
+        while j < PREFTCH_SIZE && j < size {
+            let co = drain.next().unwrap();
+            co.prefetch();
+            old.push(co);
+            j += 1;
         }
 
-        vec.drain(..).fold((), |_, mut coroutine| {
-            let event_subscriber = coroutine.resume().unwrap();
-            // the coroutine will sink into the subscriber's resouce
-            // basically it just register the coroutine somewhere within the 'resource'
-            // 'resource' is just any type that live within the coroutine's stack
-            event_subscriber.subscribe(coroutine);
-        });
+        j = 0;
+        while (j as isize) < (size as isize) - (PREFTCH_SIZE as isize) {
+            let co = drain.next().unwrap();
+            co.prefetch();
+            old.push(co);
+            let mut old_co = old.remove(0);
+            let event_subscriber = old_co.resume().unwrap();
+            event_subscriber.subscribe(old_co);
+            j += 1;
+        }
+
+        while j < size {
+            let mut old_co = old.remove(0);
+            let event_subscriber = old_co.resume().unwrap();
+            event_subscriber.subscribe(old_co);
+            j += 1;
+        }
     }
 
     fn run(&self, id: usize) {
@@ -84,7 +102,7 @@ impl Scheduler {
                 size = self.visit_list.bulk_pop_expect(id, size, &mut vec);
                 if size > 0 {
                     total += size;
-                    self.run_coroutines(&mut vec);
+                    self.run_coroutines(&mut vec, size);
                 }
             }
 
@@ -95,7 +113,7 @@ impl Scheduler {
                 size = self.ready_list.bulk_pop_expect(id, size, &mut vec);
                 if size > 0 {
                     total += size;
-                    self.run_coroutines(&mut vec);
+                    self.run_coroutines(&mut vec, size);
                 }
             }
 

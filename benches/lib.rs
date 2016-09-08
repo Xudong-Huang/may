@@ -123,6 +123,7 @@ fn smoke_bench_1(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_2(b: &mut Bencher) {
+    get_scheduler();
     b.iter(|| {
         scope(|s| {
             // create a main coroutine, let it spawn 10 sub coroutine
@@ -131,7 +132,7 @@ fn smoke_bench_2(b: &mut Bencher) {
                     scope(|ss| {
                         for _ in 0..100 {
                             ss.spawn(|| {
-                                // each task yield 10 times
+                                // each task yield 4 times
                                 for _ in 0..4 {
                                     yield_now();
                                 }
@@ -141,5 +142,35 @@ fn smoke_bench_2(b: &mut Bencher) {
                 });
             }
         });
+    });
+}
+
+#[bench]
+fn smoke_bench_3(b: &mut Bencher) {
+    get_scheduler();
+    b.iter(|| {
+        let mut vec = Vec::with_capacity(100);
+        // create a main coroutine, let it spawn 10 sub coroutine
+        for _ in 0..100 {
+            let j = spawn(|| {
+                let mut _vec = Vec::with_capacity(100);
+                for _ in 0..100 {
+                    let _j = spawn(|| {
+                        // each task yield 10 times
+                        for _ in 0..4 {
+                            yield_now();
+                        }
+                    });
+                    _vec.push(_j);
+                }
+                for _j in _vec {
+                    _j.join().ok();
+                }
+            });
+            vec.push(j);
+        }
+        for j in vec {
+            j.join().ok();
+        }
     });
 }
