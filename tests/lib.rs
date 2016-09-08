@@ -122,14 +122,14 @@ fn yield_from_gen() {
             let g = Gn::<()>::new_scoped(|mut scope| {
                 while a < 10 {
                     scope.yield_(a);
+                    // this is yield from the generator context!
+                    yield_now();
                     a += 1;
                 }
                 a
             });
             g.fold((), |_, i| {
                 println!("got {:?}", i);
-                // this is yield from the generator context!
-                yield_now();
             });
         });
     });

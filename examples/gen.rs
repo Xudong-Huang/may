@@ -11,6 +11,8 @@ fn main() {
                 let (mut a, mut b) = (0, 1);
                 while b < 200 {
                     std::mem::swap(&mut a, &mut b);
+                    // this is yield from the generator context!
+                    yield_now();
                     b = a + b;
                     scope.yield_(b);
                 }
@@ -18,8 +20,7 @@ fn main() {
             });
             g.fold((), |_, i| {
                 println!("got {:?}", i);
-                // this is yield from the generator context!
-                yield_now();
+                // yield_now();
             });
         });
     });
