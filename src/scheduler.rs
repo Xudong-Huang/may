@@ -1,7 +1,9 @@
+extern crate smallvec;
 use std::cmp;
 use std::thread;
 use std::cell::Cell;
 use std::sync::{Once, ONCE_INIT};
+use self::smallvec::SmallVec;
 use queue::BLOCK_SIZE;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc::Queue as mpmc;
@@ -43,6 +45,8 @@ pub struct Scheduler {
     workers: usize,
 }
 
+type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
+
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         Box::new(Scheduler {
@@ -58,10 +62,10 @@ impl Scheduler {
         })
     }
 
-    fn run_coroutines(&self, vec: &mut Vec<CoroutineImpl>, size: usize) {
-        const PREFTCH_SIZE: usize = 2;
-        let mut drain = vec.drain(0..size);
-        let mut old = Vec::with_capacity(PREFTCH_SIZE);
+    fn run_coroutines(&self, vec: &mut StackVec, size: usize) {
+        const PREFTCH_SIZE: usize = 4;
+        let mut drain = vec.drain();
+        let mut old = SmallVec::<[CoroutineImpl; PREFTCH_SIZE]>::new();
         // prefech one coroutine
         let mut j = 0;
         while j < PREFTCH_SIZE && j < size {
@@ -91,7 +95,7 @@ impl Scheduler {
     }
 
     fn run(&self, id: usize) {
-        let mut vec = Vec::with_capacity(BLOCK_SIZE);
+        let mut vec = StackVec::new();
         loop {
             let mut total = 0;
 

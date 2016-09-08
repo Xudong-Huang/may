@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 
 [dependencies]
+smallvec = "0.2.0"
 [dependencies.generator]
 path ="../generator-rs"
 [dependencies.queue]
