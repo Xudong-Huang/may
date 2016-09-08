@@ -14,4 +14,4 @@ mod coroutine;
 pub use scoped::scope;
 pub use coroutine::{Builder, spawn, park, current};
 pub use yield_now::yield_now;
-pub use scheduler::get_scheduler;
+pub use scheduler::scheduler_set_workers;

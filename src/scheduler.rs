@@ -14,12 +14,25 @@ use pool::CoroutinePool;
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
+static mut WORKERS: usize = 1;
+
+/// set the worker thread number
+/// this function should be called at the program beginning
+/// successive call would not tack effect for that the scheduler
+/// is already started
+pub fn scheduler_set_workers(workers: usize) {
+    unsafe {
+        WORKERS = workers;
+    }
+    get_scheduler();
+}
+
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
-    let workers = 4;
     static mut sched: *const Scheduler = 0 as *const _;
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
+        let workers = unsafe { WORKERS };
         let b: Box<Scheduler> = Scheduler::new(workers);
         unsafe {
             sched = Box::into_raw(b);
