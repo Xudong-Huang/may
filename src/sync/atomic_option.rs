@@ -29,11 +29,22 @@ impl<T> AtomicOption<T> {
         self.swap_inner(Box::into_raw(t), order)
     }
 
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        self.inner.load(Ordering::Relaxed).is_null()
+    }
+
     pub fn swap(&self, t: T, order: Ordering) -> Option<T> {
         self.swap_box(Box::new(t), order).map(|old| *old)
     }
 
+    #[inline]
     pub fn take(&self, order: Ordering) -> Option<T> {
+        // our special verion only apply with a grab contention
+        // for generic use case this is not ture
+        if self.is_none() {
+            return None;
+        }
         self.swap_inner(ptr::null_mut(), order).map(|old| *old)
     }
 }
