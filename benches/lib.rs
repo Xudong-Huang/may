@@ -149,7 +149,7 @@ fn smoke_bench_2(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_3(b: &mut Bencher) {
-    scheduler_set_workers(1);
+    scheduler_set_workers(4);
     b.iter(|| {
         let mut vec = Vec::with_capacity(100);
         // create a main coroutine, let it spawn 10 sub coroutine

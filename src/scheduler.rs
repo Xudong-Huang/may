@@ -75,10 +75,11 @@ impl Scheduler {
         })
     }
 
+    // TODO: use local stack ring buf
     fn run_coroutines(&self, vec: &mut StackVec, size: usize) {
         const PREFTCH_SIZE: usize = 4;
         let mut drain = vec.drain();
-        let mut old = SmallVec::<[CoroutineImpl; PREFTCH_SIZE]>::new();
+        let mut old = SmallVec::<[CoroutineImpl; PREFTCH_SIZE + 2]>::new();
         // prefech one coroutine
         let mut j = 0;
         while j < PREFTCH_SIZE && j < size {
