@@ -8,6 +8,7 @@ use queue::BLOCK_SIZE;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc::Queue as mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
+use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
 use pool::CoroutinePool;
 
@@ -15,6 +16,7 @@ const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 static mut WORKERS: usize = 1;
+const PREFTCH_SIZE: usize = 4;
 
 /// set the worker thread number
 /// this function should be called at the program beginning
@@ -59,6 +61,7 @@ pub struct Scheduler {
 }
 
 type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
+type CacheBuf = RingBuf<[CoroutineImpl; PREFTCH_SIZE + 2]>;
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
@@ -76,16 +79,17 @@ impl Scheduler {
     }
 
     // TODO: use local stack ring buf
-    fn run_coroutines(&self, vec: &mut StackVec, size: usize) {
-        const PREFTCH_SIZE: usize = 4;
+    #[inline]
+    fn run_coroutines(&self, vec: &mut StackVec, old: &mut CacheBuf, size: usize) {
         let mut drain = vec.drain();
-        let mut old = SmallVec::<[CoroutineImpl; PREFTCH_SIZE + 2]>::new();
         // prefech one coroutine
         let mut j = 0;
         while j < PREFTCH_SIZE && j < size {
             let co = drain.next().unwrap();
             co.prefetch();
-            old.push(co);
+            unsafe {
+                old.push_unchecked(co);
+            }
             j += 1;
         }
 
@@ -93,15 +97,17 @@ impl Scheduler {
         while (j as isize) < (size as isize) - (PREFTCH_SIZE as isize) {
             let co = drain.next().unwrap();
             co.prefetch();
-            old.push(co);
-            let mut old_co = old.remove(0);
+            unsafe {
+                old.push_unchecked(co);
+            }
+            let mut old_co = unsafe { old.pop_unchecked() };
             let event_subscriber = old_co.resume().unwrap();
             event_subscriber.subscribe(old_co);
             j += 1;
         }
 
         while j < size {
-            let mut old_co = old.remove(0);
+            let mut old_co = unsafe { old.pop_unchecked() };
             let event_subscriber = old_co.resume().unwrap();
             event_subscriber.subscribe(old_co);
             j += 1;
@@ -110,6 +116,7 @@ impl Scheduler {
 
     fn run(&self, id: usize) {
         let mut vec = StackVec::new();
+        let mut cached = CacheBuf::new();
         loop {
             let mut total = 0;
 
@@ -120,7 +127,7 @@ impl Scheduler {
                 size = self.visit_list.bulk_pop_expect(id, size, &mut vec);
                 if size > 0 {
                     total += size;
-                    self.run_coroutines(&mut vec, size);
+                    self.run_coroutines(&mut vec, &mut cached, size);
                 }
             }
 
@@ -131,7 +138,7 @@ impl Scheduler {
                 size = self.ready_list.bulk_pop_expect(id, size, &mut vec);
                 if size > 0 {
                     total += size;
-                    self.run_coroutines(&mut vec, size);
+                    self.run_coroutines(&mut vec, &mut cached, size);
                 }
             }
 
