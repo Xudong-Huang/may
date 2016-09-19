@@ -40,11 +40,22 @@ impl<T> AtomicOption<T> {
 
     #[inline]
     pub fn take(&self, order: Ordering) -> Option<T> {
+        self.swap_inner(ptr::null_mut(), order).map(|old| *old)
+    }
+
+    #[inline]
+    pub fn take_fast(&self, order: Ordering) -> Option<T> {
         // our special verion only apply with a grab contention
         // for generic use case this is not ture
         if self.is_none() {
             return None;
         }
         self.swap_inner(ptr::null_mut(), order).map(|old| *old)
+    }
+}
+
+impl<T> Drop for AtomicOption<T> {
+    fn drop(&mut self) {
+        self.take_fast(Ordering::Release);
     }
 }
