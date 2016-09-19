@@ -1,3 +1,4 @@
+extern crate time;
 use std::mem;
 use std::cmp;
 use std::thread;
@@ -8,7 +9,9 @@ use std::collections::{HashMap, BinaryHeap};
 use queue::mpsc_list::Queue as mpsc;
 use queue::mpsc_list::Entry;
 use sync::AtomicOption;
+use self::time::precise_time_ns;
 
+#[inline]
 fn dur_to_ns(dur: Duration) -> u64 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
     dur.as_secs()
@@ -17,9 +20,16 @@ fn dur_to_ns(dur: Duration) -> u64 {
         .expect("too big value for sleepping!")
 }
 
+#[inline]
+fn ns_to_dur(ns: u64) -> Duration {
+    const NANOS_PER_SEC: u64 = 1_000_000_000;
+    Duration::new(ns / NANOS_PER_SEC, (ns % NANOS_PER_SEC) as u32)
+}
+
 // get the current wall clock in ns
+#[inline]
 fn now() -> u64 {
-    0
+    precise_time_ns()
 }
 
 // timeout event data
@@ -47,11 +57,17 @@ impl<T> IntervalEntry<T> {
     pub fn pop_timeout<F>(&self, now: u64, f: &F) -> Option<u64>
         where F: Fn(T)
     {
-        let p = |v: &TimeoutData<T>| v.time >= now;
+        let p = |v: &TimeoutData<T>| v.time <= now;
         loop {
             match self.list.pop_if(&p) {
-                Some(timeout) => f(timeout.data),
-                None => break,
+                Some(timeout) => {
+                    // println!("got timeout time={:?}", timeout.time);
+                    f(timeout.data);
+                }
+                None => {
+                    // println!("no event in the interval list");
+                    break;
+                }
             }
         }
         self.list.peek().map(|t| t.time)
@@ -93,7 +109,6 @@ pub struct TimeOutList<T> {
     wakeup: AtomicOption<thread::Thread>,
 }
 
-
 impl<T> TimeOutList<T> {
     pub fn new() -> Self {
         TimeOutList {
@@ -108,6 +123,7 @@ impl<T> TimeOutList<T> {
     pub fn add_timer(&self, dur: Duration, data: T) -> TimeoutHandle<T> {
         let interval = dur_to_ns(dur);
         let time = now() + interval; // TODO: deal with overflow?
+        //println!("add timer = {:?}", time);
 
         let timeout = TimeoutData {
             time: time,
@@ -157,13 +173,14 @@ impl<T> TimeOutList<T> {
     // this will remove all the expired timeout event
     // and call the supplied function with registered data
     // return the time in ns for the next expiration
-    fn schedule_timer<F: Fn(T)>(&mut self, now: u64, f: &F) -> Option<u64> {
+    fn schedule_timer<F: Fn(T)>(&self, now: u64, f: &F) -> Option<u64> {
         loop {
             // first peek the BH to see if there is any timeout event
             {
                 let timer_bh = self.timer_bh.lock().unwrap();
                 match (*timer_bh).peek() {
                     None => {
+                        // println!("no time event");
                         return None;
                     }
                     Some(entry) => {
@@ -174,7 +191,6 @@ impl<T> TimeOutList<T> {
                     }
                 }
             }
-
             // pop out the entry
             let mut entry;
             {
@@ -183,6 +199,7 @@ impl<T> TimeOutList<T> {
             }
 
             // consume all the timeout event
+            // println!("interval = {:?}", entry.interval);
             match entry.pop_timeout(now, f) {
                 Some(time) => {
                     entry.time = time;
@@ -199,7 +216,7 @@ impl<T> TimeOutList<T> {
                         // the list is really empty now, we can safely remove it
                         (*interval_map_w).remove(&entry.interval);
                     } else {
-                        // release the w lock first, we don't need any more
+                        // release the w lock first, we don't need it any more
                         mem::drop(interval_map_w);
                         // the list is push some data by other thread
                         entry.time = entry.list.peek().unwrap().time;
@@ -213,7 +230,7 @@ impl<T> TimeOutList<T> {
     }
 
     // the timer thread function
-    pub fn run<F: Fn(T)>(&mut self, f: &F) {
+    pub fn run<F: Fn(T)>(&self, f: &F) {
         let current_thread = thread::current();
         loop {
             let now = now();
@@ -221,19 +238,46 @@ impl<T> TimeOutList<T> {
             self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
             match next_expire {
                 Some(time) => {
-                    thread::park_timeout(Duration::from_millis(time / 1_000_000));
+                    // println!("sleep for {:?}", time);
+                    thread::park_timeout(ns_to_dur(time));
                 }
-                None => thread::park(),
+                None => {
+                    // println!("sleep forever");
+                    thread::park();
+                }
             }
         }
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn test_timeout_list() {
-        let l = TimeOutList::<usize>::new();
+        let timer = Arc::new(TimeOutList::<usize>::new());
+        let t = timer.clone();
+        let f = |data: usize| {
+            println!("timeout data:{:?}", data);
+        };
+        thread::spawn(move || t.run(&f));
+        let t1 = timer.clone();
+        thread::spawn(move || {
+            t1.add_timer(Duration::from_millis(1000), 50);
+            t1.add_timer(Duration::from_millis(1000), 60);
+            t1.add_timer(Duration::from_millis(1400), 70);
+        });
+        thread::sleep(Duration::from_millis(10));
+        timer.add_timer(Duration::from_millis(1000), 10);
+        timer.add_timer(Duration::from_millis(500), 40);
+        timer.add_timer(Duration::from_millis(1200), 20);
+        thread::sleep(Duration::from_millis(100));
+        timer.add_timer(Duration::from_millis(1000), 30);
+
+        thread::sleep(Duration::from_millis(1500));
     }
 }
