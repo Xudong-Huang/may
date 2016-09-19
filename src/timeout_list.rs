@@ -233,9 +233,11 @@ impl<T> TimeOutList<T> {
     pub fn run<F: Fn(T)>(&self, f: &F) {
         let current_thread = thread::current();
         loop {
+            // we must register the thread handle first
+            // or there will be no signal to wakeup the timer thread
+            self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
             let now = now();
             let next_expire = self.schedule_timer(now, f);
-            self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
             match next_expire {
                 Some(time) => {
                     // println!("sleep for {:?}", time);
