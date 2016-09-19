@@ -2,7 +2,9 @@ extern crate smallvec;
 use std::cmp;
 use std::thread;
 use std::cell::Cell;
-use std::sync::{Once, ONCE_INIT};
+use std::time::Duration;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Once, ONCE_INIT};
 use self::smallvec::SmallVec;
 use queue::BLOCK_SIZE;
 use queue::mpmc_v1::Queue as generic_mpmc;
@@ -11,6 +13,8 @@ use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
 use pool::CoroutinePool;
+use sync::AtomicOption;
+use timeout_list::TimeOutList;
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
@@ -28,6 +32,10 @@ pub fn scheduler_set_workers(workers: usize) {
     }
     get_scheduler();
 }
+
+// here we use Arc<AtomicOption<>> for that in the select implementaion
+// other event may try to consume the coroutine while timer thread consume it
+type TimerList = TimeOutList<Arc<AtomicOption<CoroutineImpl>>>;
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
@@ -48,6 +56,18 @@ pub fn get_scheduler() -> &'static Scheduler {
                 s.run(id);
             });
         }
+
+        // timer thread
+        thread::spawn(move || {
+            let s = unsafe { &*sched };
+            // timer function
+            let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
+                // just repush the co to the visit list
+                co.take_fast(Ordering::Relaxed).map(|c| s.schedule(c));
+            };
+
+            s.timer_list.run(&timer_event_handler);
+        });
     });
     unsafe { &*sched }
 }
@@ -56,6 +76,7 @@ pub struct Scheduler {
     pub pool: CoroutinePool,
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
+    timer_list: TimerList,
     wait_list: WaitList<thread::Thread>,
     workers: usize,
 }
@@ -71,6 +92,7 @@ impl Scheduler {
             // timer_list: mpsc::new(workers),
             // event_list: mpsc::new(workers),
             ready_list: mpmc::new(workers),
+            timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
             wait_list: WaitList::with_capacity(256),
             // cnt: AtomicUsize::new(0),
@@ -175,5 +197,10 @@ impl Scheduler {
         }
         // signal one waiting thread if any
         self.wait_list.pop().map(|t| t.unpark());
+    }
+
+    #[inline]
+    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) {
+        self.timer_list.add_timer(dur, co);
     }
 }

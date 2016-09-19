@@ -1,6 +1,6 @@
 #![feature(test)]
 use std::thread;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 extern crate test;
 extern crate coroutine;
 extern crate generator;
@@ -156,4 +156,21 @@ fn unpark() {
     });
 
     assert_eq!(a, 10);
+}
+
+#[test]
+fn test_sleep() {
+    let now = Instant::now();
+    coroutine::sleep(Duration::from_millis(100));
+    assert!(now.elapsed() >= Duration::from_millis(100));
+
+    coroutine::scope(|scope| {
+        for _ in 0..1000 {
+            scope.spawn(|| {
+                let now = Instant::now();
+                coroutine::sleep(Duration::from_millis(100));
+                assert!(now.elapsed() >= Duration::from_millis(100));
+            });
+        }
+    });
 }
