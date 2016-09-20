@@ -222,8 +222,9 @@ pub fn current() -> Coroutine {
 }
 
 /// timeout block the current coroutine until it's get unparked
-pub fn park_timeout(dur: Option<Duration>) {
-    if is_generator() {
+#[inline]
+fn park_timeout_impl(dur: Option<Duration>) {
+    if !is_generator() {
         // in thread context we do nothing
         return;
     }
@@ -244,7 +245,6 @@ pub fn park_timeout(dur: Option<Duration>) {
             Some(err) => {
                 if err.kind() == io::ErrorKind::TimedOut {
                     // clear the trigger state
-                    println!("timeout deteced in park_timeout");
                     park.check_park();
                 }
             }
@@ -256,5 +256,10 @@ pub fn park_timeout(dur: Option<Duration>) {
 
 /// block the current coroutine until it's get unparked
 pub fn park() {
-    park_timeout(None);
+    park_timeout_impl(None);
+}
+
+/// timeout block the current coroutine until it's get unparked
+pub fn park_timeout(dur: Duration) {
+    park_timeout_impl(Some(dur));
 }

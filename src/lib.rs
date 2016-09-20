@@ -16,6 +16,6 @@ mod timeout_list;
 
 pub use sleep::sleep;
 pub use scoped::scope;
-pub use coroutine::{Builder, spawn, park, current};
+pub use coroutine::{Builder, spawn, park, park_timeout, current};
 pub use yield_now::yield_now;
 pub use scheduler::scheduler_set_workers;

@@ -159,6 +159,31 @@ fn unpark() {
 }
 
 #[test]
+fn park_timeout() {
+    let mut a = 0;
+    coroutine::scope(|scope| {
+        let h = scope.spawn(|| {
+            let co = coroutine::current();
+            co.unpark();
+            a = 5;
+            coroutine::park_timeout(Duration::from_millis(100));
+            let now = Instant::now();
+            coroutine::park_timeout(Duration::from_millis(10));
+            assert!(now.elapsed() >= Duration::from_millis(10));
+            let now = Instant::now();
+            coroutine::park_timeout(Duration::from_millis(100));
+            assert!(now.elapsed() < Duration::from_millis(100));
+            a = 10;
+        });
+
+        thread::sleep(Duration::from_millis(50));
+        h.coroutine().unpark();
+    });
+
+    assert_eq!(a, 10);
+}
+
+#[test]
 fn test_sleep() {
     let now = Instant::now();
     coroutine::sleep(Duration::from_millis(100));
