@@ -4,8 +4,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use coroutine::{CoroutineImpl, Coroutine, EventSource};
-use generator::is_generator;
+use coroutine::{CoroutineImpl, Coroutine, EventSource, is_coroutine};
 use scheduler::get_scheduler;
 use yield_now::yield_with;
 use sync::AtomicOption;
@@ -137,7 +136,7 @@ impl<T> JoinHandle<T> {
     /// Join the coroutine, returning the result it produced.
     pub fn join(self) -> Result<T> {
         let join = unsafe { &mut *self.join.get() };
-        if is_generator() {
+        if is_coroutine() {
             let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
             if state == INIT {

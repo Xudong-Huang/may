@@ -4,9 +4,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use sync::AtomicOption;
 use yield_now::yield_with;
-use generator::is_generator;
 use scheduler::get_scheduler;
-use coroutine::{CoroutineImpl, EventSource};
+use coroutine::{CoroutineImpl, EventSource, is_coroutine};
 
 struct Sleep {
     dur: Duration,
@@ -24,7 +23,7 @@ impl EventSource for Sleep {
 
 /// block the current coroutine until timeout
 pub fn sleep(dur: Duration) {
-    if !is_generator() {
+    if !is_coroutine() {
         return thread::sleep(dur);
     }
 

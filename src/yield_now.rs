@@ -1,6 +1,6 @@
 use std::thread;
-use generator::{is_generator, co_yield_with};
-use coroutine::{CoroutineImpl, EventSource, EventSubscriber};
+use generator::co_yield_with;
+use coroutine::{CoroutineImpl, EventSource, EventSubscriber, is_coroutine};
 use scheduler::get_scheduler;
 
 struct Yield {
@@ -26,7 +26,7 @@ pub fn yield_with<T: EventSource>(resource: &T) {
 
 #[inline]
 pub fn yield_now() {
-    if !is_generator() {
+    if !is_coroutine() {
         return thread::yield_now();
     }
     let y = Yield {};

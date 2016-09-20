@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use park::Park;
 use sync::AtomicOption;
-use generator::{Gn, Generator, get_local_data, co_get_yield, is_generator};
+use generator::{Gn, Generator, get_local_data, co_get_yield};
 use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
@@ -221,10 +221,16 @@ pub fn current() -> Coroutine {
     local.get_co()
 }
 
+/// if current context is coroutine
+#[inline]
+pub fn is_coroutine() -> bool {
+    !get_local_data().is_null()
+}
+
 /// timeout block the current coroutine until it's get unparked
 #[inline]
 fn park_timeout_impl(dur: Option<Duration>) {
-    if !is_generator() {
+    if !is_coroutine() {
         // in thread context we do nothing
         return;
     }
