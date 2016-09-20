@@ -24,10 +24,10 @@ impl EventSource for Sleep {
 
 /// block the current coroutine until timeout
 pub fn sleep(dur: Duration) {
-    if is_generator() {
-        let sleeper = Sleep { dur: dur };
-        yield_with(&sleeper);
-    } else {
-        thread::sleep(dur);
+    if !is_generator() {
+        return thread::sleep(dur);
     }
+
+    let sleeper = Sleep { dur: dur };
+    yield_with(&sleeper);
 }

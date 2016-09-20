@@ -87,8 +87,7 @@ impl EventSource for Park {
         let s = get_scheduler();
         let sleep_co = Arc::new(AtomicOption::new());
         sleep_co.swap(co, Ordering::Relaxed);
-        let timeout = self.timeout.take();
-        timeout.map(|dur| {
+        self.timeout.take().map(|dur| {
             s.add_timer(dur, sleep_co.clone());
         });
 

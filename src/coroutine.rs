@@ -250,7 +250,6 @@ fn park_timeout_impl(dur: Option<Duration>) {
             }
             None => {}
         }
-
     }
 }
 

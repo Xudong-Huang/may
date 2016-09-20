@@ -151,6 +151,10 @@ fn unpark() {
             coroutine::park();
         });
 
+        // seems this could happend before the inner unpark
+        // it depends on how many coroutines are running
+        // if the test_sleep spawns too many within the same time span
+        // this could be fail due to schedule latency. default 1 worker
         thread::sleep(Duration::from_millis(10));
         h.coroutine().unpark();
     });
@@ -186,8 +190,8 @@ fn park_timeout() {
 #[test]
 fn test_sleep() {
     let now = Instant::now();
-    coroutine::sleep(Duration::from_millis(100));
-    assert!(now.elapsed() >= Duration::from_millis(100));
+    coroutine::sleep(Duration::from_millis(500));
+    assert!(now.elapsed() >= Duration::from_millis(500));
 
     coroutine::scope(|scope| {
         for _ in 0..1000 {

@@ -207,7 +207,7 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) -> TimerHandle {
-        self.timer_list.add_timer(dur, co)
+    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) {
+        self.timer_list.add_timer(dur, co);
     }
 }
