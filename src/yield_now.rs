@@ -1,4 +1,5 @@
-use generator::co_yield_with;
+use std::thread;
+use generator::{is_generator, co_yield_with};
 use coroutine::{CoroutineImpl, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
 
@@ -25,6 +26,9 @@ pub fn yield_with<T: EventSource>(resource: &T) {
 
 #[inline]
 pub fn yield_now() {
+    if !is_generator() {
+        return thread::yield_now();
+    }
     let y = Yield {};
     // it's safe to use the stack value here
     yield_with(&y);

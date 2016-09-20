@@ -1,4 +1,5 @@
 extern crate smallvec;
+use std::io;
 use std::cmp;
 use std::thread;
 use std::cell::Cell;
@@ -14,7 +15,7 @@ use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
 use pool::CoroutinePool;
 use sync::AtomicOption;
-use timeout_list::TimeOutList;
+use timeout_list;
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
@@ -35,7 +36,9 @@ pub fn scheduler_set_workers(workers: usize) {
 
 // here we use Arc<AtomicOption<>> for that in the select implementaion
 // other event may try to consume the coroutine while timer thread consume it
-type TimerList = TimeOutList<Arc<AtomicOption<CoroutineImpl>>>;
+type TimerData = Arc<AtomicOption<CoroutineImpl>>;
+type TimerList = timeout_list::TimeOutList<TimerData>;
+pub type TimerHandle = timeout_list::TimeoutHandle<TimerData>;
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
@@ -63,7 +66,11 @@ pub fn get_scheduler() -> &'static Scheduler {
             // timer function
             let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
                 // just repush the co to the visit list
-                co.take_fast(Ordering::Relaxed).map(|c| s.schedule(c));
+                co.take_fast(Ordering::Relaxed).map(|mut c| {
+                    // set the timeout result for the coroutine
+                    c.set_para(io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                    s.schedule(c);
+                });
             };
 
             s.timer_list.run(&timer_event_handler);
@@ -200,7 +207,7 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) {
-        self.timer_list.add_timer(dur, co);
+    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) -> TimerHandle {
+        self.timer_list.add_timer(dur, co)
     }
 }

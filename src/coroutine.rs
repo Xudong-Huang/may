@@ -1,10 +1,12 @@
+use std::io;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use park::Park;
 use sync::AtomicOption;
-use generator::{Gn, Generator, get_local_data};
+use generator::{Gn, Generator, get_local_data, co_get_yield, is_generator};
 use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
@@ -19,8 +21,7 @@ pub const DEFAULT_STACK_SIZE: usize = 0x800;
 /// Coroutine framework types
 /// /////////////////////////////////////////////////////////////////////////////
 
-pub struct EventResult {
-}
+pub type EventResult = io::Error;
 
 pub struct EventSubscriber {
     resource: *mut EventSource,
@@ -220,15 +221,40 @@ pub fn current() -> Coroutine {
     local.get_co()
 }
 
-/// block the current coroutine until it's get unparked
-pub fn park() {
+/// timeout block the current coroutine until it's get unparked
+pub fn park_timeout(dur: Option<Duration>) {
+    if is_generator() {
+        // in thread context we do nothing
+        return;
+    }
+
     let co_handle = current();
     let park = &co_handle.inner.park;
+    park.set_timeout(dur);
 
     // if the state is not set, need to wait
-    if park.need_park() {
+    if park.check_park() {
         // what if the state is set before yield?
         // the subscribe would re-check it
         yield_with(park);
+        // after return back, we should check if it's timeout
+        // we can't cancel the timer handle safely here
+        // just let timeout happens
+        match co_get_yield::<EventResult>() {
+            Some(err) => {
+                if err.kind() == io::ErrorKind::TimedOut {
+                    // clear the trigger state
+                    println!("timeout deteced in park_timeout");
+                    park.check_park();
+                }
+            }
+            None => {}
+        }
+
     }
+}
+
+/// block the current coroutine until it's get unparked
+pub fn park() {
+    park_timeout(None);
 }
