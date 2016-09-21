@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use park::Park;
 use sync::AtomicOption;
-use generator::{Gn, Generator, get_local_data, co_get_yield, is_generator};
+use generator::{Gn, Generator, get_local_data, is_generator};
 use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
@@ -251,15 +251,17 @@ fn park_timeout_impl(dur: Option<Duration>) {
         // after return back, we should check if it's timeout
         // we can't cancel the timer handle safely here
         // just let timeout happens
-        match co_get_yield::<EventResult>() {
-            Some(err) => {
-                if err.kind() == io::ErrorKind::TimedOut {
-                    // clear the trigger state
-                    park.check_park();
-                }
-            }
-            None => {}
-        }
+        // match co_get_yield::<EventResult>() {
+        //     Some(err) => {
+        //         // this is timeout return
+        //         assert!(err.kind() == io::ErrorKind::TimedOut);
+        //     }
+        //     None => {
+        //         // this is a unpark return
+        //     }
+        // }
+        // clear the trigger state
+        park.check_park();
     }
 }
 
