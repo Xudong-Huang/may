@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use park::Park;
 use sync::AtomicOption;
-use generator::{Gn, Generator, get_local_data, co_get_yield};
+use generator::{Gn, Generator, get_local_data, co_get_yield, is_generator};
 use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
@@ -224,7 +224,11 @@ pub fn current() -> Coroutine {
 /// if current context is coroutine
 #[inline]
 pub fn is_coroutine() -> bool {
-    !get_local_data().is_null()
+    // we never call this function in a pure generator context
+    // so we can sure that this function is called
+    // either in a thread context or in a coroutine context
+    // !get_local_data().is_null()
+    is_generator()
 }
 
 /// timeout block the current coroutine until it's get unparked
