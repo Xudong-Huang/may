@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use sync::AtomicOption;
+use sync::BoxedOption;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
 pub struct Park {
     // the coroutine that waiting for this join handler
-    wait_co: Arc<AtomicOption<CoroutineImpl>>,
+    wait_co: Arc<BoxedOption<CoroutineImpl>>,
     state: AtomicUsize,
     timeout: Option<Duration>,
 }
@@ -16,7 +16,7 @@ pub struct Park {
 impl Park {
     pub fn new() -> Self {
         Park {
-            wait_co: Arc::new(AtomicOption::new()),
+            wait_co: Arc::new(BoxedOption::none()),
             state: AtomicUsize::new(0),
             timeout: None,
         }
@@ -66,7 +66,7 @@ impl Park {
             match self.state
                 .compare_exchange_weak(0, 1, Ordering::Relaxed, Ordering::Relaxed) {
                 Ok(_) => {
-                    self.wait_co.take(Ordering::Relaxed).map(|co| {
+                    self.wait_co.take_fast(Ordering::Acquire).map(|co| {
                         get_scheduler().schedule(co);
                     });
                     return;
@@ -85,16 +85,15 @@ impl EventSource for Park {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        let sleep_co = Arc::new(AtomicOption::new());
-        sleep_co.swap(co, Ordering::Relaxed);
+        let co = Arc::new(BoxedOption::some(co));
         self.timeout.take().map(|dur| {
-            s.add_timer(dur, sleep_co.clone());
+            s.add_timer(dur, co.clone());
         });
 
-        self.wait_co = sleep_co;
+        self.wait_co = co;
         // re-check the state
         if !self.check_park() {
-            self.wait_co.take(Ordering::Relaxed).map(|co| {
+            self.wait_co.take_fast(Ordering::Acquire).map(|co| {
                 s.schedule(co);
             });
         }

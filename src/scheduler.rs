@@ -10,11 +10,12 @@ use self::smallvec::SmallVec;
 use queue::BLOCK_SIZE;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc::Queue as mpmc;
+use queue::spmc::Queue as spmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
 use pool::CoroutinePool;
-use sync::AtomicOption;
+use sync::BoxedOption;
 use timeout_list;
 
 const ID_INIT: usize = ::std::usize::MAX;
@@ -34,9 +35,9 @@ pub fn scheduler_set_workers(workers: usize) {
     get_scheduler();
 }
 
-// here we use Arc<AtomicOption<>> for that in the select implementaion
+// here we use Arc<BoxedOption<>> for that in the select implementaion
 // other event may try to consume the coroutine while timer thread consume it
-type TimerData = Arc<AtomicOption<CoroutineImpl>>;
+type TimerData = Arc<BoxedOption<CoroutineImpl>>;
 type TimerList = timeout_list::TimeOutList<TimerData>;
 pub type TimerHandle = timeout_list::TimeoutHandle<TimerData>;
 
@@ -64,7 +65,7 @@ pub fn get_scheduler() -> &'static Scheduler {
         thread::spawn(move || {
             let s = unsafe { &*sched };
             // timer function
-            let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
+            let timer_event_handler = |co: Arc<BoxedOption<CoroutineImpl>>| {
                 // just repush the co to the visit list
                 co.take_fast(Ordering::Relaxed).map(|mut c| {
                     // set the timeout result for the coroutine
@@ -75,12 +76,18 @@ pub fn get_scheduler() -> &'static Scheduler {
 
             s.timer_list.run(&timer_event_handler);
         });
+
+        // io event loop thread
+        thread::spawn(move || {
+            let s = unsafe { &*sched };
+        });
     });
     unsafe { &*sched }
 }
 
 pub struct Scheduler {
     pub pool: CoroutinePool,
+    event_list: spmc<CoroutineImpl>,
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
     timer_list: TimerList,
@@ -97,7 +104,7 @@ impl Scheduler {
             pool: CoroutinePool::new(),
             // ready_list: (0..workers).map(|_| spsc::new()).collect(),
             // timer_list: mpsc::new(workers),
-            // event_list: mpsc::new(workers),
+            event_list: spmc::new(workers),
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
@@ -149,7 +156,7 @@ impl Scheduler {
         loop {
             let mut total = 0;
 
-            // steal from normal thread list
+            // steal from normal thread visit list
             let mut size = self.visit_list.size();
             if size > 0 {
                 size = cmp::max(size / self.workers, 1);
@@ -160,7 +167,18 @@ impl Scheduler {
                 }
             }
 
-            // steal from the sapwn list
+            // steal from normal event list
+            let mut size = self.event_list.size();
+            if size > 0 {
+                size = cmp::max(size / self.workers, 1);
+                size = self.event_list.bulk_pop_expect(id, size, &mut vec);
+                if size > 0 {
+                    total += size;
+                    self.run_coroutines(&mut vec, &mut cached, size);
+                }
+            }
+
+            // steal from the ready list
             let mut size = self.ready_list.size();
             if size > 0 {
                 size = cmp::max(size / self.workers, 1);
@@ -184,7 +202,8 @@ impl Scheduler {
                     }
                 }
 
-                if !self.ready_list.is_empty() || self.visit_list.size() > 0 {
+                if !self.ready_list.is_empty() || self.visit_list.size() > 0 ||
+                   self.event_list.size() > 0 {
                     self.wait_list.pop().map(|t| t.unpark());
                 }
 
@@ -207,7 +226,7 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_timer(&self, dur: Duration, co: Arc<AtomicOption<CoroutineImpl>>) {
+    pub fn add_timer(&self, dur: Duration, co: Arc<BoxedOption<CoroutineImpl>>) {
         self.timer_list.add_timer(dur, co);
     }
 }

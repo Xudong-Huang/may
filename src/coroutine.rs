@@ -168,7 +168,7 @@ impl Builder {
         let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
         // create a join resource, shared by waited coroutine and *this* coroutine
         let join = Arc::new(UnsafeCell::new(Join::new()));
-        let packet = Arc::new(AtomicOption::new());
+        let packet = Arc::new(AtomicOption::none());
         let their_join = join.clone();
         let their_packet = packet.clone();
 

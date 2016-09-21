@@ -5,10 +5,12 @@
 // pub mod mpmc;
 // should we support Once? blocking for only once is fine in coroutine unless there are too much!
 
+mod boxed_option;
 mod atomic_option;
 // mod barrier;
 // mod condvar;
 // mod mutex;
 // mod once;
 // mod rwlock;
+pub use self::boxed_option::BoxedOption;
 pub use self::atomic_option::AtomicOption;

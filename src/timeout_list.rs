@@ -114,7 +114,7 @@ impl<T> TimeOutList<T> {
         TimeOutList {
             interval_map: RwLock::new(HashMap::new()),
             timer_bh: Mutex::new(BinaryHeap::new()),
-            wakeup: AtomicOption::new(),
+            wakeup: AtomicOption::none(),
         }
     }
 

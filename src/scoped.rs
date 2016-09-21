@@ -143,7 +143,7 @@ impl<'a> Scope<'a> {
         where F: FnOnce() -> T + Send + 'a,
               T: Send + 'a
     {
-        let their_packet = Arc::new(AtomicOption::new());
+        let their_packet = Arc::new(AtomicOption::none());
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
