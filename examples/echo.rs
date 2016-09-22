@@ -1,7 +1,6 @@
 extern crate coroutine;
-use std::net::{TcpListener, TcpStream};
-use std::io::Read;
-use std::io::Write;
+use coroutine::net::{TcpListener, TcpStream};
+use std::io::{Read, Write};
 
 fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream

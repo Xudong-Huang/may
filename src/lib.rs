@@ -16,6 +16,7 @@ mod yield_now;
 mod coroutine;
 mod timeout_list;
 
+pub mod net;
 pub use sleep::sleep;
 pub use scoped::scope;
 pub use yield_now::yield_now;
