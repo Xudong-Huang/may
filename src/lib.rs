@@ -1,9 +1,13 @@
 #[macro_use]
-extern crate bitflags;
+extern crate log;
+// #[macro_use]
+// extern crate bitflags;
+
 extern crate queue;
+extern crate smallvec;
 extern crate generator;
 
-// mod io;
+mod io;
 mod join;
 mod park;
 mod pool;

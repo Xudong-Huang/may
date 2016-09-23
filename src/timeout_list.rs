@@ -11,24 +11,35 @@ use queue::mpsc_list::Entry;
 use sync::AtomicOption;
 use self::time::precise_time_ns;
 
+const NANOS_PER_MILLI: u32 = 1_000_000;
+const MILLIS_PER_SEC: u64 = 1000;
+const NANOS_PER_SEC: u64 = 1_000_000_000;
+
+#[inline]
+pub fn dur_to_ms(dur: Duration) -> u64 {
+    let millis = (dur.subsec_nanos() + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
+    dur.as_secs().saturating_mul(MILLIS_PER_SEC).saturating_add(millis as u64)
+}
+
 #[inline]
 fn dur_to_ns(dur: Duration) -> u64 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
-    dur.as_secs()
-        .checked_mul(1_000_000_000)
-        .and_then(|ns| ns.checked_add((dur.subsec_nanos() as u64)))
-        .expect("too big value for sleepping!")
+    dur.as_secs().saturating_mul(NANOS_PER_SEC).saturating_add(dur.subsec_nanos() as u64)
 }
 
 #[inline]
 fn ns_to_dur(ns: u64) -> Duration {
-    const NANOS_PER_SEC: u64 = 1_000_000_000;
     Duration::new(ns / NANOS_PER_SEC, (ns % NANOS_PER_SEC) as u32)
+}
+
+#[inline]
+pub fn ns_to_ms(ns: u64) -> u64 {
+    ns / NANOS_PER_MILLI as u64
 }
 
 // get the current wall clock in ns
 #[inline]
-fn now() -> u64 {
+pub fn now() -> u64 {
     precise_time_ns()
 }
 
@@ -173,7 +184,7 @@ impl<T> TimeOutList<T> {
     // this will remove all the expired timeout event
     // and call the supplied function with registered data
     // return the time in ns for the next expiration
-    fn schedule_timer<F: Fn(T)>(&self, now: u64, f: &F) -> Option<u64> {
+    pub fn schedule_timer<F: Fn(T)>(&self, now: u64, f: &F) -> Option<u64> {
         loop {
             // first peek the BH to see if there is any timeout event
             {
