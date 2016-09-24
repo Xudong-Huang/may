@@ -1,6 +1,4 @@
 use std::io;
-use std::fmt;
-use std::sync::Arc;
 use std::time::Duration;
 use super::sys::{Selector, EventData, TimerData, Events, timeout_handler};
 use coroutine::CoroutineImpl;
@@ -26,8 +24,10 @@ impl EventLoop {
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
-    pub fn run(&mut self) -> io::Result<()> {
+    pub fn run(&self) -> io::Result<()> {
         let mut events = Events::new();
+        let len = events.capacity();
+        unsafe { events.set_len(len) };
         let mut next_expire = None;
         loop {
             // first run the selector
@@ -41,10 +41,14 @@ impl EventLoop {
     // register the io request to both selector and the timeout list
     pub fn add_io(&self, io: &mut EventData, timeout: Option<Duration>) -> io::Result<()> {
         let timer_handle = timeout.map(|dur| self.timer_list.add_timer(dur, io.timer_data()));
-        try!(self.selector.add_io(io));
-        // set the io timer handle
-        io.timer = timer_handle;
-        Ok(())
+        let ret = self.selector.add_io(io);
+        if ret.is_ok() {
+            io.timer = timer_handle;
+        } else {
+            timer_handle.map(|t| t.remove());
+        }
+
+        ret
     }
 
     // used by the scheduler to pull the coroutine event list

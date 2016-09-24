@@ -78,6 +78,7 @@ pub fn get_scheduler() -> &'static Scheduler {
         // io event loop thread
         thread::spawn(move || {
             let s = unsafe { &*sched };
+            s.event_loop.run().unwrap();
         });
     });
     unsafe { &*sched }
