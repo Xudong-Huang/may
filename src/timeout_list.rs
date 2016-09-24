@@ -11,15 +11,8 @@ use queue::mpsc_list::Entry;
 use sync::AtomicOption;
 use self::time::precise_time_ns;
 
-const NANOS_PER_MILLI: u32 = 1_000_000;
-const MILLIS_PER_SEC: u64 = 1000;
+const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
-
-#[inline]
-pub fn dur_to_ms(dur: Duration) -> u64 {
-    let millis = (dur.subsec_nanos() + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
-    dur.as_secs().saturating_mul(MILLIS_PER_SEC).saturating_add(millis as u64)
-}
 
 #[inline]
 fn dur_to_ns(dur: Duration) -> u64 {
@@ -34,7 +27,7 @@ fn ns_to_dur(ns: u64) -> Duration {
 
 #[inline]
 pub fn ns_to_ms(ns: u64) -> u64 {
-    ns / NANOS_PER_MILLI as u64
+    (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI as u64
 }
 
 // get the current wall clock in ns
@@ -146,7 +139,7 @@ impl<T> TimeOutList<T> {
             let interval_map_r = self.interval_map.read().unwrap();
             // first get the read locker to get the list
             if let Some(interval_list) = (*interval_map_r).get(&interval) {
-                return interval_list.push(timeout);
+                return interval_list.push(timeout).0;
             }
             // drop the read lock here
         }
@@ -155,11 +148,11 @@ impl<T> TimeOutList<T> {
         let mut interval_map_w = self.interval_map.write().unwrap();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
-            return interval_list.push(timeout);
+            return interval_list.push(timeout).0;
         }
 
         let interval_list = Arc::new(mpsc::<TimeoutData<T>>::new());
-        let ret = interval_list.push(timeout);
+        let ret = interval_list.push(timeout).0;
         (*interval_map_w).insert(interval, interval_list.clone());
         // drop the write lock here
         mem::drop(interval_map_w);

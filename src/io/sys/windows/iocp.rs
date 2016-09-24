@@ -123,7 +123,7 @@ impl Selector {
     // windows register function does nothing,
     // the completion model would call the actuall API instead of register
     #[inline]
-    pub fn add_io(&self, io: &mut EventData) -> io::Result<()> {
+    pub fn add_io(&self, _io: &mut EventData) -> io::Result<()> {
         Ok(())
     }
 
@@ -149,6 +149,7 @@ unsafe fn cancel_io(handle: HANDLE, overlapped: &Overlapped) -> io::Result<()> {
 pub fn timeout_handler(data: TimerData) {
     unsafe {
         cancel_io(data.handle, &*data.overlapped)
-            .map_err(|e| panic!("CancelIoEx failed! e = {}", e));
+            .map_err(|e| panic!("CancelIoEx failed! e = {}", e))
+            .expect("Can't cancel io operation");
     }
 }

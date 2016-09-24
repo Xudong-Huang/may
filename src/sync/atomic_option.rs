@@ -14,6 +14,7 @@ impl<T> AtomicOption<T> {
         AtomicOption { inner: AtomicPtr::new(ptr::null_mut()) }
     }
 
+    #[allow(dead_code)]
     pub fn some(t: T) -> AtomicOption<T> {
         AtomicOption { inner: AtomicPtr::new(Box::into_raw(Box::new(t))) }
     }
