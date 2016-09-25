@@ -4,10 +4,11 @@ extern crate kernel32;
 
 use std::{cmp, io, u32};
 use std::cell::UnsafeCell;
-use smallvec::SmallVec;
+use std::os::windows::io::AsRawSocket;
 use self::winapi::*;
 use self::miow::Overlapped;
 use self::miow::iocp::{CompletionPort, CompletionStatus};
+use smallvec::SmallVec;
 use coroutine::CoroutineImpl;
 use queue::spmc::Queue as spmc;
 use yield_now::set_coroutine_para;
@@ -119,6 +120,13 @@ impl Selector {
 
         info!("returning");
         Ok(())
+    }
+
+    // register file hanle to the iocp
+    #[inline]
+    pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
+        // the token para is not used, just pass the handle
+        self.port.add_socket(t.as_raw_socket() as usize, t)
     }
 
     // windows register function does nothing,

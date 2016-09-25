@@ -38,6 +38,12 @@ impl EventLoop {
         }
     }
 
+    // get the internal selector
+    #[inline]
+    pub fn get_selector(&self) -> &Selector {
+        &self.selector
+    }
+
     // register the io request to both selector and the timeout list
     pub fn add_io(&self, io: &mut EventData, timeout: Option<Duration>) -> io::Result<()> {
         let timer_handle = timeout.map(|dur| self.timer_list.add_timer(dur, io.timer_data()));

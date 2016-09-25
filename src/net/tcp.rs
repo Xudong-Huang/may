@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
+use io::add_socket;
 
 // ===== TcpStream =====
 //
@@ -12,7 +13,9 @@ pub struct TcpStream {
 
 impl TcpStream {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        net::TcpStream::connect(addr).map(|s| TcpStream { sys: s })
+        let s = try!(net::TcpStream::connect(addr));
+        try!(add_socket(&s));
+        Ok(TcpStream { sys: s })
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {

@@ -8,5 +8,5 @@ mod sys;
 
 mod event_loop;
 
-pub use self::sys::EventData;
 pub use self::event_loop::EventLoop;
+pub use self::sys::{EventData, Selector, add_socket};

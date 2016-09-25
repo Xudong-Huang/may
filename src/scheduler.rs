@@ -12,6 +12,7 @@ use queue::mpmc::Queue as mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
+use io::Selector;
 use timeout_list;
 use sync::BoxedOption;
 use pool::CoroutinePool;
@@ -231,5 +232,10 @@ impl Scheduler {
     #[inline]
     pub fn add_io(&self, event: &mut EventData, timeout: Option<Duration>) -> io::Result<()> {
         self.event_loop.add_io(event, timeout)
+    }
+
+    #[inline]
+    pub fn get_selector(&self) -> &Selector {
+        self.event_loop.get_selector()
     }
 }
