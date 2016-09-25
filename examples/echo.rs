@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 
 fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream
+    coroutine::scheduler_set_workers(4);
     loop {
         let mut read = [0; 1028];
         match stream.read(&mut read) {

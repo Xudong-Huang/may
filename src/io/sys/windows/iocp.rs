@@ -56,7 +56,7 @@ impl EventData {
 }
 
 // buffer to receive the system events
-pub type Events = SmallVec<[CompletionStatus; 1024]>;
+pub type EventsBuf = SmallVec<[CompletionStatus; 1024]>;
 
 pub struct Selector {
     /// The actual completion port that's used to manage all I/O
@@ -75,10 +75,10 @@ impl Selector {
         })
     }
 
-    pub fn select(&self, events: &mut Events, timeout: Option<u64>) -> io::Result<()> {
+    pub fn select(&self, events: &mut EventsBuf, timeout: Option<u64>) -> io::Result<()> {
         let timeout = timeout.map(|to| cmp::min(ns_to_ms(to), u32::MAX as u64) as u32);
-        trace!("select; timeout={:?}", timeout);
-        trace!("polling IOCP");
+        info!("select; timeout={:?}", timeout);
+        info!("polling IOCP");
         let n = match self.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
             Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
@@ -91,11 +91,11 @@ impl Selector {
             let data = unsafe { &mut *(overlapped as *mut EventData) };
             let mut co = data.co.take().unwrap();
             let timer_handle = data.timer.take().unwrap();
-            trace!("select; -> got overlapped");
+            info!("select; -> got overlapped");
             // check the status
             let overlapped = unsafe { &*(*overlapped).raw() };
 
-            trace!("Io stuats = {}", overlapped.Internal);
+            info!("Io stuats = {}", overlapped.Internal);
 
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED => {
@@ -116,7 +116,7 @@ impl Selector {
             self.event_list.push(co);
         }
 
-        trace!("returning");
+        info!("returning");
         Ok(())
     }
 

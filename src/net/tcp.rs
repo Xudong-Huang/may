@@ -45,23 +45,7 @@ impl Read for TcpStream {
     }
 }
 
-impl<'a> Read for &'a TcpStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&self.sys).read(buf)
-    }
-}
-
 impl Write for TcpStream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.sys).write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        (&self.sys).flush()
-    }
-}
-
-impl<'a> Write for &'a TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         (&self.sys).write(buf)
     }

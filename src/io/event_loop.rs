@@ -1,6 +1,6 @@
 use std::io;
 use std::time::Duration;
-use super::sys::{Selector, EventData, TimerData, Events, timeout_handler};
+use super::sys::{Selector, EventData, TimerData, EventsBuf, timeout_handler};
 use coroutine::CoroutineImpl;
 use timeout_list::{TimeOutList, now};
 use queue::spmc::Queue as spmc;
@@ -25,7 +25,7 @@ impl EventLoop {
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
     pub fn run(&self) -> io::Result<()> {
-        let mut events = Events::new();
+        let mut events = EventsBuf::new();
         let len = events.capacity();
         unsafe { events.set_len(len) };
         let mut next_expire = None;
