@@ -12,10 +12,11 @@ use queue::mpmc::Queue as mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
-use pool::CoroutinePool;
-use sync::BoxedOption;
 use timeout_list;
+use sync::BoxedOption;
+use pool::CoroutinePool;
 use io::{EventLoop, EventData};
+use yield_now::set_coroutine_para;
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
@@ -67,7 +68,7 @@ pub fn get_scheduler() -> &'static Scheduler {
                 // just repush the co to the visit list
                 co.take_fast(Ordering::Relaxed).map(|mut c| {
                     // set the timeout result for the coroutine
-                    c.set_para(io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                    set_coroutine_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     s.schedule(c);
                 });
             };

@@ -10,6 +10,7 @@ use self::miow::Overlapped;
 use self::miow::iocp::{CompletionPort, CompletionStatus};
 use coroutine::CoroutineImpl;
 use queue::spmc::Queue as spmc;
+use yield_now::set_coroutine_para;
 use timeout_list::{TimeoutHandle, ns_to_ms};
 
 type TimerHandle = TimeoutHandle<TimerData>;
@@ -99,7 +100,7 @@ impl Selector {
 
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED => {
-                    co.set_para(io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                    set_coroutine_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     // it's safe to remove the timer since we are
                     // runing the timer_list in the same thread
                     timer_handle.remove();
@@ -108,7 +109,7 @@ impl Selector {
                     // do nothing here
                 }
                 err => {
-                    co.set_para(io::Error::from_raw_os_error(err as i32));
+                    set_coroutine_para(&mut co, io::Error::from_raw_os_error(err as i32));
                 }
             }
 
