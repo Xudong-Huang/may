@@ -5,8 +5,8 @@ use std::os::windows::io::AsRawSocket;
 use super::EventData;
 use super::winapi::*;
 use super::miow::net::TcpStreamExt;
+use yield_now::get_co_para;
 use scheduler::get_scheduler;
-use yield_now::{set_co_para, get_co_para};
 use coroutine::{CoroutineImpl, EventSource};
 
 // register the socket to the system selector
@@ -51,29 +51,20 @@ impl<'a> EventSource for TcpStreamRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         // call the overlapped read API
-        let r = unsafe { self.socket.read_overlapped(self.buf, self.io_data.get_overlapped()) };
-        match r {
-            Err(err) => {
-                let mut co = co;
-                set_co_para(&mut co, err);
-                s.schedule_io(co);
-                return;
-            }
-            Ok(_) => {
-                self.io_data.co = Some(co);
-            }
-        }
-        // register the io operaton
+        let ret = co_try!(s, co, unsafe {
+            self.socket.read_overlapped(self.buf, self.io_data.get_overlapped())
+        });
 
-        let r = s.add_io(&mut self.io_data, self.timeout);
-        match r {
-            Err(err) => {
-                let mut co = self.io_data.co.take().unwrap();
-                set_co_para(&mut co, err);
-                s.schedule_io(co);
-                return;
-            }
-            Ok(_) => {}
+        // the operation is success, we no need to wait any more
+        if ret == true {
+            s.schedule_io(co);
+            return;
         }
+
+        self.io_data.co = Some(co);
+        // register the io operaton
+        co_try!(s,
+                self.io_data.co.take().unwrap(),
+                s.add_io(&mut self.io_data, self.timeout));
     }
 }
