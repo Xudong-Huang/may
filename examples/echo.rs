@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 
 fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream
-    coroutine::scheduler_set_workers(4);
     loop {
         let mut read = [0; 1028];
         match stream.read(&mut read) {
@@ -26,6 +25,7 @@ fn handle_client(mut stream: TcpStream) {
 /// simple test: echo hello | nc 127.0.0.1 8080
 
 fn main() {
+    coroutine::scheduler_set_workers(4);
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
 
     for stream in listener.incoming() {

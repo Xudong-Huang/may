@@ -251,7 +251,7 @@ fn park_timeout_impl(dur: Option<Duration>) {
         // after return back, we should check if it's timeout
         // we can't cancel the timer handle safely here
         // just let timeout happens
-        // match co_get_yield::<EventResult>() {
+        // match get_co_para() {
         //     Some(err) => {
         //         // this is timeout return
         //         assert!(err.kind() == io::ErrorKind::TimedOut);

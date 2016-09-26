@@ -7,8 +7,9 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Once, ONCE_INIT};
 use smallvec::SmallVec;
 use queue::BLOCK_SIZE;
-use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc::Queue as mpmc;
+use queue::spmc::Queue as spmc;
+use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
@@ -17,7 +18,7 @@ use timeout_list;
 use sync::BoxedOption;
 use pool::CoroutinePool;
 use io::{EventLoop, EventData};
-use yield_now::set_coroutine_para;
+use yield_now::set_co_para;
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
@@ -30,6 +31,7 @@ const PREFTCH_SIZE: usize = 4;
 /// successive call would not tack effect for that the scheduler
 /// is already started
 pub fn scheduler_set_workers(workers: usize) {
+    println!("set workers={:?}", workers);
     unsafe {
         WORKERS = workers;
     }
@@ -69,7 +71,7 @@ pub fn get_scheduler() -> &'static Scheduler {
                 // just repush the co to the visit list
                 co.take_fast(Ordering::Relaxed).map(|mut c| {
                     // set the timeout result for the coroutine
-                    set_coroutine_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                    set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     s.schedule(c);
                 });
             };
@@ -89,6 +91,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
+    event_list: spmc<CoroutineImpl>,
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
     timer_list: TimerList,
@@ -103,7 +106,8 @@ impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new(workers).unwrap(),
+            event_loop: EventLoop::new().unwrap(),
+            event_list: spmc::new(workers),
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
@@ -151,7 +155,6 @@ impl Scheduler {
     fn run(&self, id: usize) {
         let mut vec = StackVec::new();
         let mut cached = CacheBuf::new();
-        let event_list = self.event_loop.get_event_list();
         loop {
             let mut total = 0;
 
@@ -167,10 +170,10 @@ impl Scheduler {
             }
 
             // steal from io event list
-            let mut size = event_list.size();
+            let mut size = self.event_list.size();
             if size > 0 {
                 size = cmp::max(size / self.workers, 1);
-                size = event_list.bulk_pop_expect(id, size, &mut vec);
+                size = self.event_list.bulk_pop_expect(id, size, &mut vec);
                 if size > 0 {
                     total += size;
                     self.run_coroutines(&mut vec, &mut cached, size);
@@ -202,7 +205,7 @@ impl Scheduler {
                 }
 
                 if !self.ready_list.is_empty() || self.visit_list.size() > 0 ||
-                   event_list.size() > 0 {
+                   self.event_list.size() > 0 {
                     self.wait_list.pop().map(|t| t.unpark());
                 }
 
@@ -220,6 +223,13 @@ impl Scheduler {
         } else {
             self.visit_list.push(co);
         }
+        // signal one waiting thread if any
+        self.wait_list.pop().map(|t| t.unpark());
+    }
+
+    #[inline]
+    pub fn schedule_io(&self, co: CoroutineImpl) {
+        self.event_list.push(co);
         // signal one waiting thread if any
         self.wait_list.pop().map(|t| t.unpark());
     }

@@ -1,6 +1,7 @@
+use io::net as sys;
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
-use io::add_socket;
+use yield_now::yield_with;
 
 // ===== TcpStream =====
 //
@@ -12,10 +13,12 @@ pub struct TcpStream {
 }
 
 impl TcpStream {
+    fn new(s: net::TcpStream) -> io::Result<TcpStream> {
+        sys::add_socket(&s).map(|_| TcpStream { sys: s })
+    }
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         let s = try!(net::TcpStream::connect(addr));
-        try!(add_socket(&s));
-        Ok(TcpStream { sys: s })
+        TcpStream::new(s)
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
@@ -44,7 +47,9 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&self.sys).read(buf)
+        let reader = sys::TcpStreamRead::new(&self.sys, buf);
+        yield_with(&reader);
+        reader.done()
     }
 }
 
@@ -74,7 +79,8 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        self.sys.accept().map(|(s, a)| (TcpStream { sys: s }, a))
+        let (s, a) = try!(self.sys.accept());
+        TcpStream::new(s).map(|s| (s, a))
     }
 
     pub fn incoming(&self) -> Incoming {

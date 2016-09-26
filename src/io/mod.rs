@@ -9,4 +9,15 @@ mod sys;
 mod event_loop;
 
 pub use self::event_loop::EventLoop;
-pub use self::sys::{EventData, Selector, add_socket};
+pub use self::sys::{EventData, Selector, net};
+
+// macro_rules! co_try {
+//     ($e:expr) => (match $e {
+//         Ok(val) => val,
+//         Err(err) => {
+//             ::yield_now::set_co_para(&mut co, err);
+//             s.schedule_io(co);
+//             return;
+//         },
+//     });
+// }

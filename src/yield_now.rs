@@ -1,5 +1,5 @@
 use std::thread;
-use generator::co_yield_with;
+use generator::{co_yield_with, co_get_yield};
 use coroutine::{CoroutineImpl, EventResult, EventSource, EventSubscriber, is_coroutine};
 use scheduler::get_scheduler;
 
@@ -26,8 +26,14 @@ pub fn yield_with<T: EventSource>(resource: &T) {
 
 /// set the coroutine para that passed into it
 #[inline]
-pub fn set_coroutine_para(co: &mut CoroutineImpl, v: EventResult) {
+pub fn set_co_para(co: &mut CoroutineImpl, v: EventResult) {
     co.set_para(v);
+}
+
+/// get the coroutine para from the coroutine context
+#[inline]
+pub fn get_co_para() -> Option<EventResult> {
+    co_get_yield::<EventResult>()
 }
 
 #[inline]

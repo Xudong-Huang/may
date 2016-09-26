@@ -1,17 +1,15 @@
-extern crate miow;
-extern crate winapi;
 extern crate kernel32;
 
 use std::{cmp, io, u32};
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
-use self::winapi::*;
-use self::miow::Overlapped;
-use self::miow::iocp::{CompletionPort, CompletionStatus};
 use smallvec::SmallVec;
+use super::winapi::*;
+use super::miow::Overlapped;
+use super::miow::iocp::{CompletionPort, CompletionStatus};
+use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
-use queue::spmc::Queue as spmc;
-use yield_now::set_coroutine_para;
+use yield_now::set_co_para;
 use timeout_list::{TimeoutHandle, ns_to_ms};
 
 type TimerHandle = TimeoutHandle<TimerData>;
@@ -45,6 +43,7 @@ impl EventData {
         }
     }
 
+    #[inline]
     pub fn get_overlapped(&self) -> &mut Overlapped {
         unsafe { &mut *self.overlapped.get() }
     }
@@ -55,6 +54,11 @@ impl EventData {
             overlapped: self.overlapped.get(),
         }
     }
+
+    pub fn get_io_size(&self) -> usize {
+        let ol = unsafe { &*self.get_overlapped().raw() };
+        ol.InternalHigh as usize
+    }
 }
 
 // buffer to receive the system events
@@ -63,21 +67,18 @@ pub type EventsBuf = SmallVec<[CompletionStatus; 1024]>;
 pub struct Selector {
     /// The actual completion port that's used to manage all I/O
     port: CompletionPort,
-    /// the event list
-    event_list: spmc<CoroutineImpl>,
 }
 
 impl Selector {
-    pub fn new(workers: usize) -> io::Result<Selector> {
-        CompletionPort::new(1).map(|cp| {
-            Selector {
-                port: cp,
-                event_list: spmc::new(workers),
-            }
-        })
+    pub fn new() -> io::Result<Selector> {
+        CompletionPort::new(1).map(|cp| Selector { port: cp })
     }
 
-    pub fn select(&self, events: &mut EventsBuf, timeout: Option<u64>) -> io::Result<()> {
+    pub fn select(&self,
+                  s: &Scheduler,
+                  events: &mut EventsBuf,
+                  timeout: Option<u64>)
+                  -> io::Result<()> {
         let timeout = timeout.map(|to| cmp::min(ns_to_ms(to), u32::MAX as u64) as u32);
         info!("select; timeout={:?}", timeout);
         info!("polling IOCP");
@@ -92,30 +93,29 @@ impl Selector {
             let overlapped = status.overlapped();
             let data = unsafe { &mut *(overlapped as *mut EventData) };
             let mut co = data.co.take().unwrap();
-            let timer_handle = data.timer.take().unwrap();
-            info!("select; -> got overlapped");
+            println!("select; -> got overlapped");
             // check the status
             let overlapped = unsafe { &*(*overlapped).raw() };
 
-            info!("Io stuats = {}", overlapped.Internal);
+            println!("Io stuats = {}", overlapped.Internal);
 
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED => {
-                    set_coroutine_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                    set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     // it's safe to remove the timer since we are
                     // runing the timer_list in the same thread
-                    timer_handle.remove();
+                    data.timer.take().map(|h| h.remove());
                 }
                 NO_ERROR => {
                     // do nothing here
                 }
                 err => {
-                    set_coroutine_para(&mut co, io::Error::from_raw_os_error(err as i32));
+                    set_co_para(&mut co, io::Error::from_raw_os_error(err as i32));
                 }
             }
 
             // schedule the coroutine
-            self.event_list.push(co);
+            s.schedule_io(co);
         }
 
         info!("returning");
@@ -134,12 +134,6 @@ impl Selector {
     #[inline]
     pub fn add_io(&self, _io: &mut EventData) -> io::Result<()> {
         Ok(())
-    }
-
-    #[inline]
-    // used by the scheduler to pull the coroutine event list
-    pub fn get_event_list(&self) -> &spmc<CoroutineImpl> {
-        &self.event_list
     }
 }
 

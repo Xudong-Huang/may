@@ -1,9 +1,8 @@
 use std::io;
 use std::time::Duration;
-use super::sys::{Selector, EventData, TimerData, EventsBuf, timeout_handler};
-use coroutine::CoroutineImpl;
+use scheduler::get_scheduler;
 use timeout_list::{TimeOutList, now};
-use queue::spmc::Queue as spmc;
+use super::sys::{Selector, EventData, TimerData, EventsBuf, timeout_handler};
 
 type TimerList = TimeOutList<TimerData>;
 
@@ -14,8 +13,8 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-    pub fn new(workers: usize) -> io::Result<EventLoop> {
-        let selector = try!(Selector::new(workers));
+    pub fn new() -> io::Result<EventLoop> {
+        let selector = try!(Selector::new());
         Ok(EventLoop {
             selector: selector,
             timer_list: TimerList::new(),
@@ -25,13 +24,14 @@ impl EventLoop {
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
     pub fn run(&self) -> io::Result<()> {
+        let s = get_scheduler();
         let mut events = EventsBuf::new();
         let len = events.capacity();
         unsafe { events.set_len(len) };
         let mut next_expire = None;
         loop {
             // first run the selector
-            try!(self.selector.select(&mut events, next_expire));
+            try!(self.selector.select(s, &mut events, next_expire));
             // deal with the timer list
             let now = now();
             next_expire = self.timer_list.schedule_timer(now, &timeout_handler);
@@ -55,11 +55,5 @@ impl EventLoop {
         }
 
         ret
-    }
-
-    // used by the scheduler to pull the coroutine event list
-    #[inline]
-    pub fn get_event_list(&self) -> &spmc<CoroutineImpl> {
-        self.selector.get_event_list()
     }
 }
