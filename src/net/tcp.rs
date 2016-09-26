@@ -55,7 +55,9 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.sys).write(buf)
+        let writer = sys::TcpStreamWrite::new(&self.sys, buf);
+        yield_with(&writer);
+        writer.done()
     }
 
     fn flush(&mut self) -> io::Result<()> {

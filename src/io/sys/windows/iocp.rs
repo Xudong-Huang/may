@@ -2,11 +2,13 @@ extern crate kernel32;
 
 use std::{cmp, io, u32};
 use std::cell::UnsafeCell;
+use std::sync::atomic::Ordering;
 use std::os::windows::io::AsRawSocket;
 use smallvec::SmallVec;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
+use sync::BoxedOption;
 use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::set_co_para;
@@ -30,7 +32,7 @@ pub struct EventData {
     overlapped: UnsafeCell<Overlapped>,
     handle: HANDLE,
     pub timer: Option<TimerHandle>,
-    pub co: Option<CoroutineImpl>,
+    pub co: BoxedOption<CoroutineImpl>,
 }
 
 impl EventData {
@@ -39,7 +41,7 @@ impl EventData {
             overlapped: UnsafeCell::new(Overlapped::zero()),
             handle: handle,
             timer: None,
-            co: None,
+            co: BoxedOption::none(),
         }
     }
 
@@ -92,13 +94,18 @@ impl Selector {
             // need to check the status for each io
             let overlapped = status.overlapped();
             let data = unsafe { &mut *(overlapped as *mut EventData) };
-            let mut co = data.co.take().unwrap();
-            println!("select; -> got overlapped");
-            // check the status
             let overlapped = unsafe { &*(*overlapped).raw() };
+            info!("select -> got overlapped, stuats = {}", overlapped.Internal);
 
-            println!("Io stuats = {}", overlapped.Internal);
+            let co = data.co.take(Ordering::Relaxed);
+            if co.is_none() {
+                // there is no coroutine prepared, just ignore this one
+                error!("can't get coroutine in the iocp select");
+                continue;
+            }
+            let mut co = co.unwrap();
 
+            // check the status
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED => {
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));

@@ -31,7 +31,7 @@ const PREFTCH_SIZE: usize = 4;
 /// successive call would not tack effect for that the scheduler
 /// is already started
 pub fn scheduler_set_workers(workers: usize) {
-    println!("set workers={:?}", workers);
+    info!("set workers={:?}", workers);
     unsafe {
         WORKERS = workers;
     }
