@@ -1,7 +1,6 @@
 use std;
 use std::io;
 use std::time::Duration;
-use std::sync::atomic::Ordering;
 use std::os::windows::io::AsRawSocket;
 use super::EventData;
 use super::winapi::*;
@@ -62,13 +61,11 @@ impl<'a> EventSource for TcpStreamRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         // prepare the co first
-        self.io_data.co.swap(co, Ordering::Relaxed);
+        self.io_data.co = Some(co);
         // call the overlapped read API
-        let ret = co_try!(s,
-                          self.io_data.co.take(Ordering::Relaxed).unwrap(),
-                          unsafe {
-                              self.socket.read_overlapped(self.buf, self.io_data.get_overlapped())
-                          });
+        let ret = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+            self.socket.read_overlapped(self.buf, self.io_data.get_overlapped())
+        });
 
         // the operation is success, we no need to wait any more
         if ret == true {
@@ -80,7 +77,7 @@ impl<'a> EventSource for TcpStreamRead<'a> {
 
         // register the io operaton
         co_try!(s,
-                self.io_data.co.take(Ordering::Relaxed).unwrap(),
+                self.io_data.co.take().unwrap(),
                 s.add_io(&mut self.io_data, self.timeout));
     }
 }
@@ -116,13 +113,11 @@ impl<'a> EventSource for TcpStreamWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         // prepare the co first
-        self.io_data.co.swap(co, Ordering::Relaxed);
+        self.io_data.co = Some(co);
         // call the overlapped write API
-        let ret = co_try!(s,
-                          self.io_data.co.take(Ordering::Relaxed).unwrap(),
-                          unsafe {
-                              self.socket.write_overlapped(self.buf, self.io_data.get_overlapped())
-                          });
+        let ret = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+            self.socket.write_overlapped(self.buf, self.io_data.get_overlapped())
+        });
 
         // the operation is success, we no need to wait any more
         if ret == true {
@@ -131,7 +126,7 @@ impl<'a> EventSource for TcpStreamWrite<'a> {
 
         // register the io operaton
         co_try!(s,
-                self.io_data.co.take(Ordering::Relaxed).unwrap(),
+                self.io_data.co.take().unwrap(),
                 s.add_io(&mut self.io_data, self.timeout));
     }
 }

@@ -1,8 +1,9 @@
 use std::io;
-use std::cmp;
+// use std::cmp;
 use std::thread;
 use std::cell::Cell;
 use std::time::Duration;
+use std::intrinsics::likely;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Once, ONCE_INIT};
 use smallvec::SmallVec;
@@ -46,6 +47,12 @@ type TimerList = timeout_list::TimeOutList<TimerData>;
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
     static mut sched: *const Scheduler = 0 as *const _;
+    unsafe {
+        if likely(!sched.is_null()) {
+            return &*sched;
+        }
+    }
+
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
         let workers = unsafe { WORKERS };
@@ -95,8 +102,7 @@ pub struct Scheduler {
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
     timer_list: TimerList,
-    wait_list: WaitList<thread::Thread>,
-    workers: usize,
+    wait_list: WaitList<thread::Thread>, // workers: usize,
 }
 
 type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
@@ -111,8 +117,7 @@ impl Scheduler {
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
-            wait_list: WaitList::with_capacity(256),
-            workers: workers,
+            wait_list: WaitList::with_capacity(256), // workers: workers,
         })
     }
 
@@ -157,39 +162,41 @@ impl Scheduler {
         let mut cached = CacheBuf::new();
         loop {
             let mut total = 0;
+            let mut size;
 
             // steal from normal thread visit list
-            let mut size = self.visit_list.size();
+            // let mut size = self.visit_list.size();
+            // if size > 0 {
+            // size = cmp::max(size / self.workers, 1);
+            size = self.visit_list.bulk_pop_expect(id, 0, &mut vec);
             if size > 0 {
-                size = cmp::max(size / self.workers, 1);
-                size = self.visit_list.bulk_pop_expect(id, size, &mut vec);
-                if size > 0 {
-                    total += size;
-                    self.run_coroutines(&mut vec, &mut cached, size);
-                }
+                total += size;
+                self.run_coroutines(&mut vec, &mut cached, size);
             }
+            // }
 
             // steal from io event list
-            let mut size = self.event_list.size();
+            // let mut size = self.event_list.size();
+            // if size > 0 {
+            // size = cmp::max(size / self.workers, 1);
+            // size = self.event_list.bulk_pop_expect(id, size, &mut vec);
+            size = self.event_list.bulk_pop_expect(id, 0, &mut vec);
             if size > 0 {
-                size = cmp::max(size / self.workers, 1);
-                size = self.event_list.bulk_pop_expect(id, size, &mut vec);
-                if size > 0 {
-                    total += size;
-                    self.run_coroutines(&mut vec, &mut cached, size);
-                }
+                total += size;
+                self.run_coroutines(&mut vec, &mut cached, size);
             }
+            // }
 
             // steal from the ready list
-            let mut size = self.ready_list.size();
+            // let mut size = self.ready_list.size();
+            // if size > 0 {
+            // size = cmp::max(size / self.workers, 1);
+            size = self.ready_list.bulk_pop_expect(id, 0, &mut vec);
             if size > 0 {
-                size = cmp::max(size / self.workers, 1);
-                size = self.ready_list.bulk_pop_expect(id, size, &mut vec);
-                if size > 0 {
-                    total += size;
-                    self.run_coroutines(&mut vec, &mut cached, size);
-                }
+                total += size;
+                self.run_coroutines(&mut vec, &mut cached, size);
             }
+            // }
 
             if total == 0 {
                 let mut handle = thread::current();

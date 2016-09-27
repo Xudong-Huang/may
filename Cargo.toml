@@ -4,10 +4,10 @@ version = "0.1.0"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 
 [dependencies]
-bitflags = "0.3"
-smallvec = "0.2.0"
+log = "0.3.6"
 time = "0.1.35"
-log    = "0.3.6"
+smallvec = "0.2.0"
+#bitflags = "0.3"
 #net2 = { version = "0.2.26", default-features = false }
 
 [dependencies.generator]

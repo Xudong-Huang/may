@@ -42,11 +42,13 @@ impl<T: Boxed> BoxedOption<T> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn swap(&self, t: T, order: Ordering) -> Option<Box<T::Data>> {
         self.swap_inner(t.into_raw(), order)
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn take(&self, order: Ordering) -> Option<Box<T::Data>> {
         self.swap_inner(ptr::null_mut(), order)
     }

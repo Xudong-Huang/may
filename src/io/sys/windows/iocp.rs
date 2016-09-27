@@ -2,13 +2,11 @@ extern crate kernel32;
 
 use std::{cmp, io, ptr, u32};
 use std::cell::UnsafeCell;
-use std::sync::atomic::Ordering;
 use std::os::windows::io::AsRawSocket;
 use smallvec::SmallVec;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
-use sync::BoxedOption;
 use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::set_co_para;
@@ -31,7 +29,7 @@ pub struct EventData {
     overlapped: UnsafeCell<Overlapped>,
     handle: HANDLE,
     pub timer: Option<TimerHandle>,
-    pub co: BoxedOption<CoroutineImpl>,
+    pub co: Option<CoroutineImpl>,
 }
 
 impl EventData {
@@ -40,7 +38,7 @@ impl EventData {
             overlapped: UnsafeCell::new(Overlapped::zero()),
             handle: handle,
             timer: None,
-            co: BoxedOption::none(),
+            co: None,
         }
     }
 
@@ -97,7 +95,7 @@ impl Selector {
             let overlapped = unsafe { &*(*overlapped).raw() };
             info!("select got overlapped, stuats = {}", overlapped.Internal);
 
-            let co = data.co.take_fast(Ordering::Relaxed);
+            let co = data.co.take();
             if co.is_none() {
                 // there is no coroutine prepared, just ignore this one
                 error!("can't get coroutine in the iocp select");
