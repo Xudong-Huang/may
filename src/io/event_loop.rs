@@ -46,8 +46,15 @@ impl EventLoop {
 
     // register the io request to both selector and the timeout list
     pub fn add_io(&self, io: &mut EventData, timeout: Option<Duration>) -> io::Result<()> {
-        println!("timeout = {:?}", timeout);
-        let timer_handle = timeout.map(|dur| self.timer_list.add_timer(dur, io.timer_data()));
+        let timer_handle = timeout.map(|dur| {
+            info!("io timeout = {:?}", dur);
+            let (h, b_new) = self.timer_list.add_timer(dur, io.timer_data());
+            if b_new {
+                // wakeup the event loop threead to recal the next wait
+                self.selector.wakeup();
+            }
+            h
+        });
         let ret = self.selector.add_io(io);
         if ret.is_ok() {
             io.timer = timer_handle;

@@ -89,14 +89,18 @@ impl Selector {
         for status in events[..n].iter() {
             // need to check the status for each io
             let overlapped = status.overlapped();
+            if overlapped.is_null() {
+                // this is just a wakeup event, ignore it
+                continue;
+            }
             let data = unsafe { &mut *(overlapped as *mut EventData) };
             let overlapped = unsafe { &*(*overlapped).raw() };
-            println!("select -> got overlapped, stuats = {}", overlapped.Internal);
+            info!("select got overlapped, stuats = {}", overlapped.Internal);
 
             let co = data.co.take_fast(Ordering::Relaxed);
             if co.is_none() {
                 // there is no coroutine prepared, just ignore this one
-                println!("can't get coroutine in the iocp select");
+                error!("can't get coroutine in the iocp select");
                 continue;
             }
             let mut co = co.unwrap();
@@ -106,7 +110,7 @@ impl Selector {
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED |
                 STATUS_CANCELLED_U32 => {
-                    println!("coroutine timeout");
+                    info!("coroutine timeout");
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     // timer data is poped already
                 }
@@ -130,7 +134,6 @@ impl Selector {
                     // it's not always true that you can really remove the timer entry
                     h.get_data().data.event_data = ptr::null_mut();
                 }
-                println!("remove timeout");
                 h.remove()
             });
 
@@ -138,8 +141,13 @@ impl Selector {
             s.schedule_io(co);
         }
 
-        info!("returning");
         Ok(())
+    }
+
+    // this will post an os event so that we can wakeup the event loop
+    #[inline]
+    pub fn wakeup(&self) {
+        self.port.post(CompletionStatus::new(0, 0, ptr::null_mut())).unwrap();
     }
 
     // register file hanle to the iocp
@@ -171,7 +179,6 @@ unsafe fn cancel_io(handle: HANDLE, overlapped: &Overlapped) -> io::Result<()> {
 // this will trigger an event on the IOCP and processed in the selector
 pub fn timeout_handler(data: TimerData) {
     if data.event_data.is_null() {
-        println!("timeout data removed");
         return;
     }
 
@@ -180,7 +187,7 @@ pub fn timeout_handler(data: TimerData) {
         // remove the event timer
         event_data.timer.take();
         cancel_io(event_data.handle, event_data.get_overlapped())
-            .map_err(|e| println!("CancelIoEx failed! e = {}", e))
+            .map_err(|e| error!("CancelIoEx failed! e = {}", e))
             .ok(); // ignore the error, the select may grab the data first!
     }
 }

@@ -124,7 +124,8 @@ impl<T> TimeOutList<T> {
 
     // add a timeout event to the list
     // this can be called in any thread
-    pub fn add_timer(&self, dur: Duration, data: T) -> TimeoutHandle<T> {
+    // return true if we need to recal next expire
+    pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
         let interval = dur_to_ns(dur);
         let time = now() + interval; // TODO: deal with overflow?
         //println!("add timer = {:?}", time);
@@ -139,7 +140,7 @@ impl<T> TimeOutList<T> {
             let interval_map_r = self.interval_map.read().unwrap();
             // first get the read locker to get the list
             if let Some(interval_list) = (*interval_map_r).get(&interval) {
-                return interval_list.push(timeout).0;
+                return (interval_list.push(timeout).0, false);
             }
             // drop the read lock here
         }
@@ -148,7 +149,7 @@ impl<T> TimeOutList<T> {
         let mut interval_map_w = self.interval_map.write().unwrap();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
-            return interval_list.push(timeout).0;
+            return (interval_list.push(timeout).0, false);
         }
 
         let interval_list = Arc::new(mpsc::<TimeoutData<T>>::new());
@@ -170,7 +171,7 @@ impl<T> TimeOutList<T> {
 
         // wake up the timer thread
         self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
-        ret
+        (ret, true)
     }
 
     // schedule in the timer thread
