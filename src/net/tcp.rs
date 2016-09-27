@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
 use yield_now::yield_with;
+use coroutine::is_coroutine;
 
 // ===== TcpStream =====
 //
@@ -87,6 +88,10 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if !is_coroutine() {
+            return self.sys.read(buf);
+        }
+
         let reader = sys::TcpStreamRead::new(self, buf);
         yield_with(&reader);
         reader.done()
@@ -95,6 +100,11 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if !is_coroutine() {
+            // in the thread context, just use the block version
+            return self.sys.write(buf);
+        }
+
         let writer = sys::TcpStreamWrite::new(self, buf);
         yield_with(&writer);
         writer.done()
