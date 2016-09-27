@@ -1,11 +1,12 @@
+use std;
 use std::io;
-use std::net::TcpStream;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
 use std::os::windows::io::AsRawSocket;
 use super::EventData;
 use super::winapi::*;
 use super::miow::net::TcpStreamExt;
+use net::TcpStream;
 use yield_now::get_co_para;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
@@ -37,7 +38,7 @@ fn co_io_result(io: &EventData) -> io::Result<usize> {
 pub struct TcpStreamRead<'a> {
     io_data: EventData,
     buf: &'a mut [u8],
-    socket: &'a TcpStream,
+    socket: &'a std::net::TcpStream,
     timeout: Option<Duration>,
 }
 
@@ -46,8 +47,8 @@ impl<'a> TcpStreamRead<'a> {
         TcpStreamRead {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),
             buf: buf,
-            socket: socket,
-            timeout: None,
+            socket: socket.inner(),
+            timeout: socket.read_timeout().unwrap(),
         }
     }
 
@@ -91,7 +92,7 @@ impl<'a> EventSource for TcpStreamRead<'a> {
 pub struct TcpStreamWrite<'a> {
     io_data: EventData,
     buf: &'a [u8],
-    socket: &'a TcpStream,
+    socket: &'a std::net::TcpStream,
     timeout: Option<Duration>,
 }
 
@@ -100,8 +101,8 @@ impl<'a> TcpStreamWrite<'a> {
         TcpStreamWrite {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),
             buf: buf,
-            socket: socket,
-            timeout: None,
+            socket: socket.inner(),
+            timeout: socket.write_timeout().unwrap(),
         }
     }
 

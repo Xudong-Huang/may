@@ -1,6 +1,6 @@
 extern crate kernel32;
 
-use std::{cmp, io, u32};
+use std::{cmp, io, ptr, u32};
 use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use std::os::windows::io::AsRawSocket;
@@ -18,8 +18,7 @@ type TimerHandle = TimeoutHandle<TimerData>;
 
 // the timeout data
 pub struct TimerData {
-    handle: HANDLE,
-    overlapped: *mut Overlapped,
+    event_data: *mut EventData,
 }
 
 // event associated io data, must be construct in the coroutine
@@ -51,10 +50,7 @@ impl EventData {
     }
 
     pub fn timer_data(&self) -> TimerData {
-        TimerData {
-            handle: self.handle,
-            overlapped: self.overlapped.get(),
-        }
+        TimerData { event_data: self as *const _ as *mut _ }
     }
 
     pub fn get_io_size(&self) -> usize {
@@ -95,31 +91,48 @@ impl Selector {
             let overlapped = status.overlapped();
             let data = unsafe { &mut *(overlapped as *mut EventData) };
             let overlapped = unsafe { &*(*overlapped).raw() };
-            info!("select -> got overlapped, stuats = {}", overlapped.Internal);
+            println!("select -> got overlapped, stuats = {}", overlapped.Internal);
 
-            let co = data.co.take(Ordering::Relaxed);
+            let co = data.co.take_fast(Ordering::Relaxed);
             if co.is_none() {
                 // there is no coroutine prepared, just ignore this one
-                error!("can't get coroutine in the iocp select");
+                println!("can't get coroutine in the iocp select");
                 continue;
             }
             let mut co = co.unwrap();
 
+            const STATUS_CANCELLED_U32: u32 = STATUS_CANCELLED as u32;
             // check the status
             match overlapped.Internal as u32 {
-                ERROR_OPERATION_ABORTED => {
+                ERROR_OPERATION_ABORTED |
+                STATUS_CANCELLED_U32 => {
+                    println!("coroutine timeout");
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-                    // it's safe to remove the timer since we are
-                    // runing the timer_list in the same thread
-                    data.timer.take().map(|h| h.remove());
+                    // timer data is poped already
                 }
                 NO_ERROR => {
                     // do nothing here
+                    // need a way to detect timeout, it's not safe to del timer here
+                    // according to windows API it's can't cancel the completed io operation
+                    // the timeout function would remove the timer handle
                 }
                 err => {
+                    error!("iocp err={:?}", err);
                     set_co_para(&mut co, io::Error::from_raw_os_error(err as i32));
                 }
             }
+
+            // it's safe to remove the timer since we are
+            // runing the timer_list in the same thread
+            data.timer.take().map(|h| {
+                unsafe {
+                    // tell the timer function not to cancel the io
+                    // it's not always true that you can really remove the timer entry
+                    h.get_data().data.event_data = ptr::null_mut();
+                }
+                println!("remove timeout");
+                h.remove()
+            });
 
             // schedule the coroutine
             s.schedule_io(co);
@@ -157,9 +170,17 @@ unsafe fn cancel_io(handle: HANDLE, overlapped: &Overlapped) -> io::Result<()> {
 // when timeout happend we need to cancel the io operation
 // this will trigger an event on the IOCP and processed in the selector
 pub fn timeout_handler(data: TimerData) {
+    if data.event_data.is_null() {
+        println!("timeout data removed");
+        return;
+    }
+
     unsafe {
-        cancel_io(data.handle, &*data.overlapped)
-            .map_err(|e| panic!("CancelIoEx failed! e = {}", e))
-            .expect("Can't cancel io operation");
+        let event_data = &mut *data.event_data;
+        // remove the event timer
+        event_data.timer.take();
+        cancel_io(event_data.handle, event_data.get_overlapped())
+            .map_err(|e| println!("CancelIoEx failed! e = {}", e))
+            .ok(); // ignore the error, the select may grab the data first!
     }
 }

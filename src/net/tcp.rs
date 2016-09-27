@@ -1,4 +1,5 @@
 use io::net as sys;
+use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
 use yield_now::yield_with;
@@ -10,12 +11,25 @@ use yield_now::yield_with;
 #[derive(Debug)]
 pub struct TcpStream {
     sys: net::TcpStream,
+    read_timeout: Option<Duration>,
+    write_timeout: Option<Duration>,
 }
 
 impl TcpStream {
     fn new(s: net::TcpStream) -> io::Result<TcpStream> {
-        sys::add_socket(&s).map(|_| TcpStream { sys: s })
+        sys::add_socket(&s).map(|_| {
+            TcpStream {
+                sys: s,
+                read_timeout: None,
+                write_timeout: None,
+            }
+        })
     }
+
+    pub fn inner(&self) -> &net::TcpStream {
+        &self.sys
+    }
+
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         let s = try!(net::TcpStream::connect(addr));
         TcpStream::new(s)
@@ -30,7 +44,13 @@ impl TcpStream {
     }
 
     pub fn try_clone(&self) -> io::Result<TcpStream> {
-        self.sys.try_clone().map(|s| TcpStream { sys: s })
+        self.sys.try_clone().map(|s| {
+            TcpStream {
+                sys: s,
+                read_timeout: None,
+                write_timeout: None,
+            }
+        })
     }
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.sys.shutdown(how)
@@ -43,11 +63,31 @@ impl TcpStream {
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.sys.take_error()
     }
+
+    pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let me = unsafe { &mut *(self as *const _ as *mut Self) };
+        me.read_timeout = dur;
+        Ok(())
+    }
+
+    pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        let me = unsafe { &mut *(self as *const _ as *mut Self) };
+        me.write_timeout = dur;
+        Ok(())
+    }
+
+    pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
+        Ok(self.read_timeout)
+    }
+
+    pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
+        Ok(self.write_timeout)
+    }
 }
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let reader = sys::TcpStreamRead::new(&self.sys, buf);
+        let reader = sys::TcpStreamRead::new(self, buf);
         yield_with(&reader);
         reader.done()
     }
@@ -55,7 +95,7 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let writer = sys::TcpStreamWrite::new(&self.sys, buf);
+        let writer = sys::TcpStreamWrite::new(self, buf);
         yield_with(&writer);
         writer.done()
     }
@@ -165,5 +205,35 @@ impl AsRawFd for TcpListener {
 impl FromRawFd for TcpListener {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpListener {
         TcpListener { sys: FromRawFd::from_raw_fd(fd) }
+    }
+}
+
+// ===== Windows ext =====
+//
+//
+
+#[cfg(windows)]
+use std::os::windows::io::{IntoRawSocket, AsRawSocket, FromRawSocket, RawSocket};
+
+#[cfg(windows)]
+impl IntoRawSocket for TcpStream {
+    fn into_raw_socket(self) -> RawSocket {
+        self.sys.into_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsRawSocket for TcpStream {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.sys.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl FromRawSocket for TcpStream {
+    unsafe fn from_raw_socket(s: RawSocket) -> TcpStream {
+        // TODO: set the time out info here
+        // need to set the read/write timeout from sys and sync each other
+        TcpStream::new(FromRawSocket::from_raw_socket(s)).unwrap()
     }
 }

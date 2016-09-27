@@ -39,7 +39,7 @@ pub fn now() -> u64 {
 // timeout event data
 pub struct TimeoutData<T> {
     time: u64, // the wall clock in ns that the timer expires
-    data: T, // the data associate with the timeout event
+    pub data: T, // the data associate with the timeout event
 }
 
 // timeout handler which can be removed/cancelled
