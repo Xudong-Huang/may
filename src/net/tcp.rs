@@ -18,6 +18,11 @@ pub struct TcpStream {
 
 impl TcpStream {
     fn new(s: net::TcpStream) -> io::Result<TcpStream> {
+        // only set non blocking in coroutine context
+        // we would first call nonblocking io in the coroutine
+        // to avoid unnecessary context switch
+        try!(s.set_nonblocking(true));
+
         sys::add_socket(&s).map(|_| {
             TcpStream {
                 sys: s,
@@ -48,8 +53,8 @@ impl TcpStream {
         self.sys.try_clone().map(|s| {
             TcpStream {
                 sys: s,
-                read_timeout: None,
-                write_timeout: None,
+                read_timeout: self.read_timeout,
+                write_timeout: self.read_timeout,
             }
         })
     }
@@ -89,7 +94,23 @@ impl TcpStream {
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if !is_coroutine() {
-            return self.sys.read(buf);
+            // this can't be nonblocking!!
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.read(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
+
+        // this is an earlier return try for nonblocking read
+        match self.sys.read(buf) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            Ok(size) => {
+                return Ok(size);
+            }
         }
 
         let reader = sys::TcpStreamRead::new(self, buf);
@@ -102,7 +123,22 @@ impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if !is_coroutine() {
             // in the thread context, just use the block version
-            return self.sys.write(buf);
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.write(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
+
+        // this is an earlier return try for nonblocking write
+        match self.sys.write(buf) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            Ok(size) => {
+                return Ok(size);
+            }
         }
 
         let writer = sys::TcpStreamWrite::new(self, buf);
