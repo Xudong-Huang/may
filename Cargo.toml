@@ -7,8 +7,8 @@ authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 log = "0.3.6"
 time = "0.1.35"
 smallvec = "0.2.0"
+net2 = { version = "0.2.26", default-features = false }
 #bitflags = "0.3"
-#net2 = { version = "0.2.26", default-features = false }
 
 [dependencies.generator]
 path ="../generator-rs"

@@ -4,6 +4,7 @@ use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
 use yield_now::yield_with;
 use coroutine::is_coroutine;
+use super::net2::TcpBuilder;
 
 // ===== TcpStream =====
 //
@@ -37,8 +38,28 @@ impl TcpStream {
     }
 
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        let s = try!(net::TcpStream::connect(addr));
-        TcpStream::new(s)
+        if !is_coroutine() {
+            let s = try!(net::TcpStream::connect(addr));
+            return TcpStream::new(s);
+        }
+
+        let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
+        let builder_addr = try!(addr.to_socket_addrs()).fold(Err(err), |prev, addr| {
+            prev.or_else(|_| {
+                let builder = match addr {
+                    SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
+                    SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
+                };
+                Ok((builder, addr))
+            })
+        });
+
+        let (builder, addr) = try!(builder_addr);
+        let stream = try!(builder.to_tcp_stream());
+
+        let c = sys::TcpStreamConnect::new(stream, addr);
+        yield_with(&c);
+        TcpStream::new(try!(c.done()))
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {

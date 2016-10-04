@@ -1,13 +1,13 @@
 extern crate coroutine;
 use coroutine::net::{TcpListener, TcpStream};
-use std::time::Duration;
+// use std::time::Duration;
 // use std::io::ErrorKind;
 use std::io::{Read, Write};
 
 
 fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream
-    stream.set_read_timeout(Some(Duration::from_secs(10))).expect("can't set read timeout");
+    // stream.set_read_timeout(Some(Duration::from_secs(10))).expect("can't set read timeout");
     // let mut i = 0;
     let mut read = vec![0; 1024 * 16]; // alloc in heap!
     loop {
