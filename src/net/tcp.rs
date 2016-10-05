@@ -108,6 +108,7 @@ impl Read for TcpStream {
         }
 
         // this is an earlier return try for nonblocking read
+        // it's useful for server but not necessary for client
         match self.sys.read(buf) {
             Err(err) => {
                 if err.kind() != io::ErrorKind::WouldBlock {

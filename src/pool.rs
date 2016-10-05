@@ -2,7 +2,7 @@ use coroutine::{DEFAULT_STACK_SIZE, CoroutineImpl};
 use generator::Gn;
 use queue::mpmc_bounded::Queue;
 
-const DEFAULT_POOL_CAPACITY: usize = 100000;
+const DEFAULT_POOL_CAPACITY: usize = 100;
 
 /// the raw coroutine pool, with stack and register prepared
 /// you need to tack care of the local storage

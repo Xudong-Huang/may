@@ -32,7 +32,7 @@ impl TcpStreamConnect {
 
         let (builder, addr) = try!(builder_addr);
         // windows need to bind first when call ConnectEx API
-        let any: SocketAddr = match addr {
+        let any = match addr {
             SocketAddr::V4(..) => {
                 let any = Ipv4Addr::new(0, 0, 0, 0);
                 let addr = SocketAddrV4::new(any, 0);

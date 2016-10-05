@@ -21,6 +21,7 @@ path ="../queue"
 
 [target.'cfg(windows)'.dependencies]
 miow = "0.1.3"
+#miow = {path = "../../rust/miow"}
 winapi = "0.2.8"
 kernel32-sys = "0.2"
 
