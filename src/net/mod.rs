@@ -1,6 +1,5 @@
 //! Networking primitives
 //!
-extern crate net2;
 
 mod tcp;
 // pub mod udp;

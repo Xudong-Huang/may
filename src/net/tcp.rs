@@ -1,10 +1,9 @@
-use io::net as sys;
+use io::net as net_impl;
 use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
 use yield_now::yield_with;
 use coroutine::is_coroutine;
-use super::net2::TcpBuilder;
 
 // ===== TcpStream =====
 //
@@ -18,13 +17,13 @@ pub struct TcpStream {
 }
 
 impl TcpStream {
-    fn new(s: net::TcpStream) -> io::Result<TcpStream> {
+    pub fn new(s: net::TcpStream) -> io::Result<TcpStream> {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        sys::add_socket(&s).map(|_| {
+        net_impl::add_socket(&s).map(|_| {
             TcpStream {
                 sys: s,
                 read_timeout: None,
@@ -43,23 +42,9 @@ impl TcpStream {
             return TcpStream::new(s);
         }
 
-        let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
-        let builder_addr = try!(addr.to_socket_addrs()).fold(Err(err), |prev, addr| {
-            prev.or_else(|_| {
-                let builder = match addr {
-                    SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
-                    SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
-                };
-                Ok((builder, addr))
-            })
-        });
-
-        let (builder, addr) = try!(builder_addr);
-        let stream = try!(builder.to_tcp_stream());
-
-        let c = sys::TcpStreamConnect::new(stream, addr);
+        let c = try!(net_impl::TcpStreamConnect::new(addr));
         yield_with(&c);
-        TcpStream::new(try!(c.done()))
+        c.done()
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
@@ -134,7 +119,7 @@ impl Read for TcpStream {
             }
         }
 
-        let reader = sys::TcpStreamRead::new(self, buf);
+        let reader = net_impl::TcpStreamRead::new(self, buf);
         yield_with(&reader);
         reader.done()
     }
@@ -162,7 +147,7 @@ impl Write for TcpStream {
             }
         }
 
-        let writer = sys::TcpStreamWrite::new(self, buf);
+        let writer = net_impl::TcpStreamWrite::new(self, buf);
         yield_with(&writer);
         writer.done()
     }

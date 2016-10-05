@@ -28,7 +28,7 @@ impl<'a> TcpStreamWrite<'a> {
     }
 
     #[inline]
-    pub fn done(&self) -> io::Result<usize> {
+    pub fn done(self) -> io::Result<usize> {
         co_io_result(&self.io_data)
     }
 }
