@@ -44,18 +44,23 @@ fn handle_client(mut stream: TcpStream) {
 
 fn main() {
     coroutine::scheduler_set_workers(1);
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                coroutine::spawn(move || {
-                    handle_client(stream);
-                });
+    coroutine::spawn(|| {
+            let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        coroutine::spawn(move || {
+                            handle_client(stream);
+                        });
+                    }
+                    Err(_) => {
+                        println!("Error");
+                    }
+                }
             }
-            Err(_) => {
-                println!("Error");
-            }
-        }
-    }
+        })
+        .join()
+        .unwrap();
 }

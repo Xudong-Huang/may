@@ -20,9 +20,9 @@ fn main() {
 
     let target_addr = "127.0.0.1:8080";
     let test_msg_len = 80;
-    let test_conn_num = 800;
+    let test_conn_num = 8;
     let test_seconds = 20;
-    let io_timeout = 2;
+    let io_timeout = 5;
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);
