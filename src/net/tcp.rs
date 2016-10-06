@@ -169,13 +169,24 @@ pub struct TcpListener {
 }
 
 impl TcpListener {
+    pub fn inner(&self) -> &net::TcpListener {
+        &self.sys
+    }
+
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<TcpListener> {
-        net::TcpListener::bind(addr).map(|s| TcpListener { sys: s })
+        let s = try!(net::TcpListener::bind(addr));
+        net_impl::add_socket(&s).map(|_| TcpListener { sys: s })
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        let (s, a) = try!(self.sys.accept());
-        TcpStream::new(s).map(|s| (s, a))
+        if !is_coroutine() {
+            let (s, a) = try!(self.sys.accept());
+            return TcpStream::new(s).map(|s| (s, a));
+        }
+
+        let a = try!(net_impl::TcpListenerAccept::new(self));
+        yield_with(&a);
+        a.done()
     }
 
     pub fn incoming(&self) -> Incoming {
@@ -288,5 +299,29 @@ impl FromRawSocket for TcpStream {
         // TODO: set the time out info here
         // need to set the read/write timeout from sys and sync each other
         TcpStream::new(FromRawSocket::from_raw_socket(s)).unwrap()
+    }
+}
+
+#[cfg(windows)]
+impl IntoRawSocket for TcpListener {
+    fn into_raw_socket(self) -> RawSocket {
+        self.sys.into_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsRawSocket for TcpListener {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.sys.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl FromRawSocket for TcpListener {
+    unsafe fn from_raw_socket(s: RawSocket) -> TcpListener {
+        let s: net::TcpListener = FromRawSocket::from_raw_socket(s);
+        net_impl::add_socket(&s)
+            .unwrap_or_else(|e| panic!("can't add scoket for listener, err = {:?}", e));
+        TcpListener { sys: s }
     }
 }
