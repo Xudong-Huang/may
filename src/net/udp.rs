@@ -36,6 +36,14 @@ impl UdpSocket {
         self.sys.recv_from(buf)
     }
 
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        self.sys.send(buf)
+    }
+
+    pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.sys.recv(buf)
+    }
+
     pub fn broadcast(&self) -> io::Result<bool> {
         self.sys.broadcast()
     }
