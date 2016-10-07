@@ -23,7 +23,7 @@ fn main() {
         let mut buf = vec![0u8; 1024 * 16];
         loop {
             let (len, addr) = t!(sock.recv_from(&mut buf));
-            println!("recv_from: len={:?} addr={:?}", len, addr);
+            // println!("recv_from: len={:?} addr={:?}", len, addr);
             let mut rest = len;
             while rest > 0 {
                 let i = t!(sock.send_to(&buf[(len - rest)..len], &addr));

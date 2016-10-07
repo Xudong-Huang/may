@@ -1,8 +1,7 @@
 extern crate coroutine;
 use std::time::Duration;
-use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use coroutine::net::TcpStream;
+use coroutine::net::UdpSocket;
 
 macro_rules! t {
     ($e: expr) => (match $e {
@@ -17,11 +16,12 @@ macro_rules! t {
 fn main() {
     coroutine::scheduler_set_workers(1);
 
-    let target_addr = "127.0.0.1:8080";
+    let target_addr = "127.0.0.1:30000";
     let test_msg_len = 80;
     let test_conn_num = 8;
-    let test_seconds = 20;
+    let test_seconds = 2;
     let io_timeout = 5;
+    let base_port = AtomicUsize::new(50000);
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);
@@ -37,16 +37,17 @@ fn main() {
 
         for _ in 0..test_conn_num {
             scope.spawn(|| {
-                let mut conn = t!(TcpStream::connect(target_addr));
-                t!(conn.set_write_timeout(Some(Duration::from_secs(io_timeout))));
-                t!(conn.set_read_timeout(Some(Duration::from_secs(io_timeout))));
+                let local_port = base_port.fetch_add(1, Ordering::Relaxed);
+                let s = t!(UdpSocket::bind(("127.0.0.1", local_port as u16)));
+                t!(s.set_write_timeout(Some(Duration::from_secs(io_timeout))));
+                t!(s.set_read_timeout(Some(Duration::from_secs(io_timeout))));
 
                 let l = msg.len();
                 let mut recv = vec![0; l];
                 loop {
                     let mut rest = l;
                     while rest > 0 {
-                        let i = t!(conn.write(&msg[(l - rest)..l]));
+                        let i = t!(s.send_to(&msg[(l - rest)..l], target_addr));
                         rest -= i;
                     }
 
@@ -58,7 +59,7 @@ fn main() {
 
                     let mut rest = l;
                     while rest > 0 {
-                        let i = t!(conn.read(&mut recv[(l - rest)..l]));
+                        let (i, _) = t!(s.recv_from(&mut recv[(l - rest)..l]));
                         rest -= i;
                     }
 
