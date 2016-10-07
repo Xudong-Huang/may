@@ -2,6 +2,7 @@
 //!
 
 mod tcp;
-// pub mod udp;
+mod udp;
 
 pub use self::tcp::{TcpStream, TcpListener};
+pub use self::udp::UdpSocket;
