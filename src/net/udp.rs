@@ -56,7 +56,29 @@ impl UdpSocket {
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {
-        self.sys.send_to(buf, addr)
+        if !is_coroutine() {
+            // this can't be nonblocking!!
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.send_to(buf, addr));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
+
+        // this is an earlier return try for nonblocking read
+        match self.sys.send_to(buf, &addr) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            ret @ Ok(..) => {
+                return ret;
+            }
+        }
+
+        let writer = try!(net_impl::UdpSendTo::new(self, buf, addr));
+        yield_with(&writer);
+        writer.done()
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
