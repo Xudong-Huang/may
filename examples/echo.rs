@@ -1,13 +1,22 @@
 extern crate coroutine;
 use coroutine::net::{TcpListener, TcpStream};
 // use std::time::Duration;
-// use std::io::ErrorKind;
 use std::io::{Read, Write};
 
+macro_rules! t {
+    ($e: expr) => (match $e {
+        Ok(val) => val,
+        Err(err) => {
+            println!("err = {:?}", err);
+            return;
+        }
+    })
+}
 
 fn handle_client(mut stream: TcpStream) {
     // read 20 bytes at a time from stream echoing back to stream
-    // stream.set_read_timeout(Some(Duration::from_secs(10))).expect("can't set read timeout");
+    // t!(stream.set_read_timeout(Some(Duration::from_secs(10))));
+    // t!(stream.set_write_timeout(Some(Duration::from_secs(10))));
     // let mut i = 0;
     let mut read = vec![0; 1024 * 16]; // alloc in heap!
     loop {
@@ -17,23 +26,17 @@ fn handle_client(mut stream: TcpStream) {
                     // connection was closed
                     break;
                 }
-                stream.write(&read[0..n]).unwrap();
+
+                let mut rest = n;
+                while rest > 0 {
+                    let i = t!(stream.write(&read[(n - rest)..n]));
+                    rest -= i;
+                }
             }
+
             Err(err) => {
                 println!("err = {:?}", err);
                 return;
-                // if err.kind() == ErrorKind::TimedOut {
-                //     println!("read timeout");
-                // } else {
-                //     println!("err = {:?}", err);
-                // }
-                //
-                // i += 1;
-                // println!("retry = {:?}", i);
-                // if i > 5 {
-                //     println!("bye!!");
-                //     return;
-                // }
             }
         }
     }
