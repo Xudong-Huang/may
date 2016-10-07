@@ -17,7 +17,7 @@ impl UdpSocket {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        // try!(s.set_nonblocking(true));
+        try!(s.set_nonblocking(true));
 
         net_impl::add_socket(&s).map(|_| {
             UdpSocket {
@@ -60,30 +60,29 @@ impl UdpSocket {
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.sys.recv_from(buf)
-        // if !is_coroutine() {
-        //     // this can't be nonblocking!!
-        //     try!(self.sys.set_nonblocking(false));
-        //     let ret = try!(self.sys.recv_from(buf));
-        //     try!(self.sys.set_nonblocking(true));;
-        //     return Ok(ret);
-        // }
+        if !is_coroutine() {
+            // this can't be nonblocking!!
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.recv_from(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
 
         // this is an earlier return try for nonblocking read
-        // match self.sys.recv_from(buf) {
-        //     Err(err) => {
-        //         if err.kind() != io::ErrorKind::WouldBlock {
-        //             return Err(err);
-        //         }
-        //     }
-        //     ret @ Ok(..) => {
-        //         return ret;
-        //     }
-        // }
+        match self.sys.recv_from(buf) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            ret @ Ok(..) => {
+                return ret;
+            }
+        }
 
-        // let reader = net_impl::UdpRecvFrom::new(self, buf);
-        // yield_with(&reader);
-        // reader.done()
+        let reader = net_impl::UdpRecvFrom::new(self, buf);
+        yield_with(&reader);
+        reader.done()
     }
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
@@ -200,5 +199,36 @@ impl AsRawFd for UdpSocket {
 impl FromRawFd for UdpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
         UdpSocket { sys: FromRawFd::from_raw_fd(fd) }
+    }
+}
+
+// ===== Windows ext =====
+//
+//
+
+#[cfg(windows)]
+use std::os::windows::io::{IntoRawSocket, AsRawSocket, FromRawSocket, RawSocket};
+
+#[cfg(windows)]
+impl IntoRawSocket for UdpSocket {
+    fn into_raw_socket(self) -> RawSocket {
+        self.sys.into_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl AsRawSocket for UdpSocket {
+    fn as_raw_socket(&self) -> RawSocket {
+        self.sys.as_raw_socket()
+    }
+}
+
+#[cfg(windows)]
+impl FromRawSocket for UdpSocket {
+    unsafe fn from_raw_socket(s: RawSocket) -> UdpSocket {
+        // TODO: set the time out info here
+        // need to set the read/write timeout from sys and sync each other
+        UdpSocket::new(FromRawSocket::from_raw_socket(s))
+            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {:?}", e))
     }
 }

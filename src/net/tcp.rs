@@ -298,7 +298,8 @@ impl FromRawSocket for TcpStream {
     unsafe fn from_raw_socket(s: RawSocket) -> TcpStream {
         // TODO: set the time out info here
         // need to set the read/write timeout from sys and sync each other
-        TcpStream::new(FromRawSocket::from_raw_socket(s)).unwrap()
+        TcpStream::new(FromRawSocket::from_raw_socket(s))
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpStream, err = {:?}", e))
     }
 }
 
@@ -321,7 +322,7 @@ impl FromRawSocket for TcpListener {
     unsafe fn from_raw_socket(s: RawSocket) -> TcpListener {
         let s: net::TcpListener = FromRawSocket::from_raw_socket(s);
         net_impl::add_socket(&s)
-            .unwrap_or_else(|e| panic!("can't add scoket for listener, err = {:?}", e));
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e));
         TcpListener { sys: s }
     }
 }
