@@ -129,7 +129,7 @@ impl UdpSocket {
             }
         }
 
-        let writer = net_impl::SocketWrite::new(self.as_raw_socket(), buf, self.write_timeout);
+        let writer = net_impl::SocketWrite::new(self.as_raw(), buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }
@@ -156,7 +156,7 @@ impl UdpSocket {
             }
         }
 
-        let reader = net_impl::SocketRead::new(self.as_raw_socket(), buf, self.read_timeout);
+        let reader = net_impl::SocketRead::new(self.as_raw(), buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -239,6 +239,18 @@ impl UdpSocket {
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.sys.take_error()
+    }
+
+    #[cfg(windows)]
+    #[inline]
+    fn as_raw(&self) -> RawSocket {
+        self.as_raw_socket()
+    }
+
+    #[cfg(unix)]
+    #[inline]
+    fn as_raw(&self) -> RawFd {
+        self.as_raw_fd()
     }
 }
 

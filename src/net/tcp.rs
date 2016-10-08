@@ -95,6 +95,18 @@ impl TcpStream {
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.write_timeout)
     }
+
+    #[cfg(windows)]
+    #[inline]
+    fn as_raw(&self) -> RawSocket {
+        self.as_raw_socket()
+    }
+
+    #[cfg(unix)]
+    #[inline]
+    fn as_raw(&self) -> RawFd {
+        self.as_raw_fd()
+    }
 }
 
 impl Read for TcpStream {
@@ -120,7 +132,7 @@ impl Read for TcpStream {
             }
         }
 
-        let reader = net_impl::SocketRead::new(self.as_raw_socket(), buf, self.read_timeout);
+        let reader = net_impl::SocketRead::new(self.as_raw(), buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -148,7 +160,7 @@ impl Write for TcpStream {
             }
         }
 
-        let writer = net_impl::SocketWrite::new(self.as_raw_socket(), buf, self.write_timeout);
+        let writer = net_impl::SocketWrite::new(self.as_raw(), buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }
