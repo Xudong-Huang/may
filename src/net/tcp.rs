@@ -259,7 +259,11 @@ impl AsRawFd for TcpStream {
 #[cfg(unix)]
 impl FromRawFd for TcpStream {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpStream {
-        TcpStream { sys: FromRawFd::from_raw_fd(fd) }
+        TcpStream {
+            sys: FromRawFd::from_raw_fd(fd),
+            read_timeout: None,
+            write_timeout: None,
+        }
     }
 }
 

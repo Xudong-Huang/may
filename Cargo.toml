@@ -8,16 +8,16 @@ log = "0.3.6"
 time = "0.1.35"
 smallvec = "0.2.0"
 net2 = { version = "0.2.26", default-features = false }
-#bitflags = "0.3"
 
 [dependencies.generator]
 path ="../generator-rs"
 [dependencies.queue]
 path ="../queue"
 
-#[target.'cfg(unix)'.dependencies]
-#nix    = "0.7.0"
-#libc   = "0.2.16"
+[target.'cfg(unix)'.dependencies]
+bitflags = "0.3"
+nix = "0.7.0"
+#libc = "0.2.16"
 
 [target.'cfg(windows)'.dependencies]
 miow = "0.1.3"
