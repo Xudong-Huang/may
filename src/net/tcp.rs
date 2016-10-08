@@ -120,7 +120,7 @@ impl Read for TcpStream {
             }
         }
 
-        let reader = net_impl::TcpStreamRead::new(self, buf);
+        let reader = net_impl::SocketRead::new(self.as_raw_socket(), buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }

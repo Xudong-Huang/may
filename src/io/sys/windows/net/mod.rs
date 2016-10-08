@@ -4,14 +4,14 @@ use super::EventData;
 use yield_now::get_co_para;
 use scheduler::get_scheduler;
 
-mod tcp_stream_read;
+mod socket_read;
 mod tcp_stream_write;
 mod tcp_stream_connect;
 mod tcp_listener_accpet;
 mod udp_send_to;
 mod udp_recv_from;
 
-pub use self::tcp_stream_read::TcpStreamRead;
+pub use self::socket_read::SocketRead;
 pub use self::tcp_stream_write::TcpStreamWrite;
 pub use self::tcp_stream_connect::TcpStreamConnect;
 pub use self::tcp_listener_accpet::TcpListenerAccept;

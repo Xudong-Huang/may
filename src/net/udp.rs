@@ -37,10 +37,11 @@ impl UdpSocket {
     }
 
     pub fn connect<A: ToSocketAddrs>(&self, addr: A) -> io::Result<()> {
+        // for udp connect it's a nonblocking operation
+        // so we just use the system call
         self.sys.connect(addr)
     }
 
-    /// Returns the socket address that this socket was created from.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.sys.local_addr()
     }
@@ -107,12 +108,57 @@ impl UdpSocket {
         reader.done()
     }
 
-    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.sys.send(buf)
-    }
+    // pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+    //     if !is_coroutine() {
+    //         // in the thread context, just use the block version
+    //         try!(self.sys.set_nonblocking(false));
+    //         let ret = try!(self.sys.send(buf));
+    //         try!(self.sys.set_nonblocking(true));;
+    //         return Ok(ret);
+    //     }
+    //
+    //     // this is an earlier return try for nonblocking write
+    //     match self.sys.send(buf) {
+    //         Err(err) => {
+    //             if err.kind() != io::ErrorKind::WouldBlock {
+    //                 return Err(err);
+    //             }
+    //         }
+    //         Ok(size) => {
+    //             return Ok(size);
+    //         }
+    //     }
+    //
+    //     let writer = net_impl::UdpSend::new(self, buf);
+    //     yield_with(&writer);
+    //     writer.done()
+    // }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.sys.recv(buf)
+        if !is_coroutine() {
+            // this can't be nonblocking!!
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.recv(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
+
+        // this is an earlier return try for nonblocking read
+        // it's useful for server but not necessary for client
+        match self.sys.recv(buf) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            Ok(size) => {
+                return Ok(size);
+            }
+        }
+
+        let reader = net_impl::SocketRead::new(self.as_raw_socket(), buf, self.read_timeout);
+        yield_with(&reader);
+        reader.done()
     }
 
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
