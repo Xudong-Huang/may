@@ -108,31 +108,31 @@ impl UdpSocket {
         reader.done()
     }
 
-    // pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-    //     if !is_coroutine() {
-    //         // in the thread context, just use the block version
-    //         try!(self.sys.set_nonblocking(false));
-    //         let ret = try!(self.sys.send(buf));
-    //         try!(self.sys.set_nonblocking(true));;
-    //         return Ok(ret);
-    //     }
-    //
-    //     // this is an earlier return try for nonblocking write
-    //     match self.sys.send(buf) {
-    //         Err(err) => {
-    //             if err.kind() != io::ErrorKind::WouldBlock {
-    //                 return Err(err);
-    //             }
-    //         }
-    //         Ok(size) => {
-    //             return Ok(size);
-    //         }
-    //     }
-    //
-    //     let writer = net_impl::UdpSend::new(self, buf);
-    //     yield_with(&writer);
-    //     writer.done()
-    // }
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        if !is_coroutine() {
+            // in the thread context, just use the block version
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.send(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
+
+        // this is an earlier return try for nonblocking write
+        match self.sys.send(buf) {
+            Err(err) => {
+                if err.kind() != io::ErrorKind::WouldBlock {
+                    return Err(err);
+                }
+            }
+            Ok(size) => {
+                return Ok(size);
+            }
+        }
+
+        let writer = net_impl::SocketWrite::new(self.as_raw_socket(), buf, self.write_timeout);
+        yield_with(&writer);
+        writer.done()
+    }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         if !is_coroutine() {

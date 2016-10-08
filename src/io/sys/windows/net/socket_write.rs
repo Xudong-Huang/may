@@ -1,39 +1,40 @@
 use std;
 use std::io;
 use std::time::Duration;
-use std::os::windows::io::AsRawSocket;
+use std::os::windows::io::{IntoRawSocket, FromRawSocket, RawSocket};
 use super::co_io_result;
 use super::super::EventData;
 use super::super::winapi::*;
 use super::super::miow::net::TcpStreamExt;
-use net::TcpStream;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
-pub struct TcpStreamWrite<'a> {
+pub struct SocketWrite<'a> {
     io_data: EventData,
     buf: &'a [u8],
-    socket: &'a std::net::TcpStream,
+    socket: std::net::TcpStream,
     timeout: Option<Duration>,
 }
 
-impl<'a> TcpStreamWrite<'a> {
-    pub fn new(socket: &'a TcpStream, buf: &'a [u8]) -> Self {
-        TcpStreamWrite {
-            io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+impl<'a> SocketWrite<'a> {
+    pub fn new(socket: RawSocket, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+        SocketWrite {
+            io_data: EventData::new(socket as HANDLE),
             buf: buf,
-            socket: socket.inner(),
-            timeout: socket.write_timeout().unwrap(),
+            socket: unsafe { FromRawSocket::from_raw_socket(socket) },
+            timeout: timeout,
         }
     }
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
+        // don't close the socket
+        self.socket.into_raw_socket();
         co_io_result(&self.io_data)
     }
 }
 
-impl<'a> EventSource for TcpStreamWrite<'a> {
+impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         // prepare the co first

@@ -148,7 +148,7 @@ impl Write for TcpStream {
             }
         }
 
-        let writer = net_impl::TcpStreamWrite::new(self, buf);
+        let writer = net_impl::SocketWrite::new(self.as_raw_socket(), buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }
