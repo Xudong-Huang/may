@@ -1,56 +1,49 @@
-use std;
-use std::io;
+use std::{self, io};
+use std::io::Read;
+use std::time::Duration;
 use std::net::SocketAddr;
-use std::os::windows::io::AsRawSocket;
+use std::os::unix::io::AsRawFd;
 use super::co_io_result;
-use super::super::EventData;
-use super::super::winapi::*;
-use super::super::miow::net::{TcpListenerExt, AcceptAddrsBuf};
-use net2::TcpBuilder;
-use net::{TcpStream, TcpListener};
+use super::super::from_nix_error;
+use super::super::nix::unistd::read;
+use super::super::{EventData, FLAG_READ};
+use yield_now::yield_with;
 use scheduler::get_scheduler;
+use net::{TcpStream, TcpListener};
 use coroutine::{CoroutineImpl, EventSource};
+
 
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
     socket: &'a std::net::TcpListener,
-    builder: TcpBuilder,
-    ret: Option<std::net::TcpStream>,
-    addr: AcceptAddrsBuf,
 }
 
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
-        let addr = try!(socket.local_addr());
-        let builder = match addr {
-            SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
-            SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
-        };
-
         Ok(TcpListenerAccept {
-            io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+            io_data: EventData::new(socket.as_raw_fd(), FLAG_READ),
             socket: socket.inner(),
-            builder: builder,
-            ret: None,
-            addr: AcceptAddrsBuf::new(),
         })
     }
 
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
-        try!(co_io_result(&self.io_data));
+        loop {
+            try!(co_io_result());
+            match self.socket.accept() {
+                Err(err) => {
+                    if err.kind() != io::ErrorKind::WouldBlock {
+                        return Err(err);
+                    }
+                }
+                Ok((s, a)) => {
+                    return TcpStream::new(s).map(|s| (s, a));
+                }
+            }
 
-        let s = try!(self.ret
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "tcp listener ret is not set"))
-            .and_then(|s| TcpStream::new(s)));
-
-        let addr = try!(self.addr.parse(&self.socket).and_then(|a| {
-            a.remote().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
-            })
-        }));
-
-        Ok((s, addr))
+            // the result is still WouldBlock, need to try again
+            yield_with(&self);
+        }
     }
 }
 
@@ -60,16 +53,9 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // prepare the co first
         self.io_data.co = Some(co);
 
-        // call the overlapped read API
-        let (s, _) = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
-            self.socket
-                .accept_overlapped(&self.builder, &mut self.addr, self.io_data.get_overlapped())
-        });
-
-        self.ret = Some(s);
-
-        // we don't need to register the timeout here,
-        // windows add_io is mainly used for that
-        // the API already regiser the io
+        // register the io operaton, wait for ever
+        co_try!(s,
+                self.io_data.co.take().unwrap(),
+                s.add_io(&mut self.io_data, None));
     }
 }
