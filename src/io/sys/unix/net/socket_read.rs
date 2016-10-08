@@ -6,6 +6,7 @@ use super::co_io_result;
 use super::super::from_nix_error;
 use super::super::nix::unistd::read;
 use super::super::{EventData, FLAG_READ};
+use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
@@ -27,9 +28,23 @@ impl<'a> SocketRead<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
-        try!(co_io_result());
-        // finish the read operaion
-        read(self.io_data.fd, self.buf).map_err(from_nix_error);
+        loop {
+            try!(co_io_result());
+            // finish the read operaion
+            match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
+                Err(err) => {
+                    if err.kind() != io::ErrorKind::WouldBlock {
+                        return Err(err);
+                    }
+                }
+                Ok(size) => {
+                    return Ok(size);
+                }
+            }
+
+            // the result is still WouldBlock, need to try again
+            yield_with(&self);
+        }
     }
 }
 

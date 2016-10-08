@@ -166,6 +166,7 @@ impl Write for TcpStream {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        // TcpStream just return Ok(()), no need to yield
         (&self.sys).flush()
     }
 }

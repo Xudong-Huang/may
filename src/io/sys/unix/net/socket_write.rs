@@ -6,6 +6,7 @@ use super::co_io_result;
 use super::super::from_nix_error;
 use super::super::nix::unistd::write;
 use super::super::{EventData, FLAG_WRITE};
+use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
@@ -26,9 +27,22 @@ impl<'a> SocketWrite<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
-        try!(co_io_result());
-        // finish the read operaion
-        write(self.io_data.fd, self.buf).map_err(from_nix_error);
+        loop {
+            try!(co_io_result());
+            match write(self.io_data.fd, self.buf).map_err(from_nix_error) {
+                Err(err) => {
+                    if err.kind() != io::ErrorKind::WouldBlock {
+                        return Err(err);
+                    }
+                }
+                Ok(size) => {
+                    return Ok(size);
+                }
+            }
+
+            // the result is still WouldBlock, need to try again
+            yield_with(&self);
+        }
     }
 }
 
