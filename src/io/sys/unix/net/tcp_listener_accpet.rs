@@ -1,11 +1,7 @@
 use std::{self, io};
-use std::io::Read;
-use std::time::Duration;
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
 use super::co_io_result;
-use super::super::from_nix_error;
-use super::super::nix::unistd::read;
 use super::super::{EventData, FLAG_READ};
 use yield_now::yield_with;
 use scheduler::get_scheduler;
@@ -31,14 +27,9 @@ impl<'a> TcpListenerAccept<'a> {
         loop {
             try!(co_io_result());
             match self.socket.accept() {
-                Err(err) => {
-                    if err.kind() != io::ErrorKind::WouldBlock {
-                        return Err(err);
-                    }
-                }
-                Ok((s, a)) => {
-                    return TcpStream::new(s).map(|s| (s, a));
-                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                Err(e) => return Err(e),
+                Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
             }
 
             // the result is still WouldBlock, need to try again

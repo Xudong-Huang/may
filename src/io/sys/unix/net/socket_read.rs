@@ -1,5 +1,4 @@
-use std::{self, io};
-use std::io::Read;
+use std::io;
 use std::time::Duration;
 use std::os::unix::io::RawFd;
 use super::co_io_result;
@@ -32,14 +31,8 @@ impl<'a> SocketRead<'a> {
             try!(co_io_result());
             // finish the read operaion
             match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
-                Err(err) => {
-                    if err.kind() != io::ErrorKind::WouldBlock {
-                        return Err(err);
-                    }
-                }
-                Ok(size) => {
-                    return Ok(size);
-                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret @ _ => return ret,
             }
 
             // the result is still WouldBlock, need to try again

@@ -1,9 +1,8 @@
 use std::{self, io};
 use std::time::Duration;
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use super::co_io_result;
-use super::super::from_nix_error;
 use super::super::{EventData, FLAG_READ};
 use net::UdpSocket;
 use yield_now::yield_with;
@@ -32,14 +31,8 @@ impl<'a> UdpRecvFrom<'a> {
         loop {
             try!(co_io_result());
             match self.socket.recv_from(self.buf) {
-                Err(err) => {
-                    if err.kind() != io::ErrorKind::WouldBlock {
-                        return Err(err);
-                    }
-                }
-                ret @ Ok(..) => {
-                    return ret;
-                }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret @ _ => return ret,
             }
 
             // the result is still WouldBlock, need to try again

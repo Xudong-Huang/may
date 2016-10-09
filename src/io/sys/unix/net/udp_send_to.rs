@@ -1,9 +1,8 @@
 use std::{self, io};
 use std::time::Duration;
-use std::net::{ToSocketAddrs, SocketAddr};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::net::ToSocketAddrs;
+use std::os::unix::io::AsRawFd;
 use super::co_io_result;
-use super::super::from_nix_error;
 use super::super::{EventData, FLAG_WRITE};
 use net::UdpSocket;
 use yield_now::yield_with;
@@ -33,15 +32,9 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
     pub fn done(self) -> io::Result<usize> {
         loop {
             try!(co_io_result());
-            match self.socket.send_to(self.buf, self.addr) {
-                Err(err) => {
-                    if err.kind() != io::ErrorKind::WouldBlock {
-                        return Err(err);
-                    }
-                }
-                ret @ Ok(..) => {
-                    return ret;
-                }
+            match self.socket.send_to(self.buf, &self.addr) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret @ _ => return ret,
             }
 
             // the result is still WouldBlock, need to try again

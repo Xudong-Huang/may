@@ -1,4 +1,5 @@
 extern crate nix;
+extern crate libc;
 
 #[cfg(target_os = "linux")]
 #[path = "epoll.rs"]
