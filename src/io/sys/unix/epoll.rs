@@ -1,13 +1,13 @@
-use std::{cmp, io, i32};
 use std::os::unix::io::RawFd;
+use std::{io, cmp, ptr, isize};
+use std::ops::{Deref, DerefMut};
+use super::from_nix_error;
 use super::nix::sys::epoll::*;
 use super::nix::unistd::close;
 use super::{EventFlags, FLAG_READ, FLAG_WRITE, EventData};
 use smallvec::SmallVec;
 use scheduler::Scheduler;
-use coroutine::CoroutineImpl;
-use yield_now::set_co_para;
-use timeout_list::{TimeoutHandle, ns_to_ms};
+use timeout_list::ns_to_ms;
 
 // covert interested event into system EpollEventKind
 #[inline]
@@ -21,11 +21,12 @@ fn interest_to_epoll_kind(interest: EventFlags) -> EpollEventKind {
     if interest.contains(FLAG_WRITE) {
         kind.insert(EPOLLOUT);
     }
+
+    kind.insert(EPOLLONESHOT);
     // kind.insert(EPOLLET);
     kind
 }
 
-// buffer to receive the system events
 pub type EventsBuf = SmallVec<[EpollEvent; 1024]>;
 
 pub struct Selector {
@@ -44,30 +45,45 @@ impl Selector {
                   timeout: Option<u64>)
                   -> io::Result<()> {
 
-        let timeout_ms = timeout.map(|to| cmp::min(ns_to_ms(to), i32::MAX as u64) as i32)
+        let timeout_ms = timeout.map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
         info!("select; timeout={:?}", timeout_ms);
         info!("polling epoll");
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let cnt = try!(epoll_wait(self.epfd, events, timeout_ms as isize)
-            .map_err(super::from_nix_error));
+        let n = try!(epoll_wait(self.epfd, events, timeout_ms).map_err(from_nix_error));
 
-        // unsafe {
-        //     self.evts.events.set_len(cnt);
-        // }
-        //
-        // for i in 0..cnt {
-        //     let value = self.evts.events[i];
-        //     let mut ev_flag = EventFlags::empty();
-        //     if value.events.contains(EPOLLIN) {
-        //         ev_flag = ev_flag | FLAG_READ;
-        //     }
-        //     if value.events.contains(EPOLLOUT) {
-        //         ev_flag = ev_flag | FLAG_WRITE;
-        //     }
-        //     evts.push(EventEntry::new_evfd(value.data as u32, ev_flag));
-        // }
+        for event in events[..n].iter() {
+            if event.data == 0 {
+                // this is just a wakeup event, ignore it
+                warn!("got null data event in select");
+                continue;
+            }
+            let data = unsafe { &mut *(event.data as *mut EventData) };
+            info!("select got event, event.events = {:?}", event.events);
+
+            // it's safe to remove the timer since we are runing the timer_list in the same thread
+            data.timer.take().map(|h| {
+                unsafe {
+                    // tell the timer function not to cancel the io
+                    // it's not always true that you can really remove the timer entry
+                    h.get_data().data.event_data = ptr::null_mut();
+                }
+                h.remove()
+            });
+
+            let co = data.co.take();
+            if co.is_none() {
+                // there is no coroutine prepared, just ignore this one
+                warn!("can't get coroutine in the epoll select");
+                continue;
+            }
+            let co = co.unwrap();
+
+            // schedule the coroutine
+            s.schedule_io(co);
+        }
+
         Ok(())
     }
 
@@ -84,18 +100,33 @@ impl Selector {
             events: interest_to_epoll_kind(io.interest),
             data: io as *mut _ as u64,
         };
+        info!("add io to epoll select, fd={:?} events={:?}",
+              io.fd,
+              info.events);
+        epoll_ctl(self.epfd, EpollOp::EpollCtlMod, io.fd, &info).map_err(from_nix_error)
+    }
 
-        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, io.fd, &info).map_err(super::from_nix_error)
+    // register io event to the selector
+    #[inline]
+    pub fn add_fd(&self, fd: RawFd) -> io::Result<()> {
+        let info = EpollEvent {
+            events: interest_to_epoll_kind(EventFlags::empty()),
+            data: 0,
+        };
+        info!("add fd to epoll select, fd={:?}", fd);
+        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
     }
 
     #[inline]
     pub fn cancel_io(&self, io: &EventData) -> io::Result<()> {
         let info = EpollEvent {
-            events: interest_to_epoll_kind(io.interest),
+            events: interest_to_epoll_kind(EventFlags::empty()),
             data: 0,
         };
 
-        epoll_ctl(self.epfd, EpollOp::EpollCtlDel, io.fd, &info).map_err(super::from_nix_error)
+        // can't del the fd from epoll, or next add_io would fail
+        println!("remove io from epoll select, fd={:?}", io.fd);
+        epoll_ctl(self.epfd, EpollOp::EpollCtlMod, io.fd, &info).map_err(from_nix_error)
     }
 }
 

@@ -95,6 +95,17 @@ impl Selector {
             let overlapped = unsafe { &*(*overlapped).raw() };
             info!("select got overlapped, stuats = {}", overlapped.Internal);
 
+            // it's safe to remove the timer since we are
+            // runing the timer_list in the same thread
+            data.timer.take().map(|h| {
+                unsafe {
+                    // tell the timer function not to cancel the io
+                    // it's not always true that you can really remove the timer entry
+                    h.get_data().data.event_data = ptr::null_mut();
+                }
+                h.remove()
+            });
+
             let co = data.co.take();
             if co.is_none() {
                 // there is no coroutine prepared, just ignore this one
@@ -123,17 +134,6 @@ impl Selector {
                     set_co_para(&mut co, io::Error::from_raw_os_error(err as i32));
                 }
             }
-
-            // it's safe to remove the timer since we are
-            // runing the timer_list in the same thread
-            data.timer.take().map(|h| {
-                unsafe {
-                    // tell the timer function not to cancel the io
-                    // it's not always true that you can really remove the timer entry
-                    h.get_data().data.event_data = ptr::null_mut();
-                }
-                h.remove()
-            });
 
             // schedule the coroutine
             s.schedule_io(co);

@@ -1,6 +1,7 @@
 use std::io;
 use std::os::unix::io::AsRawFd;
 use yield_now::get_co_para;
+use scheduler::get_scheduler;
 
 mod socket_read;
 mod socket_write;
@@ -17,9 +18,9 @@ pub use self::udp_send_to::UdpSendTo;
 pub use self::udp_recv_from::UdpRecvFrom;
 
 #[inline]
-pub fn add_socket<T: AsRawFd + ?Sized>(_t: &T) -> io::Result<()> {
-    // unix don't need to register the socket in the poll model
-    Ok(())
+pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<()> {
+    let s = get_scheduler();
+    s.get_selector().add_fd(t.as_raw_fd())
 }
 
 // deal with the io result

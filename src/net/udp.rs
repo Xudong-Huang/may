@@ -278,11 +278,8 @@ impl AsRawFd for UdpSocket {
 #[cfg(unix)]
 impl FromRawFd for UdpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
-        UdpSocket {
-            sys: FromRawFd::from_raw_fd(fd),
-            read_timeout: None,
-            write_timeout: None,
-        }
+        UdpSocket::new(FromRawFd::from_raw_fd(fd))
+            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {:?}", e))
     }
 }
 

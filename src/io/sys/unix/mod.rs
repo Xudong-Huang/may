@@ -21,6 +21,7 @@ bitflags! {
     }
 }
 
+#[inline]
 pub fn from_nix_error(err: nix::Error) -> ::std::io::Error {
     ::std::io::Error::from_raw_os_error(err.errno() as i32)
 }
