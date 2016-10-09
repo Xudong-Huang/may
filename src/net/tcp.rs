@@ -96,6 +96,16 @@ impl TcpStream {
         Ok(self.write_timeout)
     }
 
+    // convert std::net::TcpStream to Self without add_socket
+    #[cfg(unix)]
+    pub fn from_stream(s: net::TcpStream) -> Self {
+        TcpStream {
+            sys: s,
+            read_timeout: None,
+            write_timeout: None,
+        }
+    }
+
     #[cfg(windows)]
     #[inline]
     fn as_raw(&self) -> RawSocket {

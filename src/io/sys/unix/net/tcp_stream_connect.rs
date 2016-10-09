@@ -1,19 +1,20 @@
-use std::io;
+use std::{self, io};
 use std::time::Duration;
-use std::os::unix::io::AsRawFd;
 use std::net::{ToSocketAddrs, SocketAddr};
+use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
 use super::co_io_result;
 use super::super::libc;
 use super::super::{EventData, FLAG_WRITE};
 use net::TcpStream;
 use net2::TcpBuilder;
+use io::net::add_socket;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
     io_data: EventData,
-    stream: TcpBuilder,
+    builder: TcpBuilder,
     addr: SocketAddr,
 }
 
@@ -30,12 +31,21 @@ impl TcpStreamConnect {
                     Ok((builder, addr))
                 })
             })
-            .map(|(builder, addr)| {
-                TcpStreamConnect {
-                    io_data: EventData::new(builder.as_raw_fd(), FLAG_WRITE),
-                    addr: addr,
-                    stream: builder,
-                }
+            .and_then(|(builder, addr)| {
+                // before yield we must set the socket to nonblocking mode and registe to selector
+                let fd = builder.as_raw_fd();
+                let s: std::net::TcpStream = unsafe { FromRawFd::from_raw_fd(fd) };
+                try!(s.set_nonblocking(true));
+                // prevent close the socket
+                s.into_raw_fd();
+
+                add_socket(&builder).map(|_| {
+                    TcpStreamConnect {
+                        io_data: EventData::new(builder.as_raw_fd(), FLAG_WRITE),
+                        builder: builder,
+                        addr: addr,
+                    }
+                })
             })
     }
 
@@ -43,10 +53,10 @@ impl TcpStreamConnect {
     pub fn done(self) -> io::Result<TcpStream> {
         loop {
             try!(co_io_result());
-            match self.stream.connect(&self.addr) {
+            match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(e) => return Err(e),
-                Ok(..) => return self.stream.to_tcp_stream().and_then(|s| TcpStream::new(s)),
+                Ok(s) => return Ok(TcpStream::from_stream(s)),
             }
             // the result is still EINPROGRESS, need to try again
             yield_with(&self);
