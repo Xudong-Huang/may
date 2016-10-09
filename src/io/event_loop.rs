@@ -2,7 +2,8 @@ use std::io;
 use std::time::Duration;
 use scheduler::get_scheduler;
 use timeout_list::{TimeOutList, now};
-use super::sys::{Selector, EventData, TimerData, EventsBuf, timeout_handler};
+use super::event_buf::EventsBuf;
+use super::sys::{Selector, EventData, TimerData, timeout_handler};
 
 type TimerList = TimeOutList<TimerData>;
 
@@ -26,8 +27,6 @@ impl EventLoop {
     pub fn run(&self) -> io::Result<()> {
         let s = get_scheduler();
         let mut events = EventsBuf::new();
-        let len = events.capacity();
-        unsafe { events.set_len(len) };
         let mut next_expire = None;
         loop {
             // first run the selector

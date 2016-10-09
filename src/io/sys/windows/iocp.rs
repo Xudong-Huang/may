@@ -3,10 +3,10 @@ extern crate kernel32;
 use std::{cmp, io, ptr, u32};
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
-use smallvec::SmallVec;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
+use super::super::event_buf::EventsBuf;
 use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::set_co_para;
@@ -58,7 +58,7 @@ impl EventData {
 }
 
 // buffer to receive the system events
-pub type EventsBuf = SmallVec<[CompletionStatus; 1024]>;
+pub type SysEvent = CompletionStatus;
 
 pub struct Selector {
     /// The actual completion port that's used to manage all I/O

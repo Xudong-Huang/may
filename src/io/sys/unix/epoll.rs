@@ -1,11 +1,10 @@
 use std::os::unix::io::RawFd;
 use std::{io, cmp, ptr, isize};
-use std::ops::{Deref, DerefMut};
 use super::from_nix_error;
 use super::nix::sys::epoll::*;
 use super::nix::unistd::close;
 use super::{EventFlags, FLAG_READ, FLAG_WRITE, EventData};
-use smallvec::SmallVec;
+use super::super::event_buf::EventsBuf;
 use scheduler::Scheduler;
 use timeout_list::ns_to_ms;
 
@@ -27,7 +26,7 @@ fn interest_to_epoll_kind(interest: EventFlags) -> EpollEventKind {
     kind
 }
 
-pub type EventsBuf = SmallVec<[EpollEvent; 1024]>;
+pub type SysEvent = EpollEvent;
 
 pub struct Selector {
     epfd: RawFd,

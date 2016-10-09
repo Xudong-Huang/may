@@ -12,7 +12,7 @@ use scheduler::get_scheduler;
 use coroutine::CoroutineImpl;
 use timeout_list::TimeoutHandle;
 
-pub use self::select::{EventsBuf, Selector};
+pub use self::select::{SysEvent, Selector};
 
 bitflags! {
     flags EventFlags: u32 {
