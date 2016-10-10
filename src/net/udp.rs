@@ -67,14 +67,8 @@ impl UdpSocket {
 
         // this is an earlier return try for nonblocking read
         match self.sys.send_to(buf, &addr) {
-            Err(err) => {
-                if err.kind() != io::ErrorKind::WouldBlock {
-                    return Err(err);
-                }
-            }
-            ret @ Ok(..) => {
-                return ret;
-            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret @ _ => return ret,
         }
 
         let writer = try!(net_impl::UdpSendTo::new(self, buf, addr));
@@ -93,14 +87,8 @@ impl UdpSocket {
 
         // this is an earlier return try for nonblocking read
         match self.sys.recv_from(buf) {
-            Err(err) => {
-                if err.kind() != io::ErrorKind::WouldBlock {
-                    return Err(err);
-                }
-            }
-            ret @ Ok(..) => {
-                return ret;
-            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret @ _ => return ret,
         }
 
         let reader = net_impl::UdpRecvFrom::new(self, buf);
@@ -119,14 +107,8 @@ impl UdpSocket {
 
         // this is an earlier return try for nonblocking write
         match self.sys.send(buf) {
-            Err(err) => {
-                if err.kind() != io::ErrorKind::WouldBlock {
-                    return Err(err);
-                }
-            }
-            Ok(size) => {
-                return Ok(size);
-            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret @ _ => return ret,
         }
 
         let writer = net_impl::SocketWrite::new(self.as_raw(), buf, self.write_timeout);
@@ -146,14 +128,8 @@ impl UdpSocket {
         // this is an earlier return try for nonblocking read
         // it's useful for server but not necessary for client
         match self.sys.recv(buf) {
-            Err(err) => {
-                if err.kind() != io::ErrorKind::WouldBlock {
-                    return Err(err);
-                }
-            }
-            Ok(size) => {
-                return Ok(size);
-            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret @ _ => return ret,
         }
 
         let reader = net_impl::SocketRead::new(self.as_raw(), buf, self.read_timeout);
