@@ -39,16 +39,17 @@ pub fn timeout_handler(data: TimerData) {
     // remove the event timer
     event_data.timer.take();
 
-    let s = get_scheduler();
-    // ignore the error, the select may grab the data first!
-    s.get_selector().cancel_io(event_data).map_err(|e| error!("cancel io failed! e = {}", e)).ok();
-
+    // get and check the coroutine
     let co = event_data.co.take();
     if co.is_none() {
-        // there is no coroutine prepared, just ignore this one
-        warn!("can't get coroutine in the epoll select");
+        // there is no coroutine, just ignore this one
+        error!("can't get coroutine in timeout handler");
         return;
     }
+
+    let s = get_scheduler();
+    // ignore the error, the selecter may grab the data first!
+    s.get_selector().cancel_io(event_data).map_err(|e| error!("cancel io failed! e = {}", e)).ok();
 
     let mut co = co.unwrap();
     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
