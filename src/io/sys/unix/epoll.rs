@@ -4,7 +4,6 @@ use super::from_nix_error;
 use super::nix::sys::epoll::*;
 use super::nix::unistd::close;
 use super::{EventFlags, FLAG_READ, FLAG_WRITE, EventData};
-use super::super::event_buf::EventsBuf;
 use scheduler::Scheduler;
 use timeout_list::ns_to_ms;
 
@@ -40,7 +39,7 @@ impl Selector {
 
     pub fn select(&self,
                   s: &Scheduler,
-                  events: &mut EventsBuf,
+                  events: &mut [SysEvent],
                   timeout: Option<u64>)
                   -> io::Result<()> {
 

@@ -6,7 +6,6 @@ use std::os::windows::io::AsRawSocket;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
-use super::super::event_buf::EventsBuf;
 use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::set_co_para;
@@ -72,7 +71,7 @@ impl Selector {
 
     pub fn select(&self,
                   s: &Scheduler,
-                  events: &mut EventsBuf,
+                  events: &mut [SysEvent],
                   timeout: Option<u64>)
                   -> io::Result<()> {
         let timeout = timeout.map(|to| cmp::min(ns_to_ms(to), u32::MAX as u64) as u32);

@@ -18,7 +18,6 @@ mod sys;
 #[path = "sys/windows/mod.rs"]
 mod sys;
 
-mod event_buf;
 mod event_loop;
 
 pub use self::event_loop::EventLoop;
