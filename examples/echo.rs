@@ -27,11 +27,7 @@ fn handle_client(mut stream: TcpStream) {
                     break;
                 }
 
-                let mut rest = n;
-                while rest > 0 {
-                    let i = t!(stream.write(&read[(n - rest)..n]));
-                    rest -= i;
-                }
+                t!(stream.write_all(&read[0..n]));
             }
 
             Err(err) => {

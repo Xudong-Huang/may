@@ -22,7 +22,7 @@ fn interest_to_epoll_kind(interest: EventFlags) -> EpollEventKind {
     }
 
     kind.insert(EPOLLONESHOT);
-    // kind.insert(EPOLLET);
+    kind.insert(EPOLLET);
     kind
 }
 

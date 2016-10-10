@@ -22,7 +22,7 @@ fn main() {
     let test_msg_len = 80;
     let test_conn_num = 8;
     let test_seconds = 20;
-    let io_timeout = 5;
+    let io_timeout = 2;
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);
@@ -45,24 +45,14 @@ fn main() {
                 let l = msg.len();
                 let mut recv = vec![0; l];
                 loop {
-                    let mut rest = l;
-                    while rest > 0 {
-                        let i = t!(conn.write(&msg[(l - rest)..l]));
-                        rest -= i;
-                    }
-
+                    t!(conn.write_all(&msg));
                     out_num.fetch_add(1, Ordering::Relaxed);
 
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
 
-                    let mut rest = l;
-                    while rest > 0 {
-                        let i = t!(conn.read(&mut recv[(l - rest)..l]));
-                        rest -= i;
-                    }
-
+                    t!(conn.read_exact(&mut recv));
                     in_num.fetch_add(1, Ordering::Relaxed);
 
                     if stop.load(Ordering::Relaxed) {
