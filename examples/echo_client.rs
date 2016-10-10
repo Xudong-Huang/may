@@ -8,8 +8,8 @@ macro_rules! t {
     ($e: expr) => (match $e {
         Ok(val) => val,
         Err(err) => {
+            println!("call = {:?}", stringify!($e));
             println!("err = {:?}", err);
-            println!("state = {:?}", stringify!($e));
             return;
         }
     })
@@ -18,7 +18,7 @@ macro_rules! t {
 fn main() {
     coroutine::scheduler_set_workers(1);
 
-    let target_addr = "127.0.0.1:3000";
+    let target_addr = "127.0.0.1:8080";
     let test_msg_len = 80;
     let test_conn_num = 8;
     let test_seconds = 20;

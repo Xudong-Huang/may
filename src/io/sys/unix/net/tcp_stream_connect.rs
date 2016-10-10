@@ -15,6 +15,7 @@ use coroutine::{CoroutineImpl, EventSource};
 pub struct TcpStreamConnect {
     io_data: EventData,
     builder: TcpBuilder,
+    stream: Option<TcpStream>,
     addr: SocketAddr,
 }
 
@@ -39,18 +40,32 @@ impl TcpStreamConnect {
                 // prevent close the socket
                 s.into_raw_fd();
 
-                add_socket(&builder).map(|_| {
-                    TcpStreamConnect {
+                add_socket(&builder).and_then(|_| {
+                    let mut me = TcpStreamConnect {
                         io_data: EventData::new(builder.as_raw_fd(), FLAG_WRITE),
                         builder: builder,
+                        stream: None,
                         addr: addr,
+                    };
+                    // unix connect is some like completion mode
+                    // we must give the connect request first to the system
+                    match me.builder.connect(&me.addr) {
+                        Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
+                        Err(e) => return Err(e),
+                        Ok(s) => me.stream = Some(TcpStream::from_stream(s)),
                     }
+                    Ok(me)
                 })
             })
     }
 
     #[inline]
-    pub fn done(self) -> io::Result<TcpStream> {
+    pub fn done(mut self) -> io::Result<TcpStream> {
+        if self.stream.is_some() {
+            // we already got the stream in new function
+            return Ok(self.stream.take().unwrap());
+        }
+
         loop {
             try!(co_io_result());
             match self.builder.connect(&self.addr) {
