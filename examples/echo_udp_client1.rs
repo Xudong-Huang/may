@@ -7,6 +7,7 @@ macro_rules! t {
     ($e: expr) => (match $e {
         Ok(val) => val,
         Err(err) => {
+            println!("call = {:?}", stringify!($e));
             println!("err = {:?}", err);
             return;
         }

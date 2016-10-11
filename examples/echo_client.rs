@@ -18,10 +18,11 @@ macro_rules! t {
 fn main() {
     coroutine::scheduler_set_workers(1);
 
+    // let target_addr = "192.168.56.102:5555";
     let target_addr = "127.0.0.1:8080";
     let test_msg_len = 80;
     let test_conn_num = 8;
-    let test_seconds = 20;
+    let test_seconds = 2;
     let io_timeout = 2;
 
     let stop = AtomicBool::new(false);
