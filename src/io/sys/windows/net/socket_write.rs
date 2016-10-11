@@ -37,21 +37,12 @@ impl<'a> SocketWrite<'a> {
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        s.add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
         // call the overlapped write API
-        let ret = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
-            self.socket.write_overlapped(self.buf, self.io_data.get_overlapped())
-        });
-
-        // the operation is success, we no need to wait any more
-        if ret == true {
-            return;
-        }
-
-        // register the io operaton
         co_try!(s,
                 self.io_data.co.take().unwrap(),
-                s.add_io(&mut self.io_data, self.timeout));
+                unsafe { self.socket.write_overlapped(self.buf, self.io_data.get_overlapped()) });
     }
 }

@@ -82,12 +82,7 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        // prepare the co first
+        s.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
         self.io_data.co = Some(co);
-
-        // register the io operaton, by default the timeout is 10 sec
-        co_try!(s,
-                self.io_data.co.take().unwrap(),
-                s.add_io(&mut self.io_data, Some(Duration::from_secs(10))));
     }
 }

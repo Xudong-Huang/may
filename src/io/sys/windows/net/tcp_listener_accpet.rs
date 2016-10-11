@@ -57,6 +57,7 @@ impl<'a> TcpListenerAccept<'a> {
 impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        // we don't need to register the timeout here,
         // prepare the co first
         self.io_data.co = Some(co);
 
@@ -67,9 +68,5 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         });
 
         self.ret = Some(s);
-
-        // we don't need to register the timeout here,
-        // windows add_io is mainly used for that
-        // the API already regiser the io
     }
 }

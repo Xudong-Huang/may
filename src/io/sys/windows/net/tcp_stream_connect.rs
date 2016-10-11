@@ -67,22 +67,13 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        s.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
         // prepare the co first
         self.io_data.co = Some(co);
 
         // call the overlapped connect API
-        let ret = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+        co_try!(s, self.io_data.co.take().unwrap(), unsafe {
             self.stream.inner().connect_overlapped(&self.addr, self.io_data.get_overlapped())
         });
-
-        // the operation is success, we no need to wait any more
-        if ret == true {
-            return;
-        }
-
-        // register the io operaton, by default the timeout is 10 sec
-        co_try!(s,
-                self.io_data.co.take().unwrap(),
-                s.add_io(&mut self.io_data, Some(Duration::from_secs(10))));
     }
 }

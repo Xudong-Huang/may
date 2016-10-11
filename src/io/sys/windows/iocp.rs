@@ -156,10 +156,10 @@ impl Selector {
 
     // windows register function does nothing,
     // the completion model would call the actuall API instead of register
-    #[inline]
-    pub fn add_io(&self, _io: &mut EventData) -> io::Result<()> {
-        Ok(())
-    }
+    // #[inline]
+    // pub fn add_io(&self, _io: &mut EventData) -> io::Result<()> {
+    //     Ok(())
+    // }
 }
 
 unsafe fn cancel_io(handle: HANDLE, overlapped: &Overlapped) -> io::Result<()> {

@@ -247,8 +247,8 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_io(&self, event: &mut EventData, timeout: Option<Duration>) -> io::Result<()> {
-        self.event_loop.add_io(event, timeout)
+    pub fn add_io_timer(&self, event: &mut EventData, timeout: Option<Duration>) {
+        self.event_loop.add_io_timer(event, timeout);
     }
 
     #[inline]

@@ -4,7 +4,7 @@ use std::os::unix::io::AsRawFd;
 use super::co_io_result;
 use super::super::{EventData, FLAG_READ};
 use yield_now::yield_with;
-use scheduler::get_scheduler;
+// use scheduler::get_scheduler;
 use net::{TcpStream, TcpListener};
 use coroutine::{CoroutineImpl, EventSource};
 
@@ -40,13 +40,9 @@ impl<'a> TcpListenerAccept<'a> {
 
 impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let s = get_scheduler();
-        // prepare the co first
+        // if there is no timer we don't need to call add_io_timer
+        // let s = get_scheduler();
+        // s.add_io_timer(&mut self.io_data, None);
         self.io_data.co = Some(co);
-
-        // register the io operaton, wait for ever
-        co_try!(s,
-                self.io_data.co.take().unwrap(),
-                s.add_io(&mut self.io_data, None));
     }
 }

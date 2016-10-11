@@ -92,17 +92,17 @@ impl Selector {
     }
 
     // register io event to the selector
-    #[inline]
-    pub fn add_io(&self, io: &mut EventData) -> io::Result<()> {
-        let info = EpollEvent {
-            events: interest_to_epoll_kind(io.interest),
-            data: io as *mut _ as u64,
-        };
-        info!("add io to epoll select, fd={:?} events={:?}",
-              io.fd,
-              info.events);
-        epoll_ctl(self.epfd, EpollOp::EpollCtlMod, io.fd, &info).map_err(from_nix_error)
-    }
+    // #[inline]
+    // pub fn add_io(&self, io: &mut EventData) -> io::Result<()> {
+    //     let info = EpollEvent {
+    //         events: interest_to_epoll_kind(io.interest),
+    //         data: io as *mut _ as u64,
+    //     };
+    //     info!("add io to epoll select, fd={:?} events={:?}",
+    //           io.fd,
+    //           info.events);
+    //     epoll_ctl(self.epfd, EpollOp::EpollCtlMod, io.fd, &info).map_err(from_nix_error)
+    // }
 
     // register io event to the selector
     #[inline]

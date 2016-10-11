@@ -38,25 +38,15 @@ impl<'a> SocketRead<'a> {
 impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        // if the event happened before this there would be something wrong
+        // we must prepare the timer before call the API
+        s.add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
 
         // call the overlapped read API
-        let ret = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
-            self.socket.read_overlapped(self.buf, self.io_data.get_overlapped())
-        });
-
-        // the operation is success, we no need to wait any more
-        if ret == true {
-            // the done function would contain the actual io size
-            // just let the iocp schedule the coroutine
-            // s.schedule_io(co);
-            return;
-        }
-
-        // register the io operaton
         co_try!(s,
                 self.io_data.co.take().unwrap(),
-                s.add_io(&mut self.io_data, self.timeout));
+                unsafe { self.socket.read_overlapped(self.buf, self.io_data.get_overlapped()) });
     }
 }
