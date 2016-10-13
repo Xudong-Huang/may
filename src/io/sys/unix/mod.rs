@@ -9,7 +9,7 @@ pub mod net;
 
 use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
 use coroutine::CoroutineImpl;
@@ -56,7 +56,7 @@ pub struct TimerData {
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub io_flag: AtomicUsize,
+    pub io_flag: AtomicBool,
     pub timer: Option<TimerHandle>,
     pub co: BoxedOption<CoroutineImpl>,
 }
@@ -65,7 +65,7 @@ impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd: fd,
-            io_flag: AtomicUsize::new(0),
+            io_flag: AtomicBool::new(false),
             timer: None,
             co: BoxedOption::none(),
         }
@@ -112,6 +112,12 @@ impl IoData {
     #[inline]
     pub fn inner(&self) -> &mut EventData {
         unsafe { &mut *self.0 }
+    }
+
+    // clear the io flag
+    #[inline]
+    pub fn reset(&self) {
+        self.inner().io_flag.store(false, Ordering::Relaxed);
     }
 }
 

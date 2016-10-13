@@ -61,15 +61,15 @@ impl TcpStreamConnect {
 
     #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
+        try!(co_io_result());
         match self.ret {
             Some(s) => return s,
             None => {}
         }
 
         loop {
-            try!(co_io_result());
             // clear the io_flag
-            self.io_data.inner().io_flag.store(0, Ordering::Relaxed);
+            self.io_data.inner().io_flag.store(false, Ordering::Relaxed);
 
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
@@ -78,7 +78,7 @@ impl TcpStreamConnect {
             }
 
             // clear the events
-            if self.io_data.inner().io_flag.swap(0, Ordering::Relaxed) != 0 {
+            if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }
 
@@ -96,7 +96,7 @@ impl EventSource for TcpStreamConnect {
         io_data.co.swap(co, Ordering::Release);
 
         // there is no event
-        if self.io_data.inner().io_flag.load(Ordering::Relaxed) == 0 {
+        if !self.io_data.inner().io_flag.load(Ordering::Relaxed) {
             return;
         }
 

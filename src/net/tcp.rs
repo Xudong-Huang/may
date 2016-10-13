@@ -125,6 +125,7 @@ impl Read for TcpStream {
             return Ok(ret);
         }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking read
         // it's useful for server but not necessary for client
         match self.sys.read(buf) {
@@ -140,14 +141,15 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // if !is_coroutine() {
-        //     // in the thread context, just use the block version
-        //     try!(self.sys.set_nonblocking(false));
-        //     let ret = try!(self.sys.write(buf));
-        //     try!(self.sys.set_nonblocking(true));;
-        //     return Ok(ret);
-        // }
+        if !is_coroutine() {
+            // in the thread context, just use the block version
+            try!(self.sys.set_nonblocking(false));
+            let ret = try!(self.sys.write(buf));
+            try!(self.sys.set_nonblocking(true));;
+            return Ok(ret);
+        }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking write
         match self.sys.write(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -213,6 +215,7 @@ impl TcpListener {
             return TcpStream::new(s).map(|s| (s, a));
         }
 
+        self.io.reset();
         match self.sys.accept() {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
             ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),

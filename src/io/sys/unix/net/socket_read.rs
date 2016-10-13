@@ -27,10 +27,10 @@ impl<'a> SocketRead<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
+        try!(co_io_result());
         loop {
-            try!(co_io_result());
             // clear the io_flag
-            self.io_data.io_flag.store(0, Ordering::Relaxed);
+            self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             // finish the read operaion
             match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
@@ -39,7 +39,7 @@ impl<'a> SocketRead<'a> {
             }
 
             // clear the events
-            if self.io_data.io_flag.swap(0, Ordering::Relaxed) != 0 {
+            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }
 
@@ -56,7 +56,7 @@ impl<'a> EventSource for SocketRead<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is no event, let the selector invoke it
-        if self.io_data.io_flag.load(Ordering::Relaxed) == 0 {
+        if !self.io_data.io_flag.load(Ordering::Relaxed) {
             return;
         }
 

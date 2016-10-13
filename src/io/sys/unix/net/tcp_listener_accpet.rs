@@ -26,10 +26,10 @@ impl<'a> TcpListenerAccept<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
+        try!(co_io_result());
         loop {
-            try!(co_io_result());
             // clear the io_flag
-            self.io_data.io_flag.store(0, Ordering::Relaxed);
+            self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.socket.accept() {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -37,7 +37,7 @@ impl<'a> TcpListenerAccept<'a> {
             }
 
             // clear the events
-            if self.io_data.io_flag.swap(0, Ordering::Relaxed) != 0 {
+            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }
 
@@ -53,7 +53,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is no event
-        if self.io_data.io_flag.load(Ordering::Relaxed) == 0 {
+        if !self.io_data.io_flag.load(Ordering::Relaxed) {
             return;
         }
 
