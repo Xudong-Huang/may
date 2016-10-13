@@ -45,7 +45,7 @@ impl EventLoop {
     // register the io request to both selector and the timeout list
     pub fn add_io_timer(&self, io: &mut EventData, timeout: Option<Duration>) {
         io.timer = timeout.map(|dur| {
-            info!("io timeout = {:?}", dur);
+            // info!("io timeout = {:?}", dur);
             let (h, b_new) = self.timer_list.add_timer(dur, io.timer_data());
             if b_new {
                 // wakeup the event loop threead to recal the next wait

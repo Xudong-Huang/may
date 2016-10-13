@@ -6,10 +6,6 @@ use io::net as net_impl;
 use yield_now::yield_with;
 use coroutine::is_coroutine;
 
-extern crate nix;
-use self::nix::fcntl::FcntlArg::F_SETFL;
-use self::nix::fcntl::{fcntl, O_NONBLOCK};
-
 // ===== TcpStream =====
 //
 //
@@ -27,8 +23,7 @@ impl TcpStream {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        // try!(s.set_nonblocking(true));
-        try!(fcntl(s.as_raw_fd(), F_SETFL(O_NONBLOCK)));
+        try!(s.set_nonblocking(true));
 
         io_impl::add_socket(&s).map(|io| {
             TcpStream {
@@ -47,8 +42,8 @@ impl TcpStream {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         if !is_coroutine() {
             let s = try!(net::TcpStream::connect(addr));
-            let fd = s.as_raw_fd();
-            return Ok(TcpStream::from_stream(s, io_impl::IoData::new(fd)));
+            let io = io_impl::IoData::new(&s);
+            return Ok(TcpStream::from_stream(s, io));
         }
 
         let c = try!(net_impl::TcpStreamConnect::new(addr));
@@ -104,7 +99,6 @@ impl TcpStream {
     }
 
     // convert std::net::TcpStream to Self without add_socket
-    #[cfg(unix)]
     pub fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
             io: io,
@@ -167,6 +161,7 @@ impl Write for TcpStream {
     }
 }
 
+#[cfg(unix)]
 impl Drop for TcpStream {
     fn drop(&mut self) {
         io_impl::del_socket(&self.io);
@@ -245,6 +240,7 @@ impl TcpListener {
     // TODO: add all std functions
 }
 
+#[cfg(unix)]
 impl Drop for TcpListener {
     fn drop(&mut self) {
         io_impl::del_socket(&self.io);
@@ -376,7 +372,6 @@ impl FromRawSocket for TcpListener {
     unsafe fn from_raw_socket(s: RawSocket) -> TcpListener {
         let s: net::TcpListener = FromRawSocket::from_raw_socket(s);
         TcpListener::new(s)
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e));
-        TcpListener { sys: s }
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e))
     }
 }

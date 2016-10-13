@@ -1,10 +1,10 @@
 use std;
 use std::io;
 use std::time::Duration;
-use std::os::windows::io::{IntoRawSocket, FromRawSocket, RawSocket};
-use super::co_io_result;
-use super::super::EventData;
+use std::os::windows::io::{IntoRawSocket, FromRawSocket, AsRawSocket};
 use super::super::winapi::*;
+use super::super::EventData;
+use super::super::co_io_result;
 use super::super::miow::net::TcpStreamExt;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
@@ -17,7 +17,7 @@ pub struct SocketWrite<'a> {
 }
 
 impl<'a> SocketWrite<'a> {
-    pub fn new<T: AsRawSocket>(s: T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsRawSocket>(s: &T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
         let socket = s.as_raw_socket();
         SocketWrite {
             io_data: EventData::new(socket as HANDLE),

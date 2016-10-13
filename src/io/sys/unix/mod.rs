@@ -104,7 +104,8 @@ impl EventData {
 pub struct IoData(*mut EventData);
 
 impl IoData {
-    pub fn new(fd: RawFd) -> Self {
+    pub fn new<T: AsRawFd + ?Sized>(t: &T) -> Self {
+        let fd = t.as_raw_fd();
         let event_data = Box::new(EventData::new(fd));
         IoData(Box::into_raw(event_data))
     }
@@ -131,8 +132,7 @@ unsafe impl Send for IoData {}
 
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
-    let fd = t.as_raw_fd();
-    let io_data = IoData::new(fd);
+    let io_data = IoData::new(t);
     let s = get_scheduler().get_selector();
     match s.add_fd(io_data.inner()) {
         Ok(_) => return Ok(io_data),
