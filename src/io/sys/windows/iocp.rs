@@ -153,13 +153,6 @@ impl Selector {
         // the token para is not used, just pass the handle
         self.port.add_socket(t.as_raw_socket() as usize, t)
     }
-
-    // windows register function does nothing,
-    // the completion model would call the actuall API instead of register
-    // #[inline]
-    // pub fn add_io(&self, _io: &mut EventData) -> io::Result<()> {
-    //     Ok(())
-    // }
 }
 
 unsafe fn cancel_io(handle: HANDLE, overlapped: &Overlapped) -> io::Result<()> {

@@ -18,11 +18,11 @@ macro_rules! t {
 fn main() {
     coroutine::scheduler_set_workers(1);
 
-    // let target_addr = "192.168.56.102:5555";
+    // let target_addr = "127.0.0.1:5555";
     let target_addr = "127.0.0.1:8080";
     let test_msg_len = 80;
-    let test_conn_num = 8;
-    let test_seconds = 2;
+    let test_conn_num = 100;
+    let test_seconds = 10;
     let io_timeout = 2;
 
     let stop = AtomicBool::new(false);
@@ -42,6 +42,7 @@ fn main() {
                 let mut conn = t!(TcpStream::connect(target_addr));
                 t!(conn.set_write_timeout(Some(Duration::from_secs(io_timeout))));
                 t!(conn.set_read_timeout(Some(Duration::from_secs(io_timeout))));
+                t!(conn.set_nodelay(true));
 
                 let l = msg.len();
                 let mut recv = vec![0; l];

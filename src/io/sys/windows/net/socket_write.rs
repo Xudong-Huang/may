@@ -17,7 +17,8 @@ pub struct SocketWrite<'a> {
 }
 
 impl<'a> SocketWrite<'a> {
-    pub fn new(socket: RawSocket, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsRawSocket>(s: T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+        let socket = s.as_raw_socket();
         SocketWrite {
             io_data: EventData::new(socket as HANDLE),
             buf: buf,

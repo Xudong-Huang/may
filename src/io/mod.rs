@@ -21,4 +21,8 @@ mod sys;
 mod event_loop;
 
 pub use self::event_loop::EventLoop;
-pub use self::sys::{EventData, Selector, net};
+pub use self::sys::{IoData, EventData, Selector, add_socket, del_socket, net};
+
+pub trait AsEventData {
+    fn as_event_data(&self) -> &mut EventData;
+}

@@ -18,7 +18,8 @@ pub struct SocketRead<'a> {
 }
 
 impl<'a> SocketRead<'a> {
-    pub fn new(socket: RawSocket, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsRawSocket>(s: T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
+        let socket = s.as_raw_socket();
         SocketRead {
             io_data: EventData::new(socket as HANDLE),
             buf: buf,
@@ -39,6 +40,7 @@ impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         // if the event happened before this there would be something wrong
+        // that the timer handle can't be removed in time
         // we must prepare the timer before call the API
         s.add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first

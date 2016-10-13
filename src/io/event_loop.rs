@@ -25,7 +25,7 @@ impl EventLoop {
     /// any of the registered handles are ready.
     pub fn run(&self) -> io::Result<()> {
         let s = get_scheduler();
-        let mut events_buf: [SysEvent; 1024] = unsafe { ::std::mem::uninitialized() };
+        let mut events_buf: [SysEvent; 128] = unsafe { ::std::mem::uninitialized() };
         let mut next_expire = None;
         loop {
             // first run the selector

@@ -1,9 +1,14 @@
-use io::net as net_impl;
 use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
+use io as io_impl;
+use io::net as net_impl;
 use yield_now::yield_with;
 use coroutine::is_coroutine;
+
+extern crate nix;
+use self::nix::fcntl::FcntlArg::F_SETFL;
+use self::nix::fcntl::{fcntl, O_NONBLOCK};
 
 // ===== TcpStream =====
 //
@@ -11,6 +16,7 @@ use coroutine::is_coroutine;
 
 #[derive(Debug)]
 pub struct TcpStream {
+    io: io_impl::IoData,
     sys: net::TcpStream,
     read_timeout: Option<Duration>,
     write_timeout: Option<Duration>,
@@ -21,10 +27,12 @@ impl TcpStream {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        try!(s.set_nonblocking(true));
+        // try!(s.set_nonblocking(true));
+        try!(fcntl(s.as_raw_fd(), F_SETFL(O_NONBLOCK)));
 
-        net_impl::add_socket(&s).map(|_| {
+        io_impl::add_socket(&s).map(|io| {
             TcpStream {
+                io: io,
                 sys: s,
                 read_timeout: None,
                 write_timeout: None,
@@ -39,7 +47,8 @@ impl TcpStream {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         if !is_coroutine() {
             let s = try!(net::TcpStream::connect(addr));
-            return TcpStream::new(s);
+            let fd = s.as_raw_fd();
+            return Ok(TcpStream::from_stream(s, io_impl::IoData::new(fd)));
         }
 
         let c = try!(net_impl::TcpStreamConnect::new(addr));
@@ -56,14 +65,12 @@ impl TcpStream {
     }
 
     pub fn try_clone(&self) -> io::Result<TcpStream> {
-        self.sys.try_clone().map(|s| {
-            TcpStream {
-                sys: s,
-                read_timeout: self.read_timeout,
-                write_timeout: self.read_timeout,
-            }
-        })
+        let s = try!(self.sys.try_clone().and_then(|s| TcpStream::new(s)));
+        s.set_read_timeout(self.read_timeout).unwrap();
+        s.set_write_timeout(self.write_timeout).unwrap();
+        Ok(s)
     }
+
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.sys.shutdown(how)
     }
@@ -98,24 +105,13 @@ impl TcpStream {
 
     // convert std::net::TcpStream to Self without add_socket
     #[cfg(unix)]
-    pub fn from_stream(s: net::TcpStream) -> Self {
+    pub fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
+            io: io,
             sys: s,
             read_timeout: None,
             write_timeout: None,
         }
-    }
-
-    #[cfg(windows)]
-    #[inline]
-    fn as_raw(&self) -> RawSocket {
-        self.as_raw_socket()
-    }
-
-    #[cfg(unix)]
-    #[inline]
-    fn as_raw(&self) -> RawFd {
-        self.as_raw_fd()
     }
 }
 
@@ -136,7 +132,7 @@ impl Read for TcpStream {
             ret @ _ => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(self.as_raw(), buf, self.read_timeout);
+        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -144,13 +140,13 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !is_coroutine() {
-            // in the thread context, just use the block version
-            try!(self.sys.set_nonblocking(false));
-            let ret = try!(self.sys.write(buf));
-            try!(self.sys.set_nonblocking(true));;
-            return Ok(ret);
-        }
+        // if !is_coroutine() {
+        //     // in the thread context, just use the block version
+        //     try!(self.sys.set_nonblocking(false));
+        //     let ret = try!(self.sys.write(buf));
+        //     try!(self.sys.set_nonblocking(true));;
+        //     return Ok(ret);
+        // }
 
         // this is an earlier return try for nonblocking write
         match self.sys.write(buf) {
@@ -158,7 +154,7 @@ impl Write for TcpStream {
             ret @ _ => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(self.as_raw(), buf, self.write_timeout);
+        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }
@@ -169,6 +165,18 @@ impl Write for TcpStream {
     }
 }
 
+impl Drop for TcpStream {
+    fn drop(&mut self) {
+        io_impl::del_socket(&self.io);
+    }
+}
+
+impl io_impl::AsEventData for TcpStream {
+    fn as_event_data(&self) -> &mut io_impl::EventData {
+        self.io.inner()
+    }
+}
+
 
 // ===== TcpListener =====
 //
@@ -176,17 +184,27 @@ impl Write for TcpStream {
 
 #[derive(Debug)]
 pub struct TcpListener {
+    io: io_impl::IoData,
     sys: net::TcpListener,
 }
 
 impl TcpListener {
+    pub fn new(s: net::TcpListener) -> io::Result<TcpListener> {
+        // only set non blocking in coroutine context
+        // we would first call nonblocking io in the coroutine
+        // to avoid unnecessary context switch
+        try!(s.set_nonblocking(true));
+        // try!(s.reuse_address(true));
+        io_impl::add_socket(&s).map(|io| TcpListener { io: io, sys: s })
+    }
+
     pub fn inner(&self) -> &net::TcpListener {
         &self.sys
     }
 
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<TcpListener> {
         let s = try!(net::TcpListener::bind(addr));
-        net_impl::add_socket(&s).map(|_| TcpListener { sys: s })
+        TcpListener::new(s)
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
@@ -209,7 +227,7 @@ impl TcpListener {
     }
 
     pub fn try_clone(&self) -> io::Result<TcpListener> {
-        self.sys.try_clone().map(|s| TcpListener { sys: s })
+        self.sys.try_clone().and_then(|s| TcpListener::new(s))
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
@@ -217,6 +235,18 @@ impl TcpListener {
     }
 
     // TODO: add all std functions
+}
+
+impl Drop for TcpListener {
+    fn drop(&mut self) {
+        io_impl::del_socket(&self.io);
+    }
+}
+
+impl io_impl::AsEventData for TcpListener {
+    fn as_event_data(&self) -> &mut io_impl::EventData {
+        self.io.inner()
+    }
 }
 
 // ===== Incoming =====
@@ -244,7 +274,8 @@ use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
 #[cfg(unix)]
 impl IntoRawFd for TcpStream {
     fn into_raw_fd(self) -> RawFd {
-        self.sys.into_raw_fd()
+        self.sys.as_raw_fd()
+        // drop self will dereg from the selector
     }
 }
 
@@ -266,7 +297,8 @@ impl FromRawFd for TcpStream {
 #[cfg(unix)]
 impl IntoRawFd for TcpListener {
     fn into_raw_fd(self) -> RawFd {
-        self.sys.into_raw_fd()
+        self.sys.as_raw_fd()
+        // drop self will dereg from the selector
     }
 }
 
@@ -281,9 +313,8 @@ impl AsRawFd for TcpListener {
 impl FromRawFd for TcpListener {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpListener {
         let s: net::TcpListener = FromRawFd::from_raw_fd(fd);
-        net_impl::add_socket(&s)
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e));
-        TcpListener { sys: s }
+        TcpListener::new(s)
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e))
     }
 }
 
@@ -336,7 +367,7 @@ impl AsRawSocket for TcpListener {
 impl FromRawSocket for TcpListener {
     unsafe fn from_raw_socket(s: RawSocket) -> TcpListener {
         let s: net::TcpListener = FromRawSocket::from_raw_socket(s);
-        net_impl::add_socket(&s)
+        TcpListener::new(s)
             .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e));
         TcpListener { sys: s }
     }

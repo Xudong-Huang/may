@@ -1,21 +1,21 @@
 use std::{self, io};
 use std::time::Duration;
+use std::sync::atomic::Ordering;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
-use super::co_io_result;
 use super::super::libc;
-use super::super::{EventData, FLAG_WRITE};
+use super::super::{IoData, FLAG_WRITE, co_io_result};
+use io::add_socket;
 use net::TcpStream;
 use net2::TcpBuilder;
-use io::net::add_socket;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
-    io_data: EventData,
+    io_data: IoData,
     builder: TcpBuilder,
-    stream: Option<TcpStream>,
+    ret: Option<io::Result<TcpStream>>,
     addr: SocketAddr,
 }
 
@@ -40,38 +40,33 @@ impl TcpStreamConnect {
                 // prevent close the socket
                 s.into_raw_fd();
 
-                add_socket(&builder).and_then(|_| {
-                    let mut me = TcpStreamConnect {
-                        io_data: EventData::new(builder.as_raw_fd(), FLAG_WRITE),
+                // register the socket
+                add_socket(&builder).map(|io| {
+                    io.inner().interest = FLAG_WRITE;
+                    TcpStreamConnect {
+                        io_data: io,
                         builder: builder,
-                        stream: None,
+                        ret: None,
                         addr: addr,
-                    };
-                    // unix connect is some like completion mode
-                    // we must give the connect request first to the system
-                    match me.builder.connect(&me.addr) {
-                        Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
-                        Err(e) => return Err(e),
-                        Ok(s) => me.stream = Some(TcpStream::from_stream(s)),
                     }
-                    Ok(me)
                 })
             })
     }
 
     #[inline]
-    pub fn done(mut self) -> io::Result<TcpStream> {
-        if self.stream.is_some() {
-            // we already got the stream in new function
-            return Ok(self.stream.take().unwrap());
-        }
-
+    pub fn done(self) -> io::Result<TcpStream> {
         loop {
             try!(co_io_result());
+            match self.ret {
+                // we already got the ret in subscribe
+                Some(ret) => return ret,
+                None => {}
+            }
+
+            println!("try connect again, fd={}", self.builder.as_raw_fd());
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
-                Err(e) => return Err(e),
-                Ok(s) => return Ok(TcpStream::from_stream(s)),
+                ret @ _ => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
             }
             // the result is still EINPROGRESS, need to try again
             yield_with(&self);
@@ -82,7 +77,26 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
-        self.io_data.co = Some(co);
+        let io_data = self.io_data.inner();
+        s.add_io_timer(io_data, Some(Duration::from_secs(10)));
+        io_data.co.swap(co, Ordering::Release);
+
+        // unix connect is some like completion mode
+        // we must give the connect request first to the system
+        println!("try connect, fd={}", self.builder.as_raw_fd());
+        match self.builder.connect(&self.addr) {
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
+                println!("connect in progress, fd={}", self.builder.as_raw_fd());
+                return;
+            }
+            ret @ _ => {
+                self.ret = Some(ret.map(|s| {
+                    println!("connect success! fd = {}", s.as_raw_fd());
+                    TcpStream::from_stream(s, self.io_data)
+                }))
+            }
+        }
+        // since we got data here, need to remove the timer handle and schedule
+        self.io_data.inner().schedule();
     }
 }
