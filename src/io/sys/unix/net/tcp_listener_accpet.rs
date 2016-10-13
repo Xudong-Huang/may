@@ -1,7 +1,7 @@
 use std::{self, io};
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use super::super::{EventData, FLAG_READ, co_io_result};
+use super::super::{EventData, co_io_result};
 use io::AsEventData;
 use yield_now::yield_with;
 use net::{TcpStream, TcpListener};
@@ -11,17 +11,14 @@ use coroutine::{CoroutineImpl, EventSource};
 pub struct TcpListenerAccept<'a> {
     io_data: &'a mut EventData,
     socket: &'a std::net::TcpListener,
-    ret: Option<io::Result<(::std::net::TcpStream, SocketAddr)>>,
 }
 
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
         let io_data = socket.as_event_data();
-        io_data.interest = FLAG_READ;
         Ok(TcpListenerAccept {
             io_data: io_data,
             socket: socket.inner(),
-            ret: None,
         })
     }
 
@@ -29,11 +26,8 @@ impl<'a> TcpListenerAccept<'a> {
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
         loop {
             try!(co_io_result());
-            match self.ret {
-                // we already got the ret in subscribe
-                Some(ret) => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
-                None => {}
-            }
+            // clear the events
+            self.io_data.io_flag.swap(0, Ordering::Relaxed);
 
             match self.socket.accept() {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -51,9 +45,9 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // if there is no timer we don't need to call add_io_timer
         self.io_data.co.swap(co, Ordering::Release);
 
-        match self.socket.accept() {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => return,
-            ret @ _ => self.ret = Some(ret),
+        // there is no event
+        if self.io_data.io_flag.swap(0, Ordering::Relaxed) == 0 {
+            return;
         }
 
         // since we got data here, need to remove the timer handle and schedule

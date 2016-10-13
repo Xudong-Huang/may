@@ -9,7 +9,7 @@ pub mod net;
 
 use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
 use coroutine::CoroutineImpl;
@@ -17,13 +17,6 @@ use timeout_list::TimeoutHandle;
 use yield_now::{get_co_para, set_co_para};
 
 pub use self::select::{SysEvent, Selector};
-
-bitflags! {
-    flags EventFlags: u32 {
-        const FLAG_READ  = 0b00000001,
-        const FLAG_WRITE = 0b00000010,
-    }
-}
 
 #[inline]
 pub fn from_nix_error(err: nix::Error) -> ::std::io::Error {
@@ -63,7 +56,7 @@ pub struct TimerData {
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub interest: EventFlags,
+    pub io_flag: AtomicUsize,
     pub timer: Option<TimerHandle>,
     pub co: BoxedOption<CoroutineImpl>,
 }
@@ -72,7 +65,7 @@ impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd: fd,
-            interest: EventFlags::empty(),
+            io_flag: AtomicUsize::new(0),
             timer: None,
             co: BoxedOption::none(),
         }

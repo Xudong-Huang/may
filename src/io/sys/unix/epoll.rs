@@ -1,28 +1,18 @@
 use std::os::unix::io::RawFd;
 use std::{io, cmp, ptr, isize};
 use std::sync::atomic::Ordering;
+use super::EventData;
 use super::from_nix_error;
 use super::nix::sys::epoll::*;
 use super::nix::fcntl::FcntlArg::F_SETFL;
 use super::nix::fcntl::{fcntl, O_CLOEXEC};
 use super::nix::unistd::close;
-use super::{EventFlags, FLAG_READ, FLAG_WRITE, EventData};
 use scheduler::Scheduler;
 use timeout_list::ns_to_ms;
 use queue::mpsc_list::Queue as mpsc;
 
 pub type SysEvent = EpollEvent;
 
-#[inline]
-fn is_interest_event(events: &EpollEventKind, interest: &EventFlags) -> bool {
-    info!("kind = {:?}, interest={:?}", events, interest);
-    // events.contains(EPOLLERR)
-    if events.contains(EPOLLIN) && interest.contains(FLAG_READ) ||
-       events.contains(EPOLLOUT) && interest.contains(FLAG_WRITE) {
-        return true;
-    }
-    false
-}
 
 pub struct Selector {
     epfd: RawFd,
@@ -40,7 +30,7 @@ impl Selector {
     }
 
     pub fn select(&self,
-                  s: &Scheduler,
+                  _s: &Scheduler,
                   events: &mut [SysEvent],
                   timeout: Option<u64>)
                   -> io::Result<()> {
@@ -60,11 +50,7 @@ impl Selector {
             }
             let data = unsafe { &mut *(event.data as *mut EventData) };
             // info!("select got event, data={:p}", data);
-            if !is_interest_event(&event.events, &data.interest) {
-                // there is no interested event happened
-                // println!("no interested event");
-                continue;
-            }
+            data.io_flag.store(event.events.bits() as usize, Ordering::Relaxed);
 
             // first check the atomic co, this may be grab by the worker first
             let co = data.co.take(Ordering::Acquire);

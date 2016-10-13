@@ -15,13 +15,11 @@ path ="../generator-rs"
 path ="../queue"
 
 [target.'cfg(unix)'.dependencies]
-bitflags = "0.3"
 libc = "0.2.16"
 nix = "0.7.0"
 
 [target.'cfg(windows)'.dependencies]
 miow = "0.1.3"
-#miow = {path = "../../rust/miow"}
 winapi = "0.2.8"
 kernel32-sys = "0.2"
 

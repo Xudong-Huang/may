@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
 use super::super::libc;
-use super::super::{IoData, FLAG_WRITE, co_io_result};
+use super::super::{IoData, co_io_result};
 use io::add_socket;
 use net::TcpStream;
 use net2::TcpBuilder;
@@ -42,11 +42,17 @@ impl TcpStreamConnect {
 
                 // register the socket
                 add_socket(&builder).map(|io| {
-                    io.inner().interest = FLAG_WRITE;
+                    // unix connect is some like completion mode
+                    // we must give the connect request first to the system
+                    let ret = match builder.connect(&addr) {
+                        Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
+                        ret @ _ => Some(ret.map(|s| TcpStream::from_stream(s, io))),
+                    };
+
                     TcpStreamConnect {
                         io_data: io,
                         builder: builder,
-                        ret: None,
+                        ret: ret,
                         addr: addr,
                     }
                 })
@@ -55,19 +61,21 @@ impl TcpStreamConnect {
 
     #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
+        match self.ret {
+            Some(s) => return s,
+            None => {}
+        }
+
         loop {
             try!(co_io_result());
-            match self.ret {
-                // we already got the ret in subscribe
-                Some(ret) => return ret,
-                None => {}
-            }
+            // clear the events
+            self.io_data.inner().io_flag.swap(0, Ordering::Relaxed);
 
-            println!("try connect again, fd={}", self.builder.as_raw_fd());
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 ret @ _ => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
             }
+
             // the result is still EINPROGRESS, need to try again
             yield_with(&self);
         }
@@ -81,21 +89,11 @@ impl EventSource for TcpStreamConnect {
         s.add_io_timer(io_data, Some(Duration::from_secs(10)));
         io_data.co.swap(co, Ordering::Release);
 
-        // unix connect is some like completion mode
-        // we must give the connect request first to the system
-        println!("try connect, fd={}", self.builder.as_raw_fd());
-        match self.builder.connect(&self.addr) {
-            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
-                println!("connect in progress, fd={}", self.builder.as_raw_fd());
-                return;
-            }
-            ret @ _ => {
-                self.ret = Some(ret.map(|s| {
-                    println!("connect success! fd = {}", s.as_raw_fd());
-                    TcpStream::from_stream(s, self.io_data)
-                }))
-            }
+        // there is no event
+        if self.io_data.inner().io_flag.swap(0, Ordering::Relaxed) == 0 {
+            return;
         }
+
         // since we got data here, need to remove the timer handle and schedule
         self.io_data.inner().schedule();
     }
