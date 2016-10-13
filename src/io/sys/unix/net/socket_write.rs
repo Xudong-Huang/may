@@ -31,6 +31,8 @@ impl<'a> SocketWrite<'a> {
     pub fn done(self) -> io::Result<usize> {
         loop {
             try!(co_io_result());
+            // clear the io_flag
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             match write(self.io_data.fd, self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}

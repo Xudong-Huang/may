@@ -22,7 +22,7 @@ fn main() {
     let target_addr = "127.0.0.1:8080";
     // let target_addr = "127.0.0.1:3000";
     let test_msg_len = 80;
-    let test_conn_num = 2;
+    let test_conn_num = 8;
     let test_seconds = 10;
     let io_timeout = 2;
 

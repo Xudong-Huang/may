@@ -68,6 +68,8 @@ impl TcpStreamConnect {
 
         loop {
             try!(co_io_result());
+            // clear the io_flag
+            self.io_data.inner().io_flag.store(0, Ordering::Relaxed);
 
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}

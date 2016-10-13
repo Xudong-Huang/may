@@ -18,8 +18,6 @@ pub struct SocketRead<'a> {
 impl<'a> SocketRead<'a> {
     pub fn new<T: AsEventData>(s: &'a T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
         let io_data = s.as_event_data();
-        // clear the io_flag
-        // io_data.io_flag.store(0, Ordering::Relaxed);
         SocketRead {
             io_data: io_data,
             buf: buf,
@@ -31,6 +29,8 @@ impl<'a> SocketRead<'a> {
     pub fn done(self) -> io::Result<usize> {
         loop {
             try!(co_io_result());
+            // clear the io_flag
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             // finish the read operaion
             match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
