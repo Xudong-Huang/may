@@ -18,6 +18,8 @@ pub struct SocketRead<'a> {
 impl<'a> SocketRead<'a> {
     pub fn new<T: AsEventData>(s: &'a T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
         let io_data = s.as_event_data();
+        // clear the io_flag
+        // io_data.io_flag.store(0, Ordering::Relaxed);
         SocketRead {
             io_data: io_data,
             buf: buf,
@@ -29,13 +31,16 @@ impl<'a> SocketRead<'a> {
     pub fn done(self) -> io::Result<usize> {
         loop {
             try!(co_io_result());
-            // clear the events
-            self.io_data.io_flag.swap(0, Ordering::Relaxed);
 
             // finish the read operaion
             match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret @ _ => return ret,
+            }
+
+            // clear the events
+            if self.io_data.io_flag.swap(0, Ordering::Relaxed) != 0 {
+                continue;
             }
 
             // the result is still WouldBlock, need to try again
@@ -50,8 +55,8 @@ impl<'a> EventSource for SocketRead<'a> {
         s.add_io_timer(&mut self.io_data, self.timeout);
         self.io_data.co.swap(co, Ordering::Release);
 
-        // there is no event
-        if self.io_data.io_flag.swap(0, Ordering::Relaxed) == 0 {
+        // there is no event, let the selector invoke it
+        if self.io_data.io_flag.load(Ordering::Relaxed) == 0 {
             return;
         }
 

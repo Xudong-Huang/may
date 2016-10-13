@@ -16,6 +16,8 @@ pub struct TcpListenerAccept<'a> {
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
         let io_data = socket.as_event_data();
+        // clear the io_flag
+        // io_data.io_flag.store(0, Ordering::Relaxed);
         Ok(TcpListenerAccept {
             io_data: io_data,
             socket: socket.inner(),
@@ -26,12 +28,15 @@ impl<'a> TcpListenerAccept<'a> {
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
         loop {
             try!(co_io_result());
-            // clear the events
-            self.io_data.io_flag.swap(0, Ordering::Relaxed);
 
             match self.socket.accept() {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+            }
+
+            // clear the events
+            if self.io_data.io_flag.swap(0, Ordering::Relaxed) != 0 {
+                continue;
             }
 
             // the result is still WouldBlock, need to try again
@@ -46,7 +51,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is no event
-        if self.io_data.io_flag.swap(0, Ordering::Relaxed) == 0 {
+        if self.io_data.io_flag.load(Ordering::Relaxed) == 0 {
             return;
         }
 

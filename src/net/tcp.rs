@@ -213,6 +213,11 @@ impl TcpListener {
             return TcpStream::new(s).map(|s| (s, a));
         }
 
+        match self.sys.accept() {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+        }
+
         let a = try!(net_impl::TcpListenerAccept::new(self));
         yield_with(&a);
         a.done()

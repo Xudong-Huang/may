@@ -1,7 +1,8 @@
 extern crate coroutine;
-use coroutine::net::{TcpListener, TcpStream};
 // use std::time::Duration;
 use std::io::{Read, Write};
+// use std::os::unix::io::AsRawFd;
+use coroutine::net::{TcpListener, TcpStream};
 
 macro_rules! t {
     ($e: expr) => (match $e {
@@ -14,16 +15,16 @@ macro_rules! t {
 }
 
 fn handle_client(mut stream: TcpStream) {
-    // read 20 bytes at a time from stream echoing back to stream
+    // println!("got connection fd = {:?}", stream.as_raw_fd());
     // t!(stream.set_read_timeout(Some(Duration::from_secs(10))));
     // t!(stream.set_write_timeout(Some(Duration::from_secs(10))));
-    // let mut i = 0;
     let mut read = vec![0; 1024 * 16]; // alloc in heap!
     loop {
         match stream.read(&mut read) {
             Ok(n) => {
                 if n == 0 {
                     // connection was closed
+                    // println!("connection closed fd={}", stream.as_raw_fd());
                     break;
                 }
 
