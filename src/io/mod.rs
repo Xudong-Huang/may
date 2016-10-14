@@ -20,9 +20,43 @@ mod sys;
 
 mod event_loop;
 
+use std::io;
+use coroutine::is_coroutine;
+
 pub use self::event_loop::EventLoop;
 pub use self::sys::{IoData, EventData, Selector, add_socket, del_socket, net};
 
 pub trait AsEventData {
     fn as_event_data(&self) -> &mut EventData;
 }
+
+#[derive(Debug)]
+pub struct IoContext {
+    b_init: bool,
+    b_co: bool,
+}
+
+impl IoContext {
+    pub fn new() -> Self {
+        IoContext {
+            b_init: false,
+            b_co: true,
+        }
+    }
+
+    #[inline]
+    pub fn check<F>(&self, f: F) -> io::Result<bool>
+        where F: FnOnce() -> io::Result<()>
+    {
+        if !self.b_init {
+            let me = unsafe { &mut *(self as *const _ as *mut Self) };
+            if !is_coroutine() {
+                me.b_co = false;
+                try!(f());
+            }
+            me.b_init = true;
+        }
+        Ok(self.b_co)
+    }
+}
+

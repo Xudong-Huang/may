@@ -6,6 +6,7 @@ use io::net as net_impl;
 use yield_now::yield_with;
 use coroutine::is_coroutine;
 
+
 // ===== TcpStream =====
 //
 //
@@ -14,6 +15,7 @@ use coroutine::is_coroutine;
 pub struct TcpStream {
     io: io_impl::IoData,
     sys: net::TcpStream,
+    ctx: io_impl::IoContext,
     read_timeout: Option<Duration>,
     write_timeout: Option<Duration>,
 }
@@ -29,6 +31,7 @@ impl TcpStream {
             TcpStream {
                 io: io,
                 sys: s,
+                ctx: io_impl::IoContext::new(),
                 read_timeout: None,
                 write_timeout: None,
             }
@@ -103,6 +106,7 @@ impl TcpStream {
         TcpStream {
             io: io,
             sys: s,
+            ctx: io_impl::IoContext::new(),
             read_timeout: None,
             write_timeout: None,
         }
@@ -111,12 +115,9 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !is_coroutine() {
+        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
             // this can't be nonblocking!!
-            try!(self.sys.set_nonblocking(false));
-            let ret = try!(self.sys.read(buf));
-            try!(self.sys.set_nonblocking(true));;
-            return Ok(ret);
+            return self.sys.read(buf);
         }
 
         self.io.reset();
@@ -135,12 +136,9 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !is_coroutine() {
-            // in the thread context, just use the block version
-            try!(self.sys.set_nonblocking(false));
-            let ret = try!(self.sys.write(buf));
-            try!(self.sys.set_nonblocking(true));;
-            return Ok(ret);
+        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+            // this can't be nonblocking!!
+            return self.sys.write(buf);
         }
 
         self.io.reset();
@@ -182,6 +180,7 @@ impl io_impl::AsEventData for TcpStream {
 #[derive(Debug)]
 pub struct TcpListener {
     io: io_impl::IoData,
+    ctx: io_impl::IoContext,
     sys: net::TcpListener,
 }
 
@@ -192,7 +191,13 @@ impl TcpListener {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
         // try!(s.reuse_address(true));
-        io_impl::add_socket(&s).map(|io| TcpListener { io: io, sys: s })
+        io_impl::add_socket(&s).map(|io| {
+            TcpListener {
+                io: io,
+                ctx: io_impl::IoContext::new(),
+                sys: s,
+            }
+        })
     }
 
     pub fn inner(&self) -> &net::TcpListener {
@@ -205,9 +210,8 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if !is_coroutine() {
-            let (s, a) = try!(self.sys.accept());
-            return TcpStream::new(s).map(|s| (s, a));
+        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+            return self.sys.accept().and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
         }
 
         self.io.reset();
