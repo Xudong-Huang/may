@@ -88,12 +88,12 @@ pub fn get_scheduler() -> &'static Scheduler {
         });
 
         // io event loop thread
-        for id in 0..io_workers {
+        for _id in 0..io_workers {
             thread::spawn(move || {
                 let s = unsafe { &*sched };
-                s.event_loop
-                    .run(id)
-                    .unwrap_or_else(|e| panic!("event_loop failed running, err={}", e));
+                s.event_loop.run().unwrap_or_else(|e| {
+                    panic!("event_loop failed running, err={}", e);
+                });
             });
         }
     });

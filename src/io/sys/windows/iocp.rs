@@ -65,6 +65,7 @@ pub struct Selector {
 
 impl Selector {
     pub fn new() -> io::Result<Selector> {
+        // only let one thread working, other threads blocking, this is more efficient
         CompletionPort::new(1).map(|cp| Selector { port: cp })
     }
 
@@ -91,12 +92,15 @@ impl Selector {
 
             // it's safe to remove the timer since we are
             // runing the timer_list in the same thread
+            // this is not true when running in multi-thread environment
             data.timer.take().map(|h| {
                 unsafe {
                     // tell the timer function not to cancel the io
                     // it's not always true that you can really remove the timer entry
+                    // it's safe in multi-thread env because it only access its own data
                     h.get_data().data.event_data = ptr::null_mut();
                 }
+                // NOT SAFE for multi-thread!!
                 h.remove()
             });
 
@@ -133,7 +137,10 @@ impl Selector {
             }
 
             // schedule the coroutine
-            co.resume().map(|ev| ev.subscribe(co));
+            match co.resume() {
+                Some(ev) => ev.subscribe(co),
+                None => panic!("coroutine not return!"),
+            }
         }
 
         Ok(())
@@ -142,6 +149,7 @@ impl Selector {
     // this will post an os event so that we can wakeup the event loop
     #[inline]
     pub fn wakeup(&self) {
+        // this is not correct for multi thread io, which thread will it wakeup?
         self.port.post(CompletionStatus::new(0, 0, ptr::null_mut())).unwrap();
     }
 
