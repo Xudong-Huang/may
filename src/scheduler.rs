@@ -57,7 +57,7 @@ pub fn get_scheduler() -> &'static Scheduler {
     ONCE.call_once(|| {
         let workers = unsafe { WORKERS };
         let io_workers = unsafe { IO_WORKERS };
-        let b: Box<Scheduler> = Scheduler::new(workers);
+        let b: Box<Scheduler> = Scheduler::new();
         unsafe {
             sched = Box::into_raw(b);
         }
@@ -91,7 +91,9 @@ pub fn get_scheduler() -> &'static Scheduler {
         for id in 0..io_workers {
             thread::spawn(move || {
                 let s = unsafe { &*sched };
-                s.event_loop.run(id).unwrap();
+                s.event_loop
+                    .run(id)
+                    .unwrap_or_else(|e| panic!("event_loop failed running, err={}", e));
             });
         }
     });
@@ -111,10 +113,11 @@ type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
 type CacheBuf = RingBuf<[CoroutineImpl; PREFTCH_SIZE + 2]>;
 
 impl Scheduler {
-    pub fn new(workers: usize) -> Box<Self> {
+    pub fn new() -> Box<Self> {
+        let workers = unsafe { WORKERS };
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new().unwrap(),
+            event_loop: EventLoop::new().expect("can't create event_loop"),
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
@@ -129,7 +132,7 @@ impl Scheduler {
         // prefech one coroutine
         let mut j = 0;
         while j < PREFTCH_SIZE && j < size {
-            let co = drain.next().unwrap();
+            let co = drain.next().expect("failed to drain co from vec");
             co.prefetch();
             unsafe {
                 old.push_unchecked(co);
@@ -139,21 +142,25 @@ impl Scheduler {
 
         j = 0;
         while (j as isize) < (size as isize) - (PREFTCH_SIZE as isize) {
-            let co = drain.next().unwrap();
+            let co = drain.next().expect("failed to drain co from vec");
             co.prefetch();
             unsafe {
                 old.push_unchecked(co);
             }
             let mut old_co = unsafe { old.pop_unchecked() };
-            let event_subscriber = old_co.resume().unwrap();
-            event_subscriber.subscribe(old_co);
+            match old_co.resume() {
+                Some(ev) => ev.subscribe(old_co),
+                None => panic!("coroutine not return!"),
+            }
             j += 1;
         }
 
         while j < size {
             let mut old_co = unsafe { old.pop_unchecked() };
-            let event_subscriber = old_co.resume().unwrap();
-            event_subscriber.subscribe(old_co);
+            match old_co.resume() {
+                Some(ev) => ev.subscribe(old_co),
+                None => panic!("coroutine not return!"),
+            }
             j += 1;
         }
     }
