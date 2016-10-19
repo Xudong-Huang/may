@@ -7,12 +7,10 @@ use super::nix::sys::epoll::*;
 use super::nix::fcntl::FcntlArg::F_SETFL;
 use super::nix::fcntl::{fcntl, O_CLOEXEC};
 use super::nix::unistd::close;
-use scheduler::Scheduler;
 use timeout_list::ns_to_ms;
 use queue::mpsc_list::Queue as mpsc;
 
 pub type SysEvent = EpollEvent;
-
 
 pub struct Selector {
     epfd: RawFd,
@@ -29,11 +27,7 @@ impl Selector {
         })
     }
 
-    pub fn select(&self,
-                  _s: &Scheduler,
-                  events: &mut [SysEvent],
-                  timeout: Option<u64>)
-                  -> io::Result<()> {
+    pub fn select(&self, events: &mut [SysEvent], timeout: Option<u64>) -> io::Result<()> {
         let timeout_ms = timeout.map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
         // info!("select; timeout={:?}", timeout_ms);
@@ -59,23 +53,24 @@ impl Selector {
                 // warn!("can't get coroutine in the epoll select");
                 continue;
             }
+            let mut co = co.unwrap();
+            // co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
-            data.timer.take().map(|h| {
-                unsafe {
-                    // tell the timer function not to cancel the io
-                    // it's not always true that you can really remove the timer entry
-                    h.get_data().data.event_data = ptr::null_mut();
-                }
-                h.remove()
-            });
+            // data.timer.take().map(|h| {
+            //     unsafe {
+            //         // tell the timer function not to cancel the io
+            //         // it's not always true that you can really remove the timer entry
+            //         h.get_data().data.event_data = ptr::null_mut();
+            //     }
+            //     h.remove()
+            // });
 
             // schedule the coroutine
-            // let co = co.unwrap();
-            // s.schedule_io(co);
-            let mut co = co.unwrap();
-            let event_subscriber = co.resume().expect("asdfadsfasdf");
-            event_subscriber.subscribe(co);
+            match co.resume() {
+                Some(ev) => ev.subscribe(co),
+                None => panic!("coroutine not return!"),
+            }
         }
 
         // free the unused event_data
@@ -123,7 +118,7 @@ impl Selector {
     #[inline]
     fn free_unused_event_data(&self) {
         while let Some(ev) = self.free_ev.pop() {
-            let _ = unsafe { Box::from_raw(ev) };
+            // let _ = unsafe { Box::from_raw(ev) };
         }
     }
 }

@@ -24,7 +24,7 @@ const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 static mut WORKERS: usize = 1;
-static mut IO_WORKERS: usize = 4;
+static mut IO_WORKERS: usize = 2;
 const PREFTCH_SIZE: usize = 4;
 
 /// set the worker thread number

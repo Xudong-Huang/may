@@ -42,7 +42,7 @@ pub fn timeout_handler(data: TimerData) {
 
     let mut co = co.unwrap();
     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-    get_scheduler().schedule_io(co);
+    get_scheduler().schedule(co);
 }
 
 type TimerHandle = TimeoutHandle<TimerData>;
@@ -83,19 +83,23 @@ impl EventData {
             // it's alreay take by selector
             return;
         }
+        let mut co = co.unwrap();
+        // co.prefetch();
         // it's safe to remove the timer since we are runing the timer_list in the same thread
-        self.timer.take().map(|h| {
-            unsafe {
-                // tell the timer function not to cancel the io
-                // it's not always true that you can really remove the timer entry
-                h.get_data().data.event_data = ptr::null_mut();
-            }
-            h.remove()
-        });
+        // self.timer.take().map(|h| {
+        //     unsafe {
+        //         // tell the timer function not to cancel the io
+        //         // it's not always true that you can really remove the timer entry
+        //         h.get_data().data.event_data = ptr::null_mut();
+        //     }
+        //     h.remove()
+        // });
 
         // schedule the coroutine
-        let co = co.unwrap();
-        get_scheduler().schedule(co);
+        match co.resume() {
+            Some(ev) => ev.subscribe(co),
+            None => panic!("coroutine not return!"),
+        }
     }
 }
 
