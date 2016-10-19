@@ -4,7 +4,7 @@ macro_rules! co_try {
         Err(err) => {
             let mut co = $co;
             ::yield_now::set_co_para(&mut co, err);
-            $s.schedule_io(co);
+            $s.schedule(co);
             return;
         }
     })
@@ -59,4 +59,3 @@ impl IoContext {
         Ok(self.b_co)
     }
 }
-

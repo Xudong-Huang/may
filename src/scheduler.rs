@@ -9,7 +9,6 @@ use std::sync::{Arc, Once, ONCE_INIT};
 use smallvec::SmallVec;
 use queue::BLOCK_SIZE;
 use queue::mpmc::Queue as mpmc;
-use queue::spmc::Queue as spmc;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
@@ -25,6 +24,7 @@ const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 static mut WORKERS: usize = 1;
+static mut IO_WORKERS: usize = 4;
 const PREFTCH_SIZE: usize = 4;
 
 /// set the worker thread number
@@ -56,6 +56,7 @@ pub fn get_scheduler() -> &'static Scheduler {
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
         let workers = unsafe { WORKERS };
+        let io_workers = unsafe { IO_WORKERS };
         let b: Box<Scheduler> = Scheduler::new(workers);
         unsafe {
             sched = Box::into_raw(b);
@@ -87,10 +88,12 @@ pub fn get_scheduler() -> &'static Scheduler {
         });
 
         // io event loop thread
-        thread::spawn(move || {
-            let s = unsafe { &*sched };
-            s.event_loop.run().unwrap();
-        });
+        for id in 0..io_workers {
+            thread::spawn(move || {
+                let s = unsafe { &*sched };
+                s.event_loop.run(id).unwrap();
+            });
+        }
     });
     unsafe { &*sched }
 }
@@ -98,7 +101,6 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
-    event_list: spmc<CoroutineImpl>,
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
     timer_list: TimerList,
@@ -113,7 +115,6 @@ impl Scheduler {
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new().unwrap(),
-            event_list: spmc::new(workers),
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),
@@ -175,18 +176,6 @@ impl Scheduler {
             }
             // }
 
-            // steal from io event list
-            // let mut size = self.event_list.size();
-            // if size > 0 {
-            // size = cmp::max(size / self.workers, 1);
-            // size = self.event_list.bulk_pop_expect(id, size, &mut vec);
-            size = self.event_list.bulk_pop_expect(id, 0, &mut vec);
-            if size > 0 {
-                total += size;
-                self.run_coroutines(&mut vec, &mut cached, size);
-            }
-            // }
-
             // steal from the ready list
             // let mut size = self.ready_list.size();
             // if size > 0 {
@@ -211,8 +200,7 @@ impl Scheduler {
                     }
                 }
 
-                if !self.ready_list.is_empty() || self.visit_list.size() > 0 ||
-                   self.event_list.size() > 0 {
+                if !self.ready_list.is_empty() || self.visit_list.size() > 0 {
                     self.wait_list.pop().map(|t| t.unpark());
                 }
 
@@ -230,13 +218,6 @@ impl Scheduler {
         } else {
             self.visit_list.push(co);
         }
-        // signal one waiting thread if any
-        self.wait_list.pop().map(|t| t.unpark());
-    }
-
-    #[inline]
-    pub fn schedule_io(&self, co: CoroutineImpl) {
-        self.event_list.push(co);
         // signal one waiting thread if any
         self.wait_list.pop().map(|t| t.unpark());
     }

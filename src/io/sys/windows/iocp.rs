@@ -6,7 +6,6 @@ use std::os::windows::io::AsRawSocket;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
-use scheduler::Scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::set_co_para;
 use timeout_list::{TimeoutHandle, ns_to_ms};
@@ -69,11 +68,7 @@ impl Selector {
         CompletionPort::new(1).map(|cp| Selector { port: cp })
     }
 
-    pub fn select(&self,
-                  s: &Scheduler,
-                  events: &mut [SysEvent],
-                  timeout: Option<u64>)
-                  -> io::Result<()> {
+    pub fn select(&self, events: &mut [SysEvent], timeout: Option<u64>) -> io::Result<()> {
         let timeout = timeout.map(|to| cmp::min(ns_to_ms(to), u32::MAX as u64) as u32);
         info!("select; timeout={:?}", timeout);
         info!("polling IOCP");
@@ -105,13 +100,16 @@ impl Selector {
                 h.remove()
             });
 
-            let co = data.co.take();
-            if co.is_none() {
-                // there is no coroutine prepared, just ignore this one
-                error!("can't get coroutine in the iocp select");
-                continue;
-            }
-            let mut co = co.unwrap();
+            let mut co = match data.co.take() {
+                None => {
+                    // there is no coroutine prepared, just ignore this one
+                    error!("can't get coroutine in the iocp select");
+                    continue;
+                }
+                Some(co) => co,
+            };
+            // prefetch the co into cache
+            co.prefetch();
 
             const STATUS_CANCELLED_U32: u32 = STATUS_CANCELLED as u32;
             // check the status
@@ -135,7 +133,7 @@ impl Selector {
             }
 
             // schedule the coroutine
-            s.schedule_io(co);
+            co.resume().map(|ev| ev.subscribe(co));
         }
 
         Ok(())

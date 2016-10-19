@@ -1,6 +1,5 @@
 use std::io;
 use std::time::Duration;
-use scheduler::get_scheduler;
 use timeout_list::{TimeOutList, now};
 use super::sys::{Selector, SysEvent, EventData, TimerData, timeout_handler};
 
@@ -23,13 +22,12 @@ impl EventLoop {
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
-    pub fn run(&self) -> io::Result<()> {
-        let s = get_scheduler();
+    pub fn run(&self, _id: usize) -> io::Result<()> {
         let mut events_buf: [SysEvent; 128] = unsafe { ::std::mem::uninitialized() };
         let mut next_expire = None;
         loop {
             // first run the selector
-            try!(self.selector.select(s, &mut events_buf, next_expire));
+            try!(self.selector.select(&mut events_buf, next_expire));
             // deal with the timer list
             let now = now();
             next_expire = self.timer_list.schedule_timer(now, &timeout_handler);
@@ -48,7 +46,7 @@ impl EventLoop {
             // info!("io timeout = {:?}", dur);
             let (h, b_new) = self.timer_list.add_timer(dur, io.timer_data());
             if b_new {
-                // wakeup the event loop threead to recal the next wait
+                // wakeup the event loop threead to recal the next wait timeout
                 self.selector.wakeup();
             }
             h
