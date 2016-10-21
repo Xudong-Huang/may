@@ -79,6 +79,26 @@ fn main() {
             stop.store(true, Ordering::Release);
         });
 
+        // print the result every one second
+        scope.spawn(|| {
+            let mut time = 0;
+            let mut last_num = 0;
+            while !stop.load(Ordering::Relaxed) {
+                coroutine::sleep(Duration::from_secs(1));
+                time += 1;
+
+                let out_num = out_num.load(Ordering::Relaxed);
+                let packets = out_num - last_num;
+                last_num = out_num;
+
+                print!("\r{} Secs, Speed: {} packets/sec,  {} kb/sec\r",
+                       time,
+                       packets,
+                       packets * test_msg_len / 1024);
+                std::io::stdout().flush().ok();
+            }
+        });
+
         for _ in 0..test_conn_num {
             scope.spawn(|| {
                 let mut conn = t!(TcpStream::connect(addr));
@@ -110,14 +130,16 @@ fn main() {
     let in_num = in_num.load(Ordering::Relaxed);
     let out_num = out_num.load(Ordering::Relaxed);
 
-    println!("Benchmarking: {}", target_addr);
+    println!("==================Benchmarking: {}==================",
+             target_addr);
     println!("{} clients, running {} bytes, {} sec.\n",
              test_conn_num,
              test_msg_len,
              test_seconds);
-    println!("Speed: {} request/sec,  {} response/sec",
+    println!("Speed: {} request/sec,  {} response/sec, {} kb/sec",
              out_num / test_seconds,
-             in_num / test_seconds);
+             in_num / test_seconds,
+             out_num * test_msg_len / 1024);
     println!("Requests: {}", out_num);
     println!("Responses: {}", in_num);
 }
