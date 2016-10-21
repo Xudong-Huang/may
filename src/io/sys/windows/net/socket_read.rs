@@ -48,7 +48,7 @@ impl<'a> EventSource for SocketRead<'a> {
 
         // call the overlapped read API
         co_try!(s,
-                self.io_data.co.take().unwrap(),
+                self.io_data.co.take().expect("can't get co"),
                 unsafe { self.socket.read_overlapped(self.buf, self.io_data.get_overlapped()) });
     }
 }

@@ -43,7 +43,7 @@ impl<'a> EventSource for SocketWrite<'a> {
         self.io_data.co = Some(co);
         // call the overlapped write API
         co_try!(s,
-                self.io_data.co.take().unwrap(),
+                self.io_data.co.take().expect("can't get co"),
                 unsafe { self.socket.write_overlapped(self.buf, self.io_data.get_overlapped()) });
     }
 }

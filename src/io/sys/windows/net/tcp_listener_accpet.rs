@@ -62,7 +62,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         self.io_data.co = Some(co);
 
         // call the overlapped read API
-        let (s, _) = co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+        let (s, _) = co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.socket
                 .accept_overlapped(&self.builder, &mut self.addr, self.io_data.get_overlapped())
         });

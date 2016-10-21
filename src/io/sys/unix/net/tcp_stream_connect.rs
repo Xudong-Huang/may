@@ -1,5 +1,5 @@
 use std::{self, io};
-// use std::time::Duration;
+use std::time::Duration;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
 use super::super::{libc, EventData, FLAG_WRITE, co_io_result, add_socket};
@@ -87,12 +87,13 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        // if there is no timer we don't need to call add_io_timer
+        let selector = s.get_selector();
+        selector.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
         self.io_data.co = Some(co);
 
         // register the io operaton
         co_try!(s,
                 self.io_data.co.take().expect("can't get co"),
-                s.get_selector().add_io(&self.io_data));
+                selector.add_io(&self.io_data));
     }
 }

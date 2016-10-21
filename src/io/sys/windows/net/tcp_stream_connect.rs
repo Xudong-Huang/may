@@ -1,4 +1,5 @@
 use std::io;
+use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
 use std::net::{ToSocketAddrs, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use super::super::winapi::*;
@@ -74,12 +75,11 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        // we don't need to register the timeout here,
-        // prepare the co first
+        s.get_selector().add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
         self.io_data.co = Some(co);
 
         // call the overlapped connect API
-        co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.stream.inner().connect_overlapped(&self.addr, self.io_data.get_overlapped())
         });
     }
