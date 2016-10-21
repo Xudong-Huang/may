@@ -1,11 +1,8 @@
 use std::{self, io};
-use std::time::Duration;
-use std::sync::atomic::Ordering;
+// use std::time::Duration;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
-use super::super::libc;
-use super::super::{IoData, co_io_result};
-use io::add_socket;
+use super::super::{libc, EventData, FLAG_WRITE, co_io_result, add_socket};
 use net::TcpStream;
 use net2::TcpBuilder;
 use yield_now::yield_with;
@@ -13,10 +10,10 @@ use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
-    io_data: IoData,
+    io_data: EventData,
     builder: TcpBuilder,
-    ret: Option<io::Result<TcpStream>>,
     addr: SocketAddr,
+    ret: Option<io::Result<TcpStream>>,
 }
 
 impl TcpStreamConnect {
@@ -40,46 +37,45 @@ impl TcpStreamConnect {
                 // prevent close the socket
                 s.into_raw_fd();
 
-                // register the socket
-                add_socket(&builder).map(|io| {
+                add_socket(&builder).map(|_| {
                     // unix connect is some like completion mode
                     // we must give the connect request first to the system
                     let ret = match builder.connect(&addr) {
                         Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
-                        ret @ _ => Some(ret.map(|s| TcpStream::from_stream(s, io))),
+                        ret @ _ => Some(ret.map(|s| TcpStream::from_stream(s))),
                     };
 
                     TcpStreamConnect {
-                        io_data: io,
+                        io_data: EventData::new(builder.as_raw_fd(), FLAG_WRITE),
                         builder: builder,
-                        ret: ret,
                         addr: addr,
+                        ret: ret,
                     }
                 })
             })
     }
 
     #[inline]
+    pub fn get_stream(&mut self) -> Option<io::Result<TcpStream>> {
+        self.ret.take()
+    }
+
+    #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
-        try!(co_io_result());
+        let s = get_scheduler().get_selector();
         match self.ret {
             Some(s) => return s,
             None => {}
         }
 
         loop {
-            // clear the io_flag
-            self.io_data.inner().io_flag.store(false, Ordering::Relaxed);
+            s.del_fd(self.io_data.fd);
+            try!(co_io_result());
 
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
-                ret @ _ => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
-            }
-
-            // clear the events
-            if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {
-                continue;
+                ret @ _ => return ret.map(|s| TcpStream::from_stream(s)),
             }
 
             // the result is still EINPROGRESS, need to try again
@@ -91,16 +87,13 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        let io_data = self.io_data.inner();
-        s.add_io_timer(io_data, Some(Duration::from_secs(10)));
-        io_data.co.swap(co, Ordering::Release);
+        // s.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
+        s.add_io_timer(&mut self.io_data, None);
+        self.io_data.co = Some(co);
 
-        // there is no event
-        if !self.io_data.inner().io_flag.load(Ordering::Relaxed) {
-            return;
-        }
-
-        // since we got data here, need to remove the timer handle and schedule
-        self.io_data.inner().schedule();
+        // register the io operaton
+        co_try!(s,
+                self.io_data.co.take().expect("can't get co"),
+                s.get_selector().add_io(&self.io_data));
     }
 }

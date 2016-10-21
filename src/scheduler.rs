@@ -24,7 +24,7 @@ const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 static mut WORKERS: usize = 1;
-static mut IO_WORKERS: usize = 2;
+static mut IO_WORKERS: usize = 4;
 const PREFTCH_SIZE: usize = 4;
 
 /// set the worker thread number
@@ -88,10 +88,10 @@ pub fn get_scheduler() -> &'static Scheduler {
         });
 
         // io event loop thread
-        for _id in 0..io_workers {
+        for id in 0..io_workers {
             thread::spawn(move || {
                 let s = unsafe { &*sched };
-                s.event_loop.run().unwrap_or_else(|e| {
+                s.event_loop.run(id).unwrap_or_else(|e| {
                     panic!("event_loop failed running, err={}", e);
                 });
             });
@@ -115,9 +115,10 @@ type CacheBuf = RingBuf<[CoroutineImpl; PREFTCH_SIZE + 2]>;
 impl Scheduler {
     pub fn new() -> Box<Self> {
         let workers = unsafe { WORKERS };
+        let io_workers = unsafe { IO_WORKERS };
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new().expect("can't create event_loop"),
+            event_loop: EventLoop::new(io_workers).expect("can't create event_loop"),
             ready_list: mpmc::new(workers),
             timer_list: TimerList::new(),
             visit_list: generic_mpmc::new(workers),

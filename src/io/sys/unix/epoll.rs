@@ -1,40 +1,58 @@
 use std::os::unix::io::RawFd;
 use std::{io, cmp, ptr, isize};
-use std::sync::atomic::Ordering;
-use super::EventData;
-use super::from_nix_error;
 use super::nix::sys::epoll::*;
 use super::nix::fcntl::FcntlArg::F_SETFL;
 use super::nix::fcntl::{fcntl, O_CLOEXEC};
 use super::nix::unistd::close;
+use super::{EventFlags, FLAG_READ, FLAG_WRITE, EventData, from_nix_error};
 use timeout_list::ns_to_ms;
-use queue::mpsc_list::Queue as mpsc;
+
+// covert interested event into system EpollEventKind
+#[inline]
+fn interest_to_epoll_kind(interest: EventFlags) -> EpollEventKind {
+    let mut kind = EpollEventKind::from(EPOLLONESHOT | EPOLLET);
+
+    if interest.contains(FLAG_READ) {
+        kind.insert(EPOLLIN);
+    }
+
+    if interest.contains(FLAG_WRITE) {
+        kind.insert(EPOLLOUT);
+    }
+    // kind.insert(EPOLLRDHUP);
+    kind
+}
 
 pub type SysEvent = EpollEvent;
 
 pub struct Selector {
-    epfd: RawFd,
-    free_ev: mpsc<*mut EventData>,
+    epfd: Vec<RawFd>,
 }
 
 impl Selector {
-    pub fn new() -> io::Result<Selector> {
-        let epfd = try!(epoll_create());
-        try!(fcntl(epfd, F_SETFL(O_CLOEXEC)));
-        Ok(Selector {
-            epfd: epfd,
-            free_ev: mpsc::new(),
-        })
+    pub fn new(io_workers: usize) -> io::Result<Selector> {
+        let mut epfd = vec![0; io_workers];
+        for i in 0..io_workers {
+            let fd = try!(epoll_create().map_err(from_nix_error));
+            try!(fcntl(fd, F_SETFL(O_CLOEXEC)).map_err(from_nix_error));
+            epfd[i] = fd;
+        }
+
+        Ok(Selector { epfd: epfd })
     }
 
-    pub fn select(&self, events: &mut [SysEvent], timeout: Option<u64>) -> io::Result<()> {
+    pub fn select(&self,
+                  id: usize,
+                  events: &mut [SysEvent],
+                  timeout: Option<u64>)
+                  -> io::Result<()> {
         let timeout_ms = timeout.map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
         // info!("select; timeout={:?}", timeout_ms);
         // info!("polling epoll");
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let n = try!(epoll_wait(self.epfd, events, timeout_ms).map_err(from_nix_error));
+        let n = try!(epoll_wait(self.epfd[id], events, timeout_ms).map_err(from_nix_error));
 
         for event in events[..n].iter() {
             if event.data == 0 {
@@ -44,16 +62,13 @@ impl Selector {
             }
             let data = unsafe { &mut *(event.data as *mut EventData) };
             // info!("select got event, data={:p}", data);
-            data.io_flag.store(true, Ordering::Relaxed);
 
-            // first check the atomic co, this may be grab by the worker first
-            let co = data.co.take(Ordering::Acquire);
-            if co.is_none() {
-                // there is no coroutine prepared, just ignore this one
-                // warn!("can't get coroutine in the epoll select");
-                continue;
-            }
-            let mut co = co.unwrap();
+            // first check the co, this may be grab by the timer
+            let mut co = match data.co.take() {
+                None => continue, // there is no coroutine prepared, just ignore this one
+                Some(co) => co,
+            };
+
             // co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
@@ -66,6 +81,8 @@ impl Selector {
             //     h.remove()
             // });
 
+            // get_scheduler().schedule(co);
+
             // schedule the coroutine
             match co.resume() {
                 Some(ev) => ev.subscribe(co),
@@ -73,8 +90,6 @@ impl Selector {
             }
         }
 
-        // free the unused event_data
-        self.free_unused_event_data();
         Ok(())
     }
 
@@ -85,46 +100,46 @@ impl Selector {
     }
 
     // register io event to the selector
+    // #[inline]
+    // pub fn add_fd(&self, fd: RawFd) -> io::Result<()> {
+    //     let info = EpollEvent {
+    //         events: EpollEventKind::empty(),
+    //         data: 0,
+    //     };
+    //     let epfd = self.epfd[fd as usize % self.epfd.len()];
+    //     info!("add fd to epoll select, fd={:?}", fd);
+    //     epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
+    // }
+
+    // register io event to the selector
     #[inline]
-    pub fn add_fd(&self, ev_data: &EventData) -> io::Result<()> {
+    pub fn add_io(&self, ev_data: &EventData) -> io::Result<()> {
         let info = EpollEvent {
-            events: EPOLLIN | EPOLLOUT | EPOLLET,
+            events: interest_to_epoll_kind(ev_data.interest),
             data: ev_data as *const _ as _,
         };
         let fd = ev_data.fd;
-        info!("add fd to epoll select, fd={:?}", fd);
-        epoll_ctl(self.epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
+        let epfd = self.epfd[fd as usize % self.epfd.len()];
+        info!("mod fd to epoll select, fd={:?}", fd);
+        epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
     }
 
     #[inline]
-    pub fn del_fd(&self, ev_data: &mut EventData) -> io::Result<()> {
+    pub fn del_fd(&self, fd: RawFd) {
         let info = EpollEvent {
             events: EpollEventKind::empty(),
             data: 0,
         };
-
-        // can't del the fd from epoll, or next add_io would fail
-        let fd = ev_data.fd;
-        info!("remove io from epoll select, fd={:?}", fd);
-        let ret = epoll_ctl(self.epfd, EpollOp::EpollCtlDel, fd, &info).map_err(from_nix_error);
-
-        // after EpollCtlDel push the unused event data
-        self.free_ev.push(ev_data);
-        ret
-    }
-
-    // we can't free the event data directly in the worker thread
-    // must free them before the next epoll_wait
-    #[inline]
-    fn free_unused_event_data(&self) {
-        while let Some(ev) = self.free_ev.pop() {
-            // let _ = unsafe { Box::from_raw(ev) };
-        }
+        let epfd = self.epfd[fd as usize % self.epfd.len()];
+        info!("add fd to epoll select, fd={:?}", fd);
+        epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &info).ok();
     }
 }
 
 impl Drop for Selector {
     fn drop(&mut self) {
-        let _ = close(self.epfd);
+        for fd in &self.epfd {
+            let _ = close(*fd);
+        }
     }
 }

@@ -12,8 +12,8 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-    pub fn new() -> io::Result<EventLoop> {
-        Selector::new().map(|selector| {
+    pub fn new(io_workers: usize) -> io::Result<EventLoop> {
+        Selector::new(io_workers).map(|selector| {
             EventLoop {
                 selector: selector,
                 timer_list: TimerList::new(),
@@ -23,14 +23,14 @@ impl EventLoop {
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
-    pub fn run(&self) -> io::Result<()> {
-        let mut events_buf: [SysEvent; 128] = unsafe { ::std::mem::uninitialized() };
+    pub fn run(&self, id: usize) -> io::Result<()> {
+        let mut events_buf: [SysEvent; 1024] = unsafe { ::std::mem::uninitialized() };
         let mut next_expire = None;
         // only let one thread schedule timer
         if false {
             loop {
                 // first run the selector
-                try!(self.selector.select(&mut events_buf, next_expire));
+                try!(self.selector.select(id, &mut events_buf, next_expire));
                 // deal with the timer list
                 let now = now();
                 next_expire = self.timer_list.schedule_timer(now, &timeout_handler);
@@ -38,7 +38,7 @@ impl EventLoop {
         } else {
             loop {
                 // first run the selector
-                try!(self.selector.select(&mut events_buf, None));
+                try!(self.selector.select(id, &mut events_buf, None));
             }
         }
 

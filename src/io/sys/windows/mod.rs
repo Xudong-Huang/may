@@ -11,42 +11,11 @@ use scheduler::get_scheduler;
 
 pub use self::iocp::{EventData, TimerData, SysEvent, Selector, timeout_handler};
 
-// each file associated data, windows already have OVERLAPPED
-// fake windows interface
-pub struct IoData;
-
-impl IoData {
-    pub fn new<T>(_t: T) -> Self {
-        IoData
-    }
-
-    #[inline]
-    pub fn inner(&self) -> &mut EventData {
-        unsafe { &mut *ptr::null_mut() }
-    }
-
-    // clear the io flag
-    #[inline]
-    pub fn reset(&self) {}
-}
-
-impl fmt::Debug for IoData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, " IoData = {{ ... }}")
-    }
-}
-
-unsafe impl Send for IoData {}
-
 // register the socket to the system selector
 #[inline]
-pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
-    let s = get_scheduler();
-    s.get_selector().add_socket(t).map(|_| IoData)
+pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<())> {
+    get_scheduler().get_selector().add_socket(t)
 }
-
-#[allow(dead_code)]
-pub fn del_socket(_io: &IoData) {}
 
 // deal with the io result
 #[inline]
