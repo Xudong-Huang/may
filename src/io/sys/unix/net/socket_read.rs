@@ -44,12 +44,13 @@ impl<'a> SocketRead<'a> {
 impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.add_io_timer(&mut self.io_data, self.timeout);
+        let selector = s.get_selector();
+        selector.add_io_timer(&mut self.io_data, self.timeout);
         self.io_data.co = Some(co);
 
         // register the io operaton
         co_try!(s,
                 self.io_data.co.take().expect("can't get co"),
-                s.get_selector().add_io(&self.io_data));
+                selector.add_io(&self.io_data));
     }
 }

@@ -9,10 +9,9 @@ pub mod net;
 
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
-use scheduler::get_scheduler;
 use coroutine::CoroutineImpl;
-use timeout_list::TimeoutHandle;
 use yield_now::{get_co_para, set_co_para};
+use timeout_list::{TimeoutHandle, TimeOutList};
 
 pub use self::select::{SysEvent, Selector};
 
@@ -24,11 +23,30 @@ bitflags! {
 }
 
 #[inline]
-pub fn from_nix_error(err: nix::Error) -> ::std::io::Error {
+pub fn add_socket<T: AsRawFd + ?Sized>(_s: &T) -> io::Result<()> {
+    // get_scheduler().get_selector().add_fd(s.as_raw_fd())
+    Ok(())
+}
+
+// deal with the io result
+#[inline]
+fn co_io_result() -> io::Result<()> {
+    match get_co_para() {
+        Some(err) => {
+            return Err(err);
+        }
+        None => {
+            return Ok(());
+        }
+    }
+}
+
+#[inline]
+fn from_nix_error(err: nix::Error) -> ::std::io::Error {
     ::std::io::Error::from_raw_os_error(err.errno() as i32)
 }
 
-pub fn timeout_handler(data: TimerData) {
+fn timeout_handler(data: TimerData) {
     if data.event_data.is_null() {
         return;
     }
@@ -48,16 +66,21 @@ pub fn timeout_handler(data: TimerData) {
     let mut co = co.unwrap();
     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
 
-    // TODO: can we run it directly??
-    get_scheduler().schedule(co);
+    // resume the coroutine with timeout error
+    match co.resume() {
+        Some(ev) => ev.subscribe(co),
+        None => panic!("coroutine not return!"),
+    }
 }
 
-type TimerHandle = TimeoutHandle<TimerData>;
 
 // the timeout data
 pub struct TimerData {
     event_data: *mut EventData,
 }
+
+pub type TimerList = TimeOutList<TimerData>;
+pub type TimerHandle = TimeoutHandle<TimerData>;
 
 // event associated io data, must be construct in
 // each file handle, the epoll event.data would point to it
@@ -80,24 +103,5 @@ impl EventData {
 
     pub fn timer_data(&self) -> TimerData {
         TimerData { event_data: self as *const _ as *mut _ }
-    }
-}
-
-#[inline]
-pub fn add_socket<T: AsRawFd + ?Sized>(_s: &T) -> io::Result<()> {
-    // get_scheduler().get_selector().add_fd(s.as_raw_fd())
-    Ok(())
-}
-
-// deal with the io result
-#[inline]
-fn co_io_result() -> io::Result<()> {
-    match get_co_para() {
-        Some(err) => {
-            return Err(err);
-        }
-        None => {
-            return Ok(());
-        }
     }
 }

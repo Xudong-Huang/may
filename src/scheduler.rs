@@ -13,12 +13,11 @@ use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use coroutine::CoroutineImpl;
-use io::Selector;
 use timeout_list;
 use sync::BoxedOption;
 use pool::CoroutinePool;
-use io::{EventLoop, EventData};
 use yield_now::set_co_para;
+use io::{EventLoop, Selector};
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
@@ -233,11 +232,6 @@ impl Scheduler {
     #[inline]
     pub fn add_timer(&self, dur: Duration, co: Arc<BoxedOption<CoroutineImpl>>) {
         self.timer_list.add_timer(dur, co);
-    }
-
-    #[inline]
-    pub fn add_io_timer(&self, event: &mut EventData, timeout: Option<Duration>) {
-        self.event_loop.add_io_timer(event, timeout);
     }
 
     #[inline]
