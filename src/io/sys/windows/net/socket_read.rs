@@ -42,7 +42,7 @@ impl<'a> EventSource for SocketRead<'a> {
         // if the event happened before this there would be something wrong
         // that the timer handle can't be removed in time
         // we must prepare the timer before call the API
-        s.add_io_timer(&mut self.io_data, self.timeout);
+        s.get_selector().add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
 

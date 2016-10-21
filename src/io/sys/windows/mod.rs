@@ -4,16 +4,16 @@ extern crate winapi;
 mod iocp;
 pub mod net;
 
-use std::{io, fmt, ptr};
+use std::io;
 use std::os::windows::io::AsRawSocket;
 use yield_now::get_co_para;
 use scheduler::get_scheduler;
 
-pub use self::iocp::{EventData, TimerData, SysEvent, Selector, timeout_handler};
+pub use self::iocp::{EventData, SysEvent, Selector};
 
 // register the socket to the system selector
 #[inline]
-pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<())> {
+pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<()> {
     get_scheduler().get_selector().add_socket(t)
 }
 

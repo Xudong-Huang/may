@@ -1,5 +1,4 @@
 use std::io;
-use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
 use std::net::{ToSocketAddrs, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
 use super::super::winapi::*;
@@ -20,40 +19,48 @@ pub struct TcpStreamConnect {
 impl TcpStreamConnect {
     pub fn new<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
-        let builder_addr = try!(addr.to_socket_addrs()).fold(Err(err), |prev, addr| {
-            prev.or_else(|_| {
-                let builder = match addr {
-                    SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
-                    SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
-                };
-                Ok((builder, addr))
+        try!(addr.to_socket_addrs())
+            .fold(Err(err), |prev, addr| {
+                prev.or_else(|_| {
+                    let builder = match addr {
+                        SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
+                        SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
+                    };
+                    Ok((builder, addr))
+                })
             })
-        });
+            .and_then(|(builder, addr)| {
+                // windows need to bind first when call ConnectEx API
+                let any = match addr {
+                    SocketAddr::V4(..) => {
+                        let any = Ipv4Addr::new(0, 0, 0, 0);
+                        let addr = SocketAddrV4::new(any, 0);
+                        SocketAddr::V4(addr)
+                    }
+                    SocketAddr::V6(..) => {
+                        let any = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0);
+                        let addr = SocketAddrV6::new(any, 0, 0, 0);
+                        SocketAddr::V6(addr)
+                    }
+                };
 
-        let (builder, addr) = try!(builder_addr);
-        // windows need to bind first when call ConnectEx API
-        let any = match addr {
-            SocketAddr::V4(..) => {
-                let any = Ipv4Addr::new(0, 0, 0, 0);
-                let addr = SocketAddrV4::new(any, 0);
-                SocketAddr::V4(addr)
-            }
-            SocketAddr::V6(..) => {
-                let any = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0);
-                let addr = SocketAddrV6::new(any, 0, 0, 0);
-                SocketAddr::V6(addr)
-            }
-        };
+                builder.bind(&any).and_then(|_| builder.to_tcp_stream()).and_then(|s| {
+                    // must use the new to register io
+                    TcpStream::new(s).map(|s| {
+                        TcpStreamConnect {
+                            io_data: EventData::new(s.as_raw_socket() as HANDLE),
+                            addr: addr,
+                            stream: s,
+                        }
+                    })
+                })
+            })
+    }
 
-        try!(builder.bind(&any));
-        let s = try!(builder.to_tcp_stream());
-        // must use the new to register io
-        let s = try!(TcpStream::new(s));
-        Ok(TcpStreamConnect {
-            io_data: EventData::new(s.as_raw_socket() as HANDLE),
-            addr: addr,
-            stream: s,
-        })
+    #[inline]
+    pub fn get_stream(&mut self) -> Option<io::Result<TcpStream>> {
+        // always try overvlappend version
+        None
     }
 
     #[inline]
@@ -67,7 +74,7 @@ impl TcpStreamConnect {
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
+        // we don't need to register the timeout here,
         // prepare the co first
         self.io_data.co = Some(co);
 

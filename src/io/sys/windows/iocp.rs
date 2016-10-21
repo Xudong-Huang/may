@@ -1,21 +1,23 @@
 extern crate kernel32;
 
-use std::{cmp, io, ptr, u32};
+use std::time::Duration;
 use std::cell::UnsafeCell;
+use std::{cmp, io, ptr, u32};
 use std::os::windows::io::AsRawSocket;
+use yield_now::set_co_para;
+use coroutine::CoroutineImpl;
+use timeout_list::{TimeoutHandle, TimeOutList, now, ns_to_ms};
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
-use coroutine::CoroutineImpl;
-use yield_now::set_co_para;
-use timeout_list::{TimeoutHandle, ns_to_ms};
-
-type TimerHandle = TimeoutHandle<TimerData>;
 
 // the timeout data
 pub struct TimerData {
     event_data: *mut EventData,
 }
+
+type TimerList = TimeOutList<TimerData>;
+pub type TimerHandle = TimeoutHandle<TimerData>;
 
 // event associated io data, must be construct in the coroutine
 // this passed in to the _overlapped verion API and will read back
@@ -61,18 +63,27 @@ pub type SysEvent = CompletionStatus;
 pub struct Selector {
     /// The actual completion port that's used to manage all I/O
     port: CompletionPort,
+    timer_list: TimerList,
 }
 
 impl Selector {
-    pub fn new() -> io::Result<Selector> {
+    pub fn new(_io_workers: usize) -> io::Result<Selector> {
         // only let one thread working, other threads blocking, this is more efficient
-        CompletionPort::new(1).map(|cp| Selector { port: cp })
+        CompletionPort::new(1).map(|cp| {
+            Selector {
+                port: cp,
+                timer_list: TimerList::new(),
+            }
+        })
     }
 
-    pub fn select(&self, events: &mut [SysEvent], timeout: Option<u64>) -> io::Result<()> {
+    pub fn select(&self,
+                  _id: usize,
+                  events: &mut [SysEvent],
+                  timeout: Option<u64>)
+                  -> io::Result<Option<u64>> {
         let timeout = timeout.map(|to| cmp::min(ns_to_ms(to), u32::MAX as u64) as u32);
-        info!("select; timeout={:?}", timeout);
-        info!("polling IOCP");
+        // info!("select; timeout={:?}", timeout);
         let n = match self.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
             Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
@@ -86,9 +97,10 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 continue;
             }
+
             let data = unsafe { &mut *(overlapped as *mut EventData) };
-            let overlapped = unsafe { &*(*overlapped).raw() };
-            info!("select got overlapped, stuats = {}", overlapped.Internal);
+            let mut co = data.co.take().expect("can't get co in selector");
+            co.prefetch();
 
             // it's safe to remove the timer since we are
             // runing the timer_list in the same thread
@@ -104,16 +116,8 @@ impl Selector {
                 h.remove()
             });
 
-            let mut co = match data.co.take() {
-                None => {
-                    // there is no coroutine prepared, just ignore this one
-                    error!("can't get coroutine in the iocp select");
-                    continue;
-                }
-                Some(co) => co,
-            };
-            // prefetch the co into cache
-            co.prefetch();
+            let overlapped = unsafe { &*(*overlapped).raw() };
+            // info!("select got overlapped, stuats = {}", overlapped.Internal);
 
             const STATUS_CANCELLED_U32: u32 = STATUS_CANCELLED as u32;
             // check the status
@@ -143,12 +147,14 @@ impl Selector {
             }
         }
 
-        Ok(())
+        // deal with the timer list
+        let next_expire = self.timer_list.schedule_timer(now(), &timeout_handler);
+        Ok(next_expire)
     }
 
     // this will post an os event so that we can wakeup the event loop
     #[inline]
-    pub fn wakeup(&self) {
+    fn wakeup(&self) {
         // this is not correct for multi thread io, which thread will it wakeup?
         self.port.post(CompletionStatus::new(0, 0, ptr::null_mut())).unwrap();
     }
@@ -158,6 +164,20 @@ impl Selector {
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle
         self.port.add_socket(t.as_raw_socket() as usize, t)
+    }
+
+    // register the io request to the timeout list
+    #[inline]
+    pub fn add_io_timer(&self, io: &mut EventData, timeout: Option<Duration>) {
+        io.timer = timeout.map(|dur| {
+            // info!("io timeout = {:?}", dur);
+            let (h, b_new) = self.timer_list.add_timer(dur, io.timer_data());
+            if b_new {
+                // wakeup the event loop threead to recal the next wait timeout
+                self.wakeup();
+            }
+            h
+        });
     }
 }
 
