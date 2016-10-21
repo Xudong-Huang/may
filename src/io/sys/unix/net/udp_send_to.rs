@@ -2,12 +2,11 @@ use std::{self, io};
 use std::time::Duration;
 use std::net::ToSocketAddrs;
 use std::os::unix::io::AsRawFd;
-use super::co_io_result;
-use super::super::{EventData, FLAG_WRITE};
 use net::UdpSocket;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
+use super::super::{EventData, FLAG_WRITE, co_io_result};
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     io_data: EventData,
@@ -30,8 +29,11 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
+        let s = get_scheduler().get_selector();
         loop {
+            s.del_fd(self.io_data.fd);
             try!(co_io_result());
+
             match self.socket.send_to(self.buf, &self.addr) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret @ _ => return ret,
@@ -46,7 +48,13 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.add_io_timer(&mut self.io_data, self.timeout);
+        let selector = s.get_selector();
+        selector.add_io_timer(&mut self.io_data, self.timeout);
         self.io_data.co = Some(co);
+
+        // register the io operaton
+        co_try!(s,
+                self.io_data.co.take().expect("can't get co"),
+                selector.add_io(&self.io_data));
     }
 }

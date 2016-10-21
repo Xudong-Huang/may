@@ -2,12 +2,12 @@ use std::{self, io};
 use std::time::Duration;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
-use super::super::{libc, EventData, FLAG_WRITE, co_io_result, add_socket};
 use net::TcpStream;
 use net2::TcpBuilder;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
+use super::super::{libc, EventData, FLAG_WRITE, co_io_result, add_socket};
 
 pub struct TcpStreamConnect {
     io_data: EventData,

@@ -1,13 +1,15 @@
-use io::net as net_impl;
 use std::io;
 use std::time::Duration;
 use std::net::{self, ToSocketAddrs, SocketAddr, Ipv4Addr, Ipv6Addr};
+use io as io_impl;
+use io::net as net_impl;
 use yield_now::yield_with;
 use coroutine::is_coroutine;
 
 #[derive(Debug)]
 pub struct UdpSocket {
     sys: net::UdpSocket,
+    ctx: io_impl::IoContext,
     read_timeout: Option<Duration>,
     write_timeout: Option<Duration>,
 }
@@ -19,9 +21,10 @@ impl UdpSocket {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        net_impl::add_socket(&s).map(|_| {
+        io_impl::add_socket(&s).map(|_| {
             UdpSocket {
                 sys: s,
+                ctx: io_impl::IoContext::new(),
                 read_timeout: None,
                 write_timeout: None,
             }
@@ -47,22 +50,16 @@ impl UdpSocket {
     }
 
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
-        self.sys.try_clone().map(|s| {
-            UdpSocket {
-                sys: s,
-                read_timeout: self.read_timeout,
-                write_timeout: self.read_timeout,
-            }
-        })
+        let s = try!(self.sys.try_clone().and_then(|s| UdpSocket::new(s)));
+        s.set_read_timeout(self.read_timeout).unwrap();
+        s.set_write_timeout(self.write_timeout).unwrap();
+        Ok(s)
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {
-        if !is_coroutine() {
+        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
             // this can't be nonblocking!!
-            try!(self.sys.set_nonblocking(false));
-            let ret = try!(self.sys.send_to(buf, addr));
-            try!(self.sys.set_nonblocking(true));;
-            return Ok(ret);
+            return self.sys.send_to(buf, addr);
         }
 
         // this is an earlier return try for nonblocking read
@@ -77,12 +74,9 @@ impl UdpSocket {
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if !is_coroutine() {
+        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
             // this can't be nonblocking!!
-            try!(self.sys.set_nonblocking(false));
-            let ret = try!(self.sys.recv_from(buf));
-            try!(self.sys.set_nonblocking(true));;
-            return Ok(ret);
+            return self.sys.recv_from(buf);
         }
 
         // this is an earlier return try for nonblocking read
@@ -111,7 +105,7 @@ impl UdpSocket {
             ret @ _ => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(self.as_raw(), buf, self.write_timeout);
+        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }
@@ -132,7 +126,7 @@ impl UdpSocket {
             ret @ _ => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(self.as_raw(), buf, self.read_timeout);
+        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -215,18 +209,6 @@ impl UdpSocket {
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.sys.take_error()
-    }
-
-    #[cfg(windows)]
-    #[inline]
-    fn as_raw(&self) -> RawSocket {
-        self.as_raw_socket()
-    }
-
-    #[cfg(unix)]
-    #[inline]
-    fn as_raw(&self) -> RawFd {
-        self.as_raw_fd()
     }
 }
 

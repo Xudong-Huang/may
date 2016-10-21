@@ -1,11 +1,11 @@
 use std::io;
 use std::time::Duration;
 use std::os::unix::io::AsRawFd;
-use super::super::nix::unistd::read;
-use super::super::{EventData, FLAG_READ, from_nix_error, co_io_result};
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
+use super::super::nix::unistd::read;
+use super::super::{EventData, FLAG_READ, from_nix_error, co_io_result};
 
 pub struct SocketRead<'a> {
     io_data: EventData,

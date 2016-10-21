@@ -1,12 +1,11 @@
 use std::io;
 use std::time::Duration;
 use std::os::unix::io::AsRawFd;
-use super::super::from_nix_error;
-use super::super::nix::unistd::write;
-use super::super::{EventData, FLAG_WRITE, co_io_result};
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
+use super::super::nix::unistd::write;
+use super::super::{EventData, FLAG_WRITE, from_nix_error, co_io_result};
 
 pub struct SocketWrite<'a> {
     io_data: EventData,

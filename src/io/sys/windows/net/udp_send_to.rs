@@ -3,10 +3,9 @@ use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
-use super::co_io_result;
-use super::super::EventData;
 use super::super::winapi::*;
 use super::super::miow::net::UdpSocketExt;
+use super::super::{EventData, co_io_result};
 use net::UdpSocket;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
@@ -47,11 +46,11 @@ impl<'a> UdpSendTo<'a> {
 impl<'a> EventSource for UdpSendTo<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.add_io_timer(&mut self.io_data, self.timeout);
+        s.get_selector().add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
         // call the overlapped read API
-        co_try!(s, self.io_data.co.take().unwrap(), unsafe {
+        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.socket.send_to_overlapped(self.buf, &self.addr, self.io_data.get_overlapped())
         });
     }

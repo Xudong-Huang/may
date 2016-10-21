@@ -1,12 +1,11 @@
 use std::{self, io};
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
-use super::super::{EventData, FLAG_READ, co_io_result};
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use net::{TcpStream, TcpListener};
 use coroutine::{CoroutineImpl, EventSource};
-
+use super::super::{EventData, FLAG_READ, co_io_result};
 
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
