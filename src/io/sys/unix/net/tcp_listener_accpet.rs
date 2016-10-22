@@ -14,11 +14,8 @@ pub struct TcpListenerAccept<'a> {
 
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
-        let io_data = socket.as_event_data();
-        // clear the io_flag
-        // io_data.io_flag.store(0, Ordering::Relaxed);
         Ok(TcpListenerAccept {
-            io_data: io_data,
+            io_data: socket.as_event_data(),
             socket: socket.inner(),
         })
     }
@@ -36,7 +33,6 @@ impl<'a> TcpListenerAccept<'a> {
                 ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
             }
 
-            // clear the events
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }

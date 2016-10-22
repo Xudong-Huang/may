@@ -80,7 +80,6 @@ impl TcpStreamConnect {
                 ret @ _ => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
             }
 
-            // clear the events
             if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }

@@ -8,6 +8,7 @@ use coroutine::is_coroutine;
 
 #[derive(Debug)]
 pub struct UdpSocket {
+    io: io_impl::IoData,
     sys: net::UdpSocket,
     ctx: io_impl::IoContext,
     read_timeout: Option<Duration>,
@@ -21,8 +22,9 @@ impl UdpSocket {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        io_impl::add_socket(&s).map(|_| {
+        io_impl::add_socket(&s).map(|io| {
             UdpSocket {
+                io: io,
                 sys: s,
                 ctx: io_impl::IoContext::new(),
                 read_timeout: None,
@@ -62,6 +64,7 @@ impl UdpSocket {
             return self.sys.send_to(buf, addr);
         }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking read
         match self.sys.send_to(buf, &addr) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -79,6 +82,7 @@ impl UdpSocket {
             return self.sys.recv_from(buf);
         }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking read
         match self.sys.recv_from(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -99,6 +103,7 @@ impl UdpSocket {
             return Ok(ret);
         }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking write
         match self.sys.send(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
@@ -119,8 +124,8 @@ impl UdpSocket {
             return Ok(ret);
         }
 
+        self.io.reset();
         // this is an earlier return try for nonblocking read
-        // it's useful for server but not necessary for client
         match self.sys.recv(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
             ret @ _ => return ret,
@@ -212,6 +217,20 @@ impl UdpSocket {
     }
 }
 
+#[cfg(unix)]
+impl Drop for UdpSocket {
+    fn drop(&mut self) {
+        io_impl::del_socket(&self.io);
+    }
+}
+
+#[cfg(unix)]
+impl io_impl::AsEventData for UdpSocket {
+    fn as_event_data(&self) -> &mut io_impl::EventData {
+        self.io.inner()
+    }
+}
+
 // ===== UNIX ext =====
 //
 //
@@ -222,7 +241,8 @@ use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
 #[cfg(unix)]
 impl IntoRawFd for UdpSocket {
     fn into_raw_fd(self) -> RawFd {
-        self.sys.into_raw_fd()
+        self.sys.as_raw_fd()
+        // drop self will dereg from the selector
     }
 }
 

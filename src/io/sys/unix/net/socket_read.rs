@@ -16,9 +16,8 @@ pub struct SocketRead<'a> {
 
 impl<'a> SocketRead<'a> {
     pub fn new<T: AsEventData>(s: &'a T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
-        let io_data = s.as_event_data();
         SocketRead {
-            io_data: io_data,
+            io_data: s.as_event_data(),
             buf: buf,
             timeout: timeout,
         }
@@ -38,7 +37,6 @@ impl<'a> SocketRead<'a> {
                 ret @ _ => return ret,
             }
 
-            // clear the events
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }
