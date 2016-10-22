@@ -139,7 +139,7 @@ fn main() {
     println!("Speed: {} request/sec,  {} response/sec, {} kb/sec",
              out_num / test_seconds,
              in_num / test_seconds,
-             out_num * test_msg_len / 1024);
+             out_num * test_msg_len / test_seconds / 1024);
     println!("Requests: {}", out_num);
     println!("Responses: {}", in_num);
 }
