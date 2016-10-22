@@ -78,12 +78,23 @@ impl Selector {
                   events: &mut [SysEvent],
                   timeout: Option<u64>)
                   -> io::Result<Option<u64>> {
+        static EV: EpollEvent = EpollEvent {
+            events: EPOLLIN,
+            data: 0, // wakeup data is 0
+        };
         let timeout_ms = timeout.map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
         // info!("select; timeout={:?}", timeout_ms);
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let n = try!(epoll_wait(self.vec[id].epfd, events, timeout_ms).map_err(from_nix_error));
+        let epfd = self.vec[id].epfd;
+        let evfd = self.vec[id].evfd;
+        let n = try!(epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error));
+
+        // add this would increase the performance!!!!!!!!
+        // this maybe a linux bug, the code is meaningless
+        epoll_ctl(epfd, EpollOp::EpollCtlDel, evfd, &EV).ok();
+        epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &EV).ok();
 
         for event in events[..n].iter() {
             if event.data == 0 {
