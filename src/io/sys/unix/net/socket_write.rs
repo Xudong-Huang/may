@@ -1,22 +1,26 @@
 use std::io;
 use std::time::Duration;
-use std::os::unix::io::AsRawFd;
+use std::sync::atomic::Ordering;
+use io::AsEventData;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
 use super::super::nix::unistd::write;
-use super::super::{EventData, FLAG_WRITE, from_nix_error, co_io_result};
+use super::super::{EventData, from_nix_error, co_io_result};
 
 pub struct SocketWrite<'a> {
-    io_data: EventData,
+    io_data: &'a mut EventData,
     buf: &'a [u8],
     timeout: Option<Duration>,
 }
 
 impl<'a> SocketWrite<'a> {
-    pub fn new<T: AsRawFd>(s: &'a T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsEventData>(s: &'a T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+        let io_data = s.as_event_data();
+        // clear the io_flag
+        // io_data.io_flag.store(0, Ordering::Relaxed);
         SocketWrite {
-            io_data: EventData::new(s.as_raw_fd(), FLAG_WRITE),
+            io_data: io_data,
             buf: buf,
             timeout: timeout,
         }
@@ -24,14 +28,20 @@ impl<'a> SocketWrite<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<usize> {
-        let s = get_scheduler().get_selector();
         loop {
-            s.del_fd(self.io_data.fd);
             try!(co_io_result());
+
+            // clear the io_flag
+            self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match write(self.io_data.fd, self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret @ _ => return ret,
+            }
+
+            // clear the events
+            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+                continue;
             }
 
             // the result is still WouldBlock, need to try again
@@ -42,14 +52,15 @@ impl<'a> SocketWrite<'a> {
 
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let s = get_scheduler();
-        let selector = s.get_selector();
-        selector.add_io_timer(&mut self.io_data, self.timeout);
-        self.io_data.co = Some(co);
+        get_scheduler().get_selector().add_io_timer(&mut self.io_data, self.timeout);
+        self.io_data.co.swap(co, Ordering::Release);
 
-        // register the io operaton
-        co_try!(s,
-                self.io_data.co.take().expect("can't get co"),
-                selector.add_io(&self.io_data));
+        // there is no event
+        if !self.io_data.io_flag.load(Ordering::Relaxed) {
+            return;
+        }
+
+        // since we got data here, need to remove the timer handle and schedule
+        self.io_data.schedule();
     }
 }

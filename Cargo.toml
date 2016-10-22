@@ -15,7 +15,6 @@ path ="../generator-rs"
 path ="../queue"
 
 [target.'cfg(unix)'.dependencies]
-bitflags = "0.3"
 libc = "0.2.16"
 nix = "0.7.0"
 

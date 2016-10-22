@@ -1,35 +1,44 @@
 use std::{self, io};
 use std::net::SocketAddr;
-use std::os::unix::io::AsRawFd;
+use std::sync::atomic::Ordering;
+use io::AsEventData;
 use yield_now::yield_with;
-use scheduler::get_scheduler;
 use net::{TcpStream, TcpListener};
 use coroutine::{CoroutineImpl, EventSource};
-use super::super::{EventData, FLAG_READ, co_io_result};
+use super::super::{EventData, co_io_result};
 
 pub struct TcpListenerAccept<'a> {
-    io_data: EventData,
+    io_data: &'a mut EventData,
     socket: &'a std::net::TcpListener,
 }
 
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
+        let io_data = socket.as_event_data();
+        // clear the io_flag
+        // io_data.io_flag.store(0, Ordering::Relaxed);
         Ok(TcpListenerAccept {
-            io_data: EventData::new(socket.as_raw_fd(), FLAG_READ),
+            io_data: io_data,
             socket: socket.inner(),
         })
     }
 
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
-        let s = get_scheduler().get_selector();
         loop {
-            s.del_fd(self.io_data.fd);
             try!(co_io_result());
+
+            // clear the io_flag
+            self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.socket.accept() {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+            }
+
+            // clear the events
+            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+                continue;
             }
 
             // the result is still WouldBlock, need to try again
@@ -40,13 +49,15 @@ impl<'a> TcpListenerAccept<'a> {
 
 impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let s = get_scheduler();
         // if there is no timer we don't need to call add_io_timer
-        self.io_data.co = Some(co);
+        self.io_data.co.swap(co, Ordering::Release);
 
-        // register the io operaton
-        co_try!(s,
-                self.io_data.co.take().expect("can't get co"),
-                s.get_selector().add_io(&self.io_data));
+        // there is no event
+        if !self.io_data.io_flag.load(Ordering::Relaxed) {
+            return;
+        }
+
+        // since we got data here, need to remove the timer handle and schedule
+        self.io_data.schedule();
     }
 }

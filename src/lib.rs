@@ -2,10 +2,6 @@
 #[macro_use]
 extern crate log;
 
-#[cfg(unix)]
-#[macro_use]
-extern crate bitflags;
-
 extern crate net2;
 extern crate queue;
 extern crate smallvec;

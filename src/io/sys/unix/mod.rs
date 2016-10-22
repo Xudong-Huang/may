@@ -7,25 +7,32 @@ mod select;
 
 pub mod net;
 
-use std::io;
+use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::atomic::{AtomicBool, Ordering};
+use sync::BoxedOption;
+use scheduler::get_scheduler;
 use coroutine::CoroutineImpl;
 use yield_now::{get_co_para, set_co_para};
 use timeout_list::{TimeoutHandle, TimeOutList};
 
 pub use self::select::{SysEvent, Selector};
 
-bitflags! {
-    flags EventFlags: u32 {
-        const FLAG_READ  = 0b00000001,
-        const FLAG_WRITE = 0b00000010,
+#[inline]
+pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
+    let io_data = IoData::new(t);
+    match get_scheduler().get_selector().add_fd(io_data.inner()) {
+        Ok(_) => return Ok(io_data),
+        Err(e) => {
+            unsafe { Box::from_raw(io_data.0) };
+            return Err(e);
+        }
     }
 }
 
 #[inline]
-pub fn add_socket<T: AsRawFd + ?Sized>(_s: &T) -> io::Result<()> {
-    // get_scheduler().get_selector().add_fd(s.as_raw_fd())
-    Ok(())
+pub fn del_socket(io: &IoData) {
+    get_scheduler().get_selector().del_fd(io.inner());
 }
 
 // deal with the io result
@@ -56,7 +63,7 @@ fn timeout_handler(data: TimerData) {
     event_data.timer.take();
 
     // get and check the coroutine
-    let co = event_data.co.take();
+    let co = event_data.co.take(Ordering::Relaxed);
     if co.is_none() {
         // there is no coroutine, just ignore this one
         error!("can't get coroutine in timeout handler");
@@ -86,22 +93,80 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub interest: EventFlags,
+    pub io_flag: AtomicBool,
     pub timer: Option<TimerHandle>,
-    pub co: Option<CoroutineImpl>,
+    pub co: BoxedOption<CoroutineImpl>,
 }
 
 impl EventData {
-    pub fn new(fd: RawFd, interest: EventFlags) -> EventData {
+    pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd: fd,
-            interest: interest,
+            io_flag: AtomicBool::new(false),
             timer: None,
-            co: None,
+            co: BoxedOption::none(),
         }
     }
 
     pub fn timer_data(&self) -> TimerData {
         TimerData { event_data: self as *const _ as *mut _ }
     }
+
+    #[inline]
+    pub fn schedule(&mut self) {
+        info!("event schedul");
+        let co = self.co.take(Ordering::Acquire);
+        if co.is_none() {
+            // it's alreay take by selector
+            return;
+        }
+        let mut co = co.unwrap();
+
+        // it's safe to remove the timer since we are runing the timer_list in the same thread
+        self.timer.take().map(|h| {
+            unsafe {
+                // tell the timer function not to cancel the io
+                // it's not always true that you can really remove the timer entry
+                h.get_data().data.event_data = ptr::null_mut();
+            }
+            h.remove()
+        });
+
+        // schedule the coroutine
+        match co.resume() {
+            Some(ev) => ev.subscribe(co),
+            None => panic!("coroutine not return!"),
+        }
+    }
 }
+
+// each file associated data
+#[derive(Clone, Copy)]
+pub struct IoData(*mut EventData);
+
+impl IoData {
+    pub fn new<T: AsRawFd + ?Sized>(t: &T) -> Self {
+        let fd = t.as_raw_fd();
+        let event_data = Box::new(EventData::new(fd));
+        IoData(Box::into_raw(event_data))
+    }
+
+    #[inline]
+    pub fn inner(&self) -> &mut EventData {
+        unsafe { &mut *self.0 }
+    }
+
+    // clear the io flag
+    #[inline]
+    pub fn reset(&self) {
+        self.inner().io_flag.store(false, Ordering::Relaxed);
+    }
+}
+
+impl fmt::Debug for IoData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, " IoData = {{ ... }}")
+    }
+}
+
+unsafe impl Send for IoData {}

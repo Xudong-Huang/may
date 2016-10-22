@@ -1,29 +1,14 @@
 use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::{io, cmp, ptr, isize};
+use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 use timeout_list::{now, ns_to_ms};
+use queue::mpsc_list::Queue as mpsc;
 use super::nix::sys::epoll::*;
 use super::nix::unistd::{read, write, close};
 use super::libc::{eventfd, EFD_NONBLOCK};
-use super::{EventFlags, FLAG_READ, FLAG_WRITE};
 use super::{EventData, TimerList, from_nix_error, timeout_handler};
-
-// covert interested event into system EpollEventKind
-#[inline]
-fn interest_to_epoll_kind(interest: EventFlags) -> EpollEventKind {
-    let mut kind = EpollEventKind::from(EPOLLONESHOT | EPOLLET);
-
-    if interest.contains(FLAG_READ) {
-        kind.insert(EPOLLIN);
-    }
-
-    if interest.contains(FLAG_WRITE) {
-        kind.insert(EPOLLOUT);
-    }
-    // kind.insert(EPOLLRDHUP);
-    kind
-}
 
 fn create_eventfd() -> io::Result<RawFd> {
     let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
@@ -39,12 +24,13 @@ struct SingleSelector {
     epfd: RawFd,
     evfd: RawFd,
     timer_list: TimerList,
+    free_ev: mpsc<*mut EventData>,
 }
 
 impl SingleSelector {
     pub fn new() -> io::Result<Self> {
         let info = EpollEvent {
-            events: EpollEventKind::from(EPOLLONESHOT | EPOLLET | EPOLLIN),
+            events: EpollEventKind::from(EPOLLET | EPOLLIN),
             data: 0, // wakeup data is 0
         };
 
@@ -57,6 +43,7 @@ impl SingleSelector {
         Ok(SingleSelector {
             epfd: epfd,
             evfd: evfd,
+            free_ev: mpsc::new(),
             timer_list: TimerList::new(),
         })
     }
@@ -104,12 +91,22 @@ impl Selector {
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
                 read(self.vec[id].evfd, &mut buf).ok();
-                // info!("got wakeup event in select");
+                info!("got wakeup event in select, id={}", id);
                 continue;
             }
             let data = unsafe { &mut *(event.data as *mut EventData) };
-            let mut co = data.co.take().expect("can't get co in selector");
-            co.prefetch();
+            // info!("select got event, data={:p}", data);
+            data.io_flag.store(true, Ordering::Relaxed);
+
+            // first check the atomic co, this may be grab by the worker first
+            let co = data.co.take(Ordering::Acquire);
+            if co.is_none() {
+                // there is no coroutine prepared, just ignore this one
+                // warn!("can't get coroutine in the epoll select");
+                continue;
+            }
+            let mut co = co.unwrap();
+            // co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
             data.timer.take().map(|h| {
@@ -128,6 +125,9 @@ impl Selector {
             }
         }
 
+        // free the unused event_data
+        self.free_unused_event_data(id);
+
         // deal with the timer list
         let next_expire = self.vec[id].timer_list.schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
@@ -141,42 +141,45 @@ impl Selector {
         info!("wakeup id={:?}, ret={:?}", id, ret);
     }
 
-    // register io event to the selector
-    // #[inline]
-    // pub fn add_fd(&self, fd: RawFd) -> io::Result<()> {
-    //     let info = EpollEvent {
-    //         events: EpollEventKind::empty(),
-    //         data: 0,
-    //     };
-    //     let epfd = self.epfd[fd as usize % self.epfd.len()];
-    //     info!("add fd to epoll select, fd={:?}", fd);
-    //     epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
-    // }
 
     // register io event to the selector
     #[inline]
-    pub fn add_io(&self, ev_data: &EventData) -> io::Result<()> {
+    pub fn add_fd(&self, ev_data: &EventData) -> io::Result<()> {
         let info = EpollEvent {
-            events: interest_to_epoll_kind(ev_data.interest),
+            events: EPOLLIN | EPOLLOUT | EPOLLET,
             data: ev_data as *const _ as _,
         };
         let fd = ev_data.fd;
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
-        info!("mod fd to epoll select, fd={:?}", fd);
+        info!("add fd to epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
     }
 
     #[inline]
-    pub fn del_fd(&self, fd: RawFd) {
+    pub fn del_fd(&self, ev_data: &mut EventData) {
         let info = EpollEvent {
             events: EpollEventKind::empty(),
             data: 0,
         };
+        let fd = ev_data.fd;
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
         info!("add fd to epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &info).ok();
+
+        // after EpollCtlDel push the unused event data
+        self.vec[id].free_ev.push(ev_data);
+    }
+
+    // we can't free the event data directly in the worker thread
+    // must free them before the next epoll_wait
+    #[inline]
+    fn free_unused_event_data(&self, id: usize) {
+        let free_ev = &self.vec[id].free_ev;
+        while let Some(ev) = free_ev.pop() {
+            let _ = unsafe { Box::from_raw(ev) };
+        }
     }
 
     // register the io request to the timeout list
