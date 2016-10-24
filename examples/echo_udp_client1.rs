@@ -102,7 +102,7 @@ fn main() {
         for _ in 0..test_conn_num {
             scope.spawn(|| {
                 let local_port = base_port.fetch_add(1, Ordering::Relaxed);
-                let s = t!(UdpSocket::bind(("127.0.0.1", local_port as u16)));
+                let s = t!(UdpSocket::bind(("0.0.0.0", local_port as u16)));
                 // t!(s.set_write_timeout(Some(Duration::from_secs(io_timeout))));
                 // t!(s.set_read_timeout(Some(Duration::from_secs(io_timeout))));
 
