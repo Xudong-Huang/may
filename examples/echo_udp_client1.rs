@@ -1,7 +1,41 @@
+extern crate docopt;
 extern crate coroutine;
+extern crate rustc_serialize;
+
+use std::io::Write;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use coroutine::net::UdpSocket;
+
+use docopt::Docopt;
+
+const VERSION: &'static str = "0.1.0";
+
+const USAGE: &'static str = "
+Tcp echo client.
+
+Usage:
+  echo_client [-c <connections>] [-t <time>] [-l <length>] -a <address>
+  echo_client (-h | --help)
+  echo_client (-v | --version)
+
+Options:
+  -h --help         Show this screen.
+  -v --version      Show version.
+  -l <length>       packet length in bytes [default: 100].
+  -c <connections>  concurent connections  [default: 100].
+  -t <time>         time to run in seconds [default: 10].
+  -a <address>      target address (e.g. 127.0.0.1:8080).
+";
+
+#[derive(Debug, RustcDecodable)]
+struct Args {
+    flag_c: usize,
+    flag_a: String,
+    flag_l: usize,
+    flag_t: usize,
+    flag_v: bool,
+}
 
 macro_rules! t {
     ($e: expr) => (match $e {
@@ -15,13 +49,22 @@ macro_rules! t {
 }
 
 fn main() {
-    coroutine::scheduler_set_workers(1);
+    let args: Args = Docopt::new(USAGE)
+        .and_then(|d| d.decode())
+        .unwrap_or_else(|e| e.exit());
 
-    let target_addr = "127.0.0.1:30000";
-    let test_msg_len = 80;
-    let test_conn_num = 8;
-    let test_seconds = 2;
-    let io_timeout = 5;
+    if args.flag_v {
+        return println!("echo_client: {}", VERSION);
+    }
+
+    let target_addr: &str = &args.flag_a;
+    let test_msg_len = args.flag_l;
+    let test_conn_num = args.flag_c;
+    let test_seconds = args.flag_t;
+
+    coroutine::scheduler_set_workers(4);
+
+    // let io_timeout = 5;
     let base_port = AtomicUsize::new(50000);
 
     let stop = AtomicBool::new(false);
@@ -36,12 +79,32 @@ fn main() {
             stop.store(true, Ordering::Release);
         });
 
+        // print the result every one second
+        scope.spawn(|| {
+            let mut time = 0;
+            let mut last_num = 0;
+            while !stop.load(Ordering::Relaxed) {
+                coroutine::sleep(Duration::from_secs(1));
+                time += 1;
+
+                let out_num = out_num.load(Ordering::Relaxed);
+                let packets = out_num - last_num;
+                last_num = out_num;
+
+                print!("\r{} Secs, Speed: {} packets/sec,  {} kb/sec\r",
+                       time,
+                       packets,
+                       packets * test_msg_len / 1024);
+                std::io::stdout().flush().ok();
+            }
+        });
+
         for _ in 0..test_conn_num {
             scope.spawn(|| {
                 let local_port = base_port.fetch_add(1, Ordering::Relaxed);
                 let s = t!(UdpSocket::bind(("127.0.0.1", local_port as u16)));
-                t!(s.set_write_timeout(Some(Duration::from_secs(io_timeout))));
-                t!(s.set_read_timeout(Some(Duration::from_secs(io_timeout))));
+                // t!(s.set_write_timeout(Some(Duration::from_secs(io_timeout))));
+                // t!(s.set_read_timeout(Some(Duration::from_secs(io_timeout))));
 
                 t!(s.connect(target_addr));
 
@@ -79,14 +142,16 @@ fn main() {
     let in_num = in_num.load(Ordering::Relaxed);
     let out_num = out_num.load(Ordering::Relaxed);
 
-    println!("Benchmarking: {}", target_addr);
+    println!("==================Benchmarking: {}==================",
+             target_addr);
     println!("{} clients, running {} bytes, {} sec.\n",
              test_conn_num,
              test_msg_len,
              test_seconds);
-    println!("Speed: {} request/sec,  {} response/sec",
+    println!("Speed: {} request/sec,  {} response/sec, {} kb/sec",
              out_num / test_seconds,
-             in_num / test_seconds);
+             in_num / test_seconds,
+             out_num * test_msg_len / test_seconds / 1024);
     println!("Requests: {}", out_num);
     println!("Responses: {}", in_num);
 }

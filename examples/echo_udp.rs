@@ -19,7 +19,10 @@ fn main() {
     coroutine::scheduler_set_workers(1);
 
     let h = coroutine::spawn(|| {
-        let sock = UdpSocket::bind("127.0.0.1:30000").unwrap();
+        let sock = UdpSocket::bind("0.0.0.0:30000").unwrap();
+        println!("Starting udp echo server on {:?}",
+                 sock.local_addr().unwrap());
+
         let mut buf = vec![0u8; 1024 * 16];
         loop {
             let (len, addr) = t!(sock.recv_from(&mut buf));

@@ -30,6 +30,8 @@ fn main() {
     coroutine::spawn(|| {
             // let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
             let listener = TcpListener::bind("0.0.0.0:8080").unwrap();
+            println!("Starting tcp echo server on {:?}",
+                     listener.local_addr().unwrap());
 
             for stream in listener.incoming() {
                 match stream {
