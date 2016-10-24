@@ -158,7 +158,7 @@ impl Builder {
     /// Spawns a new coroutine, and returns a join handle for it.
     /// The join handle can be used to block on
     /// termination of the child coroutine, including recovering its panics.
-    pub fn spawn<F, T>(self, f: F) -> JoinHandle<T>
+    pub fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
         where F: FnOnce() -> T,
               F: Send + 'static,
               T: Send + 'static
@@ -210,7 +210,7 @@ impl Builder {
 
         // put the coroutine to ready list
         sched.schedule(co);
-        make_join_handle(handle, join, packet, panic)
+        Ok(make_join_handle(handle, join, packet, panic))
     }
 }
 
@@ -221,7 +221,7 @@ pub fn spawn<F, T>(f: F) -> JoinHandle<T>
     where F: FnOnce() -> T + Send + 'static,
           T: Send + 'static
 {
-    Builder::new().spawn(f)
+    Builder::new().spawn(f).unwrap()
 }
 
 /// Gets a handle to the thread that invokes it.
