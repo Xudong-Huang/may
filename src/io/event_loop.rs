@@ -17,7 +17,13 @@ impl EventLoop {
         let mut events_buf: [SysEvent; 1024] = unsafe { ::std::mem::uninitialized() };
         let mut next_expire = None;
         loop {
-            next_expire = try!(self.selector.select(id, &mut events_buf, next_expire));
+            next_expire = match self.selector.select(id, &mut events_buf, next_expire) {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("selector error={:?}", e);
+                    continue;
+                }
+            }
         }
     }
 
