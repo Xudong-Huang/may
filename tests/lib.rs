@@ -9,6 +9,22 @@ use coroutine::yield_now;
 use generator::Gn;
 
 #[test]
+fn panic_coroutine() {
+    let j = coroutine::spawn(move || {
+        panic!("panic inside coroutine");
+    });
+    match j.join() {
+        Ok(_) => panic!("test should return panic"),
+        Err(panic) => {
+            match panic.downcast_ref::<&str>() {
+                Some(e) => return println!("Panicked inside: {:?}", e),
+                None => panic!("panic type wrong"),
+            }
+        }
+    }
+}
+
+#[test]
 fn one_coroutine() {
     let j = coroutine::spawn(move || {
         println!("hello, coroutine");

@@ -12,7 +12,7 @@ use queue::mpmc::Queue as mpmc;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
-use coroutine::CoroutineImpl;
+use coroutine::{CoroutineImpl, run_coroutine};
 use timeout_list;
 use sync::BoxedOption;
 use pool::CoroutinePool;
@@ -147,20 +147,14 @@ impl Scheduler {
             unsafe {
                 old.push_unchecked(co);
             }
-            let mut old_co = unsafe { old.pop_unchecked() };
-            match old_co.resume() {
-                Some(ev) => ev.subscribe(old_co),
-                None => panic!("coroutine not return!"),
-            }
+            let old_co = unsafe { old.pop_unchecked() };
+            run_coroutine(old_co);
             j += 1;
         }
 
         while j < size {
-            let mut old_co = unsafe { old.pop_unchecked() };
-            match old_co.resume() {
-                Some(ev) => ev.subscribe(old_co),
-                None => panic!("coroutine not return!"),
-            }
+            let old_co = unsafe { old.pop_unchecked() };
+            run_coroutine(old_co);
             j += 1;
         }
     }

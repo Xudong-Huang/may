@@ -18,6 +18,12 @@ pub struct Join {
     // thread talk
     wait_thread: Option<thread::Thread>,
     t_state: AtomicUsize,
+
+    // use to set the panic err
+    // this is the only place that could set the panic Error
+    // we use to communicate with JoinHandle so that can return the panic info
+    // this must be ready before the trigger
+    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
 }
 
 // the state of the Join struct
@@ -28,13 +34,20 @@ const WAIT: usize = 1;
 
 // this is the join resource type
 impl Join {
-    pub fn new() -> Self {
+    pub fn new(panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>) -> Self {
         Join {
             wait_co: None,
             state: AtomicUsize::new(INIT),
             wait_thread: None,
             t_state: AtomicUsize::new(INIT),
+            panic: panic,
         }
+    }
+
+    // the the panic for the coroutine
+    pub fn set_panic_data(&mut self, panic: Box<Any + Send>) {
+        let p = unsafe { &mut *self.panic.get() };
+        *p = Some(panic);
     }
 
     pub fn trigger(&mut self) {
@@ -80,7 +93,6 @@ impl Join {
             // it's already trriggered
             get_scheduler().schedule(co);
         }
-
     }
 
     fn thread_wait(&mut self) {
@@ -107,26 +119,30 @@ impl Join {
     }
 }
 
+pub type Result<T> = result::Result<T, Box<Any + Send>>;
+
 /// A join handle to a coroutine
 pub struct JoinHandle<T> {
     co: Coroutine,
     join: Arc<UnsafeCell<Join>>,
     packet: Arc<AtomicOption<T>>,
+    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
 }
 
 /// create a JoinHandle
 pub fn make_join_handle<T>(co: Coroutine,
                            join: Arc<UnsafeCell<Join>>,
-                           packet: Arc<AtomicOption<T>>)
+                           packet: Arc<AtomicOption<T>>,
+                           panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>)
                            -> JoinHandle<T> {
     JoinHandle {
         co: co,
         join: join,
         packet: packet,
+        panic: panic,
     }
 }
 
-pub type Result<T> = result::Result<T, Box<Any + Send + 'static>>;
 
 impl<T> JoinHandle<T> {
     /// Extracts a handle to the underlying coroutine
@@ -147,8 +163,11 @@ impl<T> JoinHandle<T> {
             // this is from thread context!
             join.thread_wait();
         }
-        // TODO: need to fully support Result
-        Ok(self.packet.take(Ordering::Acquire).expect("take packet error!"))
+        // take the result
+        self.packet.take(Ordering::Acquire).ok_or_else(|| {
+            let p = unsafe { &mut *self.panic.get() };
+            p.take().expect("can't get panic data")
+        })
     }
 }
 

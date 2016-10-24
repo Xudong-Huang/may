@@ -1,11 +1,12 @@
 // modified from crossbeam
 
-use std::thread;
-use std::cell::RefCell;
 use std::fmt;
 use std::mem;
+use std::panic;
+use std::thread;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 
 use spawn;
@@ -56,8 +57,9 @@ impl JoinState {
         if let JoinState::Running(handle) = state {
             let res = handle.join();
 
+            // TODO: when panic happened, the logic need to refine
             if !thread::panicking() {
-                res.unwrap();
+                res.unwrap_or_else(|e| panic::resume_unwind(e));
             }
         }
     }

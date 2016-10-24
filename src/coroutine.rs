@@ -39,8 +39,6 @@ impl EventSubscriber {
 }
 
 pub trait EventSource {
-    /// this will trigger an event and cause the registered coroutine push into the 'ready list'
-    fn trigger(&mut self) {}
     /// register a coroutine waiting on the resource
     fn subscribe(&mut self, _c: CoroutineImpl) {}
 }
@@ -51,8 +49,9 @@ pub trait EventSource {
 
 pub struct Done;
 
-impl EventSource for Done {
-    fn subscribe(&mut self, co: CoroutineImpl) {
+impl Done {
+    fn drop_coroutine(co: CoroutineImpl) {
+        // println!("co is dropped. done={:?}", co.is_done());
         // assert!(co.is_done(), "unfinished coroutine detected");
         // just consume the coroutine
         // destroy the local storage
@@ -64,6 +63,12 @@ impl EventSource for Done {
         if size == DEFAULT_STACK_SIZE {
             get_scheduler().pool.put(co);
         }
+    }
+}
+
+impl EventSource for Done {
+    fn subscribe(&mut self, co: CoroutineImpl) {
+        Self::drop_coroutine(co);
     }
 }
 
@@ -167,17 +172,22 @@ impl Builder {
         let Builder { name, stack_size } = self;
         let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
         // create a join resource, shared by waited coroutine and *this* coroutine
-        let join = Arc::new(UnsafeCell::new(Join::new()));
+        let panic = Arc::new(UnsafeCell::new(None));
+        let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
         let packet = Arc::new(AtomicOption::none());
         let their_join = join.clone();
         let their_packet = packet.clone();
 
         let closure = move || {
+            // trigger the JoinHandler
+            // we must declear the variable before calling f so that stack is prepared
+            // to unwind these local data. for the panic err we would set it in the
+            // couroutine local data so that can return from the packet variable
+            let join = unsafe { &mut *their_join.get() };
+
             // set the return packet
             their_packet.swap(f(), Ordering::Release);
 
-            // trigger the JoinHandler
-            let join = unsafe { &mut *their_join.get() };
             join.trigger();
             EventSubscriber { resource: done }
         };
@@ -194,13 +204,13 @@ impl Builder {
 
         let handle = Coroutine::new(name);
         // create the local storage
-        let local = CoroutineLocal::new(handle.clone());
+        let local = CoroutineLocal::new(handle.clone(), join.clone());
         // attache the local storage to the coroutine
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
         // put the coroutine to ready list
         sched.schedule(co);
-        make_join_handle(handle, join, packet)
+        make_join_handle(handle, join, packet, panic)
     }
 }
 
@@ -273,4 +283,22 @@ pub fn park() {
 /// timeout block the current coroutine until it's get unparked
 pub fn park_timeout(dur: Duration) {
     park_timeout_impl(Some(dur));
+}
+
+/// run the coroutine
+#[inline]
+pub fn run_coroutine(mut co: CoroutineImpl) {
+    match co.resume() {
+        Some(ev) => ev.subscribe(co),
+        None => {
+            // panic happened here
+            let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
+            let join = unsafe { &mut *local.get_join().get() };
+            // set the panic data
+            co.get_panic_data().map(|panic| join.set_panic_data(panic));
+            // trigger the join here
+            join.trigger();
+            Done::drop_coroutine(co);
+        }
+    }
 }

@@ -3,6 +3,7 @@ use std::os::unix::io::RawFd;
 use std::{io, cmp, ptr, isize};
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
+use coroutine::run_coroutine;
 use timeout_list::{now, ns_to_ms};
 use queue::mpsc_list::Queue as mpsc;
 use super::nix::sys::epoll::*;
@@ -116,7 +117,7 @@ impl Selector {
                 // warn!("can't get coroutine in the epoll select");
                 continue;
             }
-            let mut co = co.unwrap();
+            let co = co.unwrap();
             // co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
@@ -130,10 +131,7 @@ impl Selector {
             });
 
             // schedule the coroutine
-            match co.resume() {
-                Some(ev) => ev.subscribe(co),
-                None => panic!("coroutine not return!"),
-            }
+            run_coroutine(co);
         }
 
         // free the unused event_data

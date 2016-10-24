@@ -5,7 +5,7 @@ use std::cell::UnsafeCell;
 use std::{cmp, io, ptr, u32};
 use std::os::windows::io::AsRawSocket;
 use yield_now::set_co_para;
-use coroutine::CoroutineImpl;
+use coroutine::{CoroutineImpl, run_coroutine};
 use timeout_list::{TimeoutHandle, TimeOutList, now, ns_to_ms};
 use super::winapi::*;
 use super::miow::Overlapped;
@@ -141,10 +141,7 @@ impl Selector {
             }
 
             // schedule the coroutine
-            match co.resume() {
-                Some(ev) => ev.subscribe(co),
-                None => panic!("coroutine not return!"),
-            }
+            run_coroutine(co);
         }
 
         // deal with the timer list
