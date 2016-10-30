@@ -88,7 +88,7 @@ fn spawn_inside() {
         }
         yield_now();
         println!("bye from parent: {:?}", me);
-    });
+    }).unwrap().join().unwrap();
     thread::sleep(Duration::from_millis(200));
 }
 

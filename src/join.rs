@@ -9,15 +9,25 @@ use scheduler::get_scheduler;
 use yield_now::yield_with;
 use sync::AtomicOption;
 
+enum Waiter {
+    Coroutine(CoroutineImpl),
+    Thread(thread::Thread),
+}
+
+impl Waiter {
+    pub fn schedule(self) {
+        match self {
+            Waiter::Coroutine(co) => get_scheduler().schedule(co),
+            Waiter::Thread(t)=> t.unpark(),
+        }
+    }
+}
+
 pub struct Join {
     // the coroutine that waiting for this join handler
-    wait_co: Option<CoroutineImpl>,
+    waiter: AtomicOption<Waiter>,
     // the flag indicate if the host coroutine is finished
     state: AtomicUsize,
-
-    // thread talk
-    wait_thread: Option<thread::Thread>,
-    t_state: AtomicUsize,
 
     // use to set the panic err
     // this is the only place that could set the panic Error
@@ -26,20 +36,16 @@ pub struct Join {
     panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
 }
 
-// the state of the Join struct
+// the init state of the Join struct
 const INIT: usize = 0;
-const WAIT: usize = 1;
-// const DONE: usize = 2;
 
 
 // this is the join resource type
 impl Join {
     pub fn new(panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>) -> Self {
         Join {
-            wait_co: None,
+            waiter: AtomicOption::none(),
             state: AtomicUsize::new(INIT),
-            wait_thread: None,
-            t_state: AtomicUsize::new(INIT),
             panic: panic,
         }
     }
@@ -51,68 +57,29 @@ impl Join {
     }
 
     pub fn trigger(&mut self) {
-        let state = self.state.fetch_add(1, Ordering::Relaxed);
-
-        // when the coroutine is done, release the wait_co
-        // if the old value is WAIT current value is DONE now
-        // if the old value is INIT, there is no registered coroutine wait on it do nothing
-        // the state can't be DONE since it can only triggered once
-        if state == WAIT {
-            let co = self.wait_co.take().unwrap();
-            get_scheduler().schedule(co);
-        }
-
-        // wake up the waiting thread
-        let t_state = self.t_state.fetch_add(1, Ordering::Relaxed);
-        if t_state == WAIT {
-            let th = self.wait_thread.take().unwrap();
-            th.unpark();
-        }
+        self.state.fetch_add(1, Ordering::Release);
+        self.waiter.take(Ordering::Relaxed).map(|w| w.schedule());
     }
 
-    fn subscribe(&mut self, co: CoroutineImpl) {
-        let state = self.state.load(Ordering::Relaxed);
+    fn coroutine_wait(&mut self) {
         // if the state is INIT, register co to this resource, otherwise do nothing
-        if state == INIT {
-            // register the coroutine first
-            self.wait_co = Some(co);
-            // commit the state
-            match self.state
-                .compare_exchange(INIT, WAIT, Ordering::Release, Ordering::Relaxed) {
-                Ok(_) => {
-                    // successfully register the coroutine
-                }
-                Err(_) => {
-                    // CAS failed here, it's already triggered
-                    // repush the co to the ready list
-                    let co = self.wait_co.take().unwrap();
-                    get_scheduler().schedule(co);
-                }
-            }
+        if self.state.load(Ordering::Acquire) == INIT {
+            // successfully register the coroutine
         } else {
             // it's already trriggered
-            get_scheduler().schedule(co);
+            self.waiter.take(Ordering::Relaxed).map(|w| w.schedule());
         }
     }
 
     fn thread_wait(&mut self) {
-        let state = self.t_state.load(Ordering::Relaxed);
-        // if the state is INIT, register co to this resource, otherwise do nothing
-        if state == INIT {
-            // register the coroutine first
-            self.wait_thread = Some(thread::current());
-            // commit the state
-            match self.t_state
-                .compare_exchange(INIT, WAIT, Ordering::Release, Ordering::Relaxed) {
-                Ok(_) => {
-                    // successfully register the thread
-                }
-                Err(_) => {
-                    // CAS failed here, it's already triggered
-                    // repush the co to the ready list
-                    let th = self.wait_thread.take().unwrap();
-                    th.unpark();
-                }
+        if self.state.load(Ordering::Relaxed) == INIT {
+            // register the thread first
+            self.waiter.swap(Waiter::Thread(thread::current()), Ordering::Release);
+            if self.state.load(Ordering::Acquire) == INIT {
+                // successfully register the thread
+            } else {
+                // it's already trriggered
+                self.waiter.take(Ordering::Relaxed).map(|w| w.schedule());
             }
             thread::park();
         }
@@ -149,13 +116,13 @@ impl<T> JoinHandle<T> {
     pub fn coroutine(&self) -> &Coroutine {
         &self.co
     }
+
     /// Join the coroutine, returning the result it produced.
     pub fn join(self) -> Result<T> {
         let join = unsafe { &mut *self.join.get() };
         if is_coroutine() {
-            let state = join.state.load(Ordering::Relaxed);
             // if the state is not init, do nothing since the waited coroutine is done
-            if state == INIT {
+            if join.state.load(Ordering::Relaxed) == INIT {
                 yield_with(&self); // next would call subscribe in the schedule
             }
             // println!("join state: {:?}", state);
@@ -175,6 +142,7 @@ impl<T> EventSource for JoinHandle<T> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         // register the coroutine
         let join = unsafe { &mut *self.join.get() };
-        join.subscribe(co);
+        join.waiter.swap(Waiter::Coroutine(co), Ordering::Release);
+        join.coroutine_wait();
     }
 }
