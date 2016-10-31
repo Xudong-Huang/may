@@ -17,20 +17,19 @@ impl Waiter {
     }
 
     #[inline]
-    pub fn park() {
-        if is_coroutine() {
-            coroutine::park()
+    pub fn park(timeout: Option<Duration>) {
+        if let Some(dur) = timeout {
+            if is_coroutine() {
+                coroutine::park_timeout(dur);
+            } else {
+                thread::park_timeout(dur);
+            }
         } else {
-            thread::park()
-        }
-    }
-
-    #[inline]
-    pub fn park_timeout(dur: Duration) {
-        if is_coroutine() {
-            coroutine::park_timeout(dur);
-        } else {
-            thread::park_timeout(dur);
+            if is_coroutine() {
+                coroutine::park()
+            } else {
+                thread::park()
+            }
         }
     }
 

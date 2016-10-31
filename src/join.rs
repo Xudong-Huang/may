@@ -55,7 +55,7 @@ impl Join {
                 // it's already trriggered
                 self.waiter.take(Ordering::Relaxed).map(|w| w.unpark());
             }
-            Waiter::park();
+            Waiter::park(None);
         }
     }
 }
