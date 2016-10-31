@@ -32,8 +32,7 @@ impl Park {
     // when the state is 1, we clear it and indicate not to block
     // when the state is 0, means we need real park
     pub fn check_park(&self) -> bool {
-        let state = self.state.load(Ordering::Relaxed);
-        if state == 0 {
+        if self.state.load(Ordering::Relaxed) == 0 {
             return true;
         }
 
@@ -56,8 +55,7 @@ impl Park {
 
     // unpark the underlying coroutine if any
     pub fn unpark(&self) {
-        let state = self.state.load(Ordering::Relaxed);
-        if state > 0 {
+        if self.state.load(Ordering::Relaxed) > 0 {
             // the state is already set do nothing here
             return;
         }
@@ -90,6 +88,7 @@ impl EventSource for Park {
             s.add_timer(dur, co.clone());
         });
 
+        // register the coroutine
         self.wait_co = co;
         // re-check the state
         if !self.check_park() {
