@@ -7,10 +7,13 @@
 
 mod boxed_option;
 mod atomic_option;
+mod waiter;
 // mod barrier;
 // mod condvar;
 // mod mutex;
 // mod once;
 // mod rwlock;
+// pub mod mpsc;
+pub use self::waiter::Waiter;
 pub use self::boxed_option::BoxedOption;
 pub use self::atomic_option::AtomicOption;

@@ -11,7 +11,6 @@ mod io;
 mod join;
 mod park;
 mod pool;
-mod sync;
 mod local;
 mod sleep;
 mod scoped;
@@ -21,6 +20,7 @@ mod coroutine;
 mod timeout_list;
 
 pub mod net;
+pub mod sync;
 pub use sleep::sleep;
 pub use scoped::scope;
 pub use join::JoinHandle;
