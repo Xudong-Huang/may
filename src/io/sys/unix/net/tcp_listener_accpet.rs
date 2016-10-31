@@ -30,7 +30,7 @@ impl<'a> TcpListenerAccept<'a> {
 
             match self.socket.accept() {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+                ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

@@ -34,7 +34,7 @@ impl<'a> SocketRead<'a> {
             // finish the read operaion
             match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret @ _ => return ret,
+                ret => return ret,
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

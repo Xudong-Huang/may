@@ -36,7 +36,7 @@ impl<'a> UdpRecvFrom<'a> {
 
             match self.socket.recv_from(self.buf) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret @ _ => return ret,
+                ret => return ret,
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

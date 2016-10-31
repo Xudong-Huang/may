@@ -38,7 +38,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
             match self.socket.send_to(self.buf, &self.addr) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret @ _ => return ret,
+                ret => return ret,
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

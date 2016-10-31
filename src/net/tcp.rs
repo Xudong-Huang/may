@@ -131,7 +131,7 @@ impl Read for TcpStream {
         // it's useful for server but not necessary for client
         match self.sys.read(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
@@ -151,7 +151,7 @@ impl Write for TcpStream {
         // this is an earlier return try for nonblocking write
         match self.sys.write(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
@@ -224,7 +224,7 @@ impl TcpListener {
         self.io.reset();
         match self.sys.accept() {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+            ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
         }
 
         let a = try!(net_impl::TcpListenerAccept::new(self));

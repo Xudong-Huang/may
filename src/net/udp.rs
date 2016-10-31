@@ -68,7 +68,7 @@ impl UdpSocket {
         // this is an earlier return try for nonblocking read
         match self.sys.send_to(buf, &addr) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let writer = try!(net_impl::UdpSendTo::new(self, buf, addr));
@@ -86,7 +86,7 @@ impl UdpSocket {
         // this is an earlier return try for nonblocking read
         match self.sys.recv_from(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let reader = net_impl::UdpRecvFrom::new(self, buf);
@@ -107,7 +107,7 @@ impl UdpSocket {
         // this is an earlier return try for nonblocking write
         match self.sys.send(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
@@ -128,7 +128,7 @@ impl UdpSocket {
         // this is an earlier return try for nonblocking read
         match self.sys.recv(buf) {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret @ _ => return ret,
+            ret => return ret,
         }
 
         let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);

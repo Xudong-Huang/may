@@ -43,7 +43,7 @@ impl TcpStreamConnect {
                     // we must give the connect request first to the system
                     let ret = match builder.connect(&addr) {
                         Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
-                        ret @ _ => Some(ret.map(|s| TcpStream::from_stream(s, io))),
+                        ret => Some(ret.map(|s| TcpStream::from_stream(s, io))),
                     };
 
                     TcpStreamConnect {
@@ -77,7 +77,7 @@ impl TcpStreamConnect {
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
-                ret @ _ => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
+                ret => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
             }
 
             if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {
