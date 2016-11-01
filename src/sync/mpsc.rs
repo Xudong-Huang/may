@@ -1,3 +1,5 @@
+//! compatable with std::sync::mpsc except for both thread and coroutine
+//! please ref the doc from std::sync::mpsc
 use std::fmt;
 use std::sync::Arc;
 use std::time::{Instant, Duration};
@@ -6,6 +8,7 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError, SendError};
 use sync::{AtomicOption, Blocker};
 use queue::mpsc_list;
 
+
 // TODO: SyncSender, Select
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -13,15 +16,15 @@ use queue::mpsc_list;
 // type InnerQueue<T> = Arc<UnsafeCell<mpsc_list<T>>>;
 struct InnerQueue<T> {
     queue: mpsc_list::Queue<T>,
-    to_wake: AtomicOption<Blocker>, // thread/coroutine for wake up
-    // The number of channels which are currently using this queue.
+    // thread/coroutine for wake up
+    to_wake: AtomicOption<Blocker>,
+    // The number of tx channels which are currently using this queue.
     channels: AtomicUsize,
+    // if rx is dropped
     port_dropped: AtomicBool,
 }
 
 impl<T> InnerQueue<T> {
-    // Creation of a packet *must* be followed by a call to postinit_lock
-    // and later by inherit_blocker
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
             queue: mpsc_list::Queue::new(),
@@ -32,7 +35,6 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn send(&self, t: T) -> Result<(), T> {
-        // See Port::drop for what's going on
         if self.port_dropped.load(Ordering::SeqCst) {
             return Err(t);
         }
@@ -77,15 +79,10 @@ impl<T> InnerQueue<T> {
         }
     }
 
-    // Prepares this shared queue for a channel clone, essentially just bumping
-    // a refcount.
     pub fn clone_chan(&self) {
         self.channels.fetch_add(1, Ordering::SeqCst);
     }
 
-    // Decrement the reference count on a channel. This is called whenever a
-    // Chan is dropped and may end up waking up a receiver. It's the receiver's
-    // responsibility on the other end to figure out that we've disconnected.
     pub fn drop_chan(&self) {
         match self.channels.fetch_sub(1, Ordering::SeqCst) {
             1 => {}
@@ -112,60 +109,32 @@ impl<T> Drop for InnerQueue<T> {
     }
 }
 
-
-
-/// The receiving-half of Rust's channel type. This half can only be owned by
-/// one coroutine/thread
 pub struct Receiver<T> {
     inner: Arc<InnerQueue<T>>,
 }
 
-// The receiver port can be sent from place to place, so long as it
-// is not used to receive non-sendable things.
 unsafe impl<T: Send> Send for Receiver<T> {}
 // impl<T> !Sync for Receiver<T> {}
 
-/// An iterator over messages on a receiver, this iterator will block
-/// whenever `next` is called, waiting for a new message, and `None` will be
-/// returned when the corresponding channel has hung up.
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An iterator that attempts to yield all pending values for a receiver.
-/// `None` will be returned when there are no pending values remaining or
-/// if the corresponding channel has hung up.
-///
-/// This Iterator will never block the caller in order to wait for data to
-/// become available. Instead, it will return `None`.
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An owning iterator over messages on a receiver, this iterator will block
-/// whenever `next` is called, waiting for a new message, and `None` will be
-/// returned when the corresponding channel has hung up.
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
 
-/// The sending-half of Rust's asynchronous channel type. This half can only be
-/// owned by one thread, but it can be cloned to send to other threads.
 pub struct Sender<T> {
     inner: Arc<InnerQueue<T>>,
 }
 
-// The send port can be sent from place to place, so long as it
-// is not used to send non-sendable things.
 unsafe impl<T: Send> Send for Sender<T> {}
 // impl<T> !Sync for Sender<T> {}
 
-
-/// Creates a new asynchronous channel, returning the sender/receiver halves.
-///
-/// All data sent on the sender will become available on the receiver, and no
-/// send will block the calling thread/coroutine (this channel has an "infinite buffer").
-///
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let a = Arc::new(InnerQueue::new());
     (Sender::new(a.clone()), Receiver::new(a))
@@ -180,18 +149,6 @@ impl<T> Sender<T> {
         Sender { inner: inner }
     }
 
-    /// Attempts to send a value on this channel, returning it back if it could
-    /// not be sent.
-    ///
-    /// A successful send occurs when it is determined that the other end of
-    /// the channel has not hung up already. An unsuccessful send would be one
-    /// where the corresponding receiver has already been deallocated. Note
-    /// that a return value of `Err` means that the data will never be
-    /// received, but a return value of `Ok` does *not* mean that the data
-    /// will be received.  It is possible for the corresponding receiver to
-    /// hang up immediately after this function returns `Ok`.
-    ///
-    /// This method will never block the current thread.
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t).map_err(SendError)
     }
@@ -225,32 +182,10 @@ impl<T> Receiver<T> {
         Receiver { inner: inner }
     }
 
-    /// Attempts to return a pending value on this receiver without blocking
-    ///
-    /// This method will never block the caller in order to wait for data to
-    /// become available. Instead, this will always return immediately with a
-    /// possible option of pending data on the channel.
-    ///
-    /// This is useful for a flavor of "optimistic check" before deciding to
-    /// block on a receiver.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.inner.try_recv()
     }
 
-
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up.
-    ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent. Once a message is
-    /// sent to the corresponding `Sender`, then this receiver will wake up and
-    /// return that message.
-    ///
-    /// If the corresponding `Sender` has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return `Err` to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
     pub fn recv(&self) -> Result<T, RecvError> {
         loop {
             match self.inner.recv(None) {
@@ -260,19 +195,6 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up, or if it waits more than `timeout`.
-    ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent. Once a message is
-    /// sent to the corresponding `Sender`, then this receiver will wake up and
-    /// return that message.
-    ///
-    /// If the corresponding `Sender` has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return `Err` to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         // Do an optimistic try_recv to avoid the performance impact of
         // Instant::now() in the full-channel case.
@@ -300,16 +222,10 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns an iterator that will block waiting for messages, but never
-    /// `panic!`. It will return `None` when the channel has hung up.
     pub fn iter(&self) -> Iter<T> {
         Iter { rx: self }
     }
 
-    /// Returns an iterator that will attempt to yield all pending values.
-    /// It will return `None` if there are no more pending values or if the
-    /// channel has hung up. The iterator will never `panic!` or block the
-    /// user by waiting for values.
     pub fn try_iter(&self) -> TryIter<T> {
         TryIter { rx: self }
     }
