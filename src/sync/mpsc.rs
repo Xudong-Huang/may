@@ -851,16 +851,16 @@ mod tests {
                 });
             });
         }
-    }/*
+    }
 
     #[test]
     fn oneshot_multi_thread_send_recv_stress() {
         for _ in 0..stress_factor() {
             let (tx, rx) = channel::<Box<isize>>();
             let _t = thread::spawn(move || {
-                tx.send(box 10).unwrap();
+                tx.send(Box::new(10)).unwrap();
             });
-            assert!(rx.recv().unwrap() == box 10);
+            assert!(*rx.recv().unwrap() == 10);
         }
     }
 
@@ -878,7 +878,7 @@ mod tests {
                 }
 
                 thread::spawn(move || {
-                    tx.send(box i).unwrap();
+                    tx.send(Box::new(i)).unwrap();
                     send(tx, i + 1);
                 });
             }
@@ -889,7 +889,7 @@ mod tests {
                 }
 
                 thread::spawn(move || {
-                    assert!(rx.recv().unwrap() == box i);
+                    assert!(*rx.recv().unwrap() == i);
                     recv(rx, i + 1);
                 });
             }
@@ -911,7 +911,7 @@ mod tests {
     fn stress_recv_timeout_two_threads() {
         let (tx, rx) = channel();
         let stress = stress_factor() + 100;
-        let timeout = Duration::from_millis(100);
+        let timeout = Duration::from_millis(1);
 
         thread::spawn(move || {
             for i in 0..stress {
@@ -1173,7 +1173,7 @@ mod tests {
 
         // wait for the child thread to exit before we exit
         rx2.recv().unwrap();
-    }
+    }/*
 }
 
 #[cfg(test)]
