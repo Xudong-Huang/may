@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
@@ -8,7 +8,8 @@ use coroutine::{CoroutineImpl, EventSource};
 pub struct Park {
     // the coroutine that waiting for this join handler
     wait_co: Arc<BoxedOption<CoroutineImpl>>,
-    state: AtomicUsize,
+    // when set means the Park no need to block
+    state: AtomicBool,
     timeout: Option<Duration>,
 }
 
@@ -17,7 +18,7 @@ impl Park {
     pub fn new() -> Self {
         Park {
             wait_co: Arc::new(BoxedOption::none()),
-            state: AtomicUsize::new(0),
+            state: AtomicBool::new(false),
             timeout: None,
         }
     }
@@ -29,23 +30,23 @@ impl Park {
     }
 
     // return true if need park the coroutine
-    // when the state is 1, we clear it and indicate not to block
-    // when the state is 0, means we need real park
+    // when the state is true, we clear it and indicate not to block
+    // when the state is false, means we need real park
     pub fn check_park(&self) -> bool {
-        if self.state.load(Ordering::Relaxed) == 0 {
+        if !self.state.load(Ordering::Relaxed) {
             return true;
         }
 
         loop {
             match self.state
-                .compare_exchange_weak(1, 0, Ordering::Relaxed, Ordering::Relaxed) {
+                .compare_exchange_weak(true, false, Ordering::Relaxed, Ordering::Relaxed) {
                 Ok(_) => {
                     // successfully consume the state
                     // don't need to block
                     return false;
                 }
                 Err(x) => {
-                    if x == 0 {
+                    if !x {
                         return true;
                     }
                 }
@@ -55,14 +56,14 @@ impl Park {
 
     // unpark the underlying coroutine if any
     pub fn unpark(&self) {
-        if self.state.load(Ordering::Relaxed) > 0 {
+        if self.state.load(Ordering::Relaxed) {
             // the state is already set do nothing here
             return;
         }
 
         loop {
             match self.state
-                .compare_exchange_weak(0, 1, Ordering::Relaxed, Ordering::Relaxed) {
+                .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed) {
                 Ok(_) => {
                     self.wait_co.take_fast(Ordering::Acquire).map(|co| {
                         get_scheduler().schedule(co);
@@ -70,7 +71,7 @@ impl Park {
                     return;
                 }
                 Err(x) => {
-                    if x == 1 {
+                    if x {
                         break; // already set, do nothing
                     }
                 }

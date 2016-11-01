@@ -2,15 +2,16 @@ use std::result;
 use std::any::Any;
 use std::sync::Arc;
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use coroutine::Coroutine;
 use sync::{Blocker, AtomicOption};
 
 pub struct Join {
     // the coroutine that waiting for this join handler
     to_wake: AtomicOption<Blocker>,
-    // the flag indicate if the host coroutine is finished
-    state: AtomicUsize,
+    // the flag indicate if the host coroutine is not finished
+    // when set to false, the coroutine is done
+    state: AtomicBool,
 
     // use to set the panic err
     // this is the only place that could set the panic Error
@@ -19,16 +20,12 @@ pub struct Join {
     panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
 }
 
-// the init state of the Join struct
-const INIT: usize = 0;
-
-
 // this is the join resource type
 impl Join {
     pub fn new(panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>) -> Self {
         Join {
             to_wake: AtomicOption::none(),
-            state: AtomicUsize::new(INIT),
+            state: AtomicBool::new(true),
             panic: panic,
         }
     }
@@ -40,16 +37,16 @@ impl Join {
     }
 
     pub fn trigger(&mut self) {
-        self.state.store(1, Ordering::Release);
+        self.state.store(false, Ordering::Release);
         self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
     }
 
     fn wait(&mut self) {
-        if self.state.load(Ordering::Relaxed) == INIT {
+        if self.state.load(Ordering::Relaxed) {
             // register the blocker first
             self.to_wake.swap(Blocker::new(), Ordering::Release);
             // re-check the state
-            if self.state.load(Ordering::Acquire) == INIT {
+            if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
             } else {
                 // it's already trriggered
