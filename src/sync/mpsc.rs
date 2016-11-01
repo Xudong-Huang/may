@@ -1,8 +1,8 @@
-use std::any::Any;
+use std::fmt;
 use std::sync::Arc;
-use std::{error, fmt};
 use std::time::{Instant, Duration};
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError, SendError};
 use sync::{AtomicOption, Blocker};
 use queue::mpsc_list;
 
@@ -69,8 +69,8 @@ impl<T> InnerQueue<T> {
             Some(data) => Ok(data),
             None => {
                 match self.channels.load(Ordering::SeqCst) {
-                    // there is no sender any more
-                    0 => Err(TryRecvError::Disconnected),
+                    // there is no sender any more, should re-check
+                    0 => self.queue.pop().ok_or(TryRecvError::Disconnected),
                     _ => Err(TryRecvError::Empty),
                 }
             }
@@ -160,45 +160,6 @@ pub struct Sender<T> {
 unsafe impl<T: Send> Send for Sender<T> {}
 // impl<T> !Sync for Sender<T> {}
 
-/// An error returned from the `send` function on channels.
-///
-/// A `send` operation can only fail if the receiving end of a channel is
-/// disconnected, implying that the data could never be received. The error
-/// contains the data being sent as a payload so it can be recovered.
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct SendError<T>(pub T);
-
-/// An error returned from the `recv` function on a `Receiver`.
-///
-/// The `recv` operation can only fail if the sending half of a channel is
-/// disconnected, implying that no further messages will ever be received.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct RecvError;
-
-/// This enumeration is the list of the possible reasons that `try_recv` could
-/// not return data when called.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum TryRecvError {
-    /// This channel is currently empty, but the sender(s) have not yet
-    /// disconnected, so data may yet become available.
-    Empty,
-
-    /// This channel's sending half has become disconnected, and there will
-    /// never be any more data received on this channel
-    Disconnected,
-}
-
-/// This enumeration is the list of possible errors that `recv_timeout` could
-/// not return data when called.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum RecvTimeoutError {
-    /// This channel is currently empty, but the sender(s) have not yet
-    /// disconnected, so data may yet become available.
-    Timeout,
-    /// This channel's sending half has become disconnected, and there will
-    /// never be any more data received on this channel
-    Disconnected,
-}
 
 /// Creates a new asynchronous channel, returning the sender/receiver halves.
 ///
@@ -323,19 +284,18 @@ impl<T> Receiver<T> {
     }
 
     fn recv_max_until(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        use self::RecvTimeoutError::*;
         let deadline = Instant::now() + timeout;
         loop {
             match self.inner.recv(Some(timeout)) {
                 Ok(t) => return Ok(t),
-                Err(TryRecvError::Disconnected) => return Err(Disconnected),
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
                 Err(TryRecvError::Empty) => {}
             }
 
             // If we're already passed the deadline, and we're here without
             // data, return a timeout, else try again.
             if Instant::now() >= deadline {
-                return Err(Timeout);
+                return Err(RecvTimeoutError::Timeout);
             }
         }
     }
@@ -408,71 +368,12 @@ impl<T> fmt::Debug for Receiver<T> {
     }
 }
 
-impl<T> fmt::Debug for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "SendError(..)".fmt(f)
-    }
-}
-
-impl<T> fmt::Display for SendError<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "sending on a closed channel".fmt(f)
-    }
-}
-
-impl<T: Send + Any> error::Error for SendError<T> {
-    fn description(&self) -> &str {
-        "sending on a closed channel"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl fmt::Display for RecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "receiving on a closed channel".fmt(f)
-    }
-}
-
-impl error::Error for RecvError {
-    fn description(&self) -> &str {
-        "receiving on a closed channel"
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
-impl fmt::Display for TryRecvError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            TryRecvError::Empty => "receiving on an empty channel".fmt(f),
-            TryRecvError::Disconnected => "receiving on a closed channel".fmt(f),
-        }
-    }
-}
-
-impl error::Error for TryRecvError {
-    fn description(&self) -> &str {
-        match *self {
-            TryRecvError::Empty => "receiving on an empty channel",
-            TryRecvError::Disconnected => "receiving on a closed channel",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::env;
     use std::thread;
     use std::time::{Duration, Instant};
+    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
     use coroutine;
     use super::*;
 
