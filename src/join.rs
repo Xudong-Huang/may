@@ -40,7 +40,7 @@ impl Join {
     }
 
     pub fn trigger(&mut self) {
-        self.state.fetch_add(1, Ordering::Release);
+        self.state.store(1, Ordering::Release);
         self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
     }
 

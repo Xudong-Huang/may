@@ -37,7 +37,7 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
+        self.to_wake.take_fast(Ordering::Acquire).map(|w| w.unpark());
         Ok(())
     }
 
@@ -54,7 +54,7 @@ impl<T> InnerQueue<T> {
             Err(TryRecvError::Empty) => Blocker::park(dur),
             data => {
                 // no need to park, contention with send
-                self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
+                self.to_wake.take_fast(Ordering::Relaxed).map(|w| w.unpark());
                 Blocker::park(dur);
                 return data;
             }
