@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use coroutine::Coroutine;
-use sync::{Waiter, AtomicOption};
+use sync::{Blocker, AtomicOption};
 
 pub struct Join {
     // the coroutine that waiting for this join handler
-    waiter: AtomicOption<Waiter>,
+    to_wake: AtomicOption<Blocker>,
     // the flag indicate if the host coroutine is finished
     state: AtomicUsize,
 
@@ -27,7 +27,7 @@ const INIT: usize = 0;
 impl Join {
     pub fn new(panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>) -> Self {
         Join {
-            waiter: AtomicOption::none(),
+            to_wake: AtomicOption::none(),
             state: AtomicUsize::new(INIT),
             panic: panic,
         }
@@ -41,21 +41,21 @@ impl Join {
 
     pub fn trigger(&mut self) {
         self.state.fetch_add(1, Ordering::Release);
-        self.waiter.take(Ordering::Relaxed).map(|w| w.unpark());
+        self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
     }
 
     fn wait(&mut self) {
         if self.state.load(Ordering::Relaxed) == INIT {
-            // register the waiter first
-            self.waiter.swap(Waiter::new(), Ordering::Release);
+            // register the blocker first
+            self.to_wake.swap(Blocker::new(), Ordering::Release);
             // re-check the state
             if self.state.load(Ordering::Acquire) == INIT {
-                // successfully register the waiter
+                // successfully register the blocker
             } else {
                 // it's already trriggered
-                self.waiter.take(Ordering::Relaxed).map(|w| w.unpark());
+                self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
             }
-            Waiter::park(None);
+            Blocker::park(None);
         }
     }
 }

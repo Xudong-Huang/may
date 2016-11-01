@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::{error, fmt};
 use std::time::{Instant, Duration};
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use sync::{AtomicOption, Waiter};
+use sync::{AtomicOption, Blocker};
 use queue::mpsc_list;
 
 // TODO: SyncSender, Select
@@ -13,7 +13,7 @@ use queue::mpsc_list;
 // type InnerQueue<T> = Arc<UnsafeCell<mpsc_list<T>>>;
 struct InnerQueue<T> {
     queue: mpsc_list::Queue<T>,
-    to_wake: AtomicOption<Waiter>, // thread/coroutine for wake up
+    to_wake: AtomicOption<Blocker>, // thread/coroutine for wake up
     // The number of channels which are currently using this queue.
     channels: AtomicUsize,
     port_dropped: AtomicBool,
@@ -48,14 +48,14 @@ impl<T> InnerQueue<T> {
         }
 
         // register the waiter
-        self.to_wake.swap(Waiter::new(), Ordering::Release);
+        self.to_wake.swap(Blocker::new(), Ordering::Release);
         // re-check the queue
         match self.try_recv() {
-            Err(TryRecvError::Empty) => Waiter::park(dur),
+            Err(TryRecvError::Empty) => Blocker::park(dur),
             data => {
-                // no need to park
+                // no need to park, contention with send
                 self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
-                Waiter::park(dur);
+                Blocker::park(dur);
                 return data;
             }
         }
@@ -832,7 +832,7 @@ mod tests {
                 })
                 .join();
         }
-    }/*
+    }
 
     #[test]
     fn oneshot_multi_thread_recv_close_stress() {
@@ -851,7 +851,7 @@ mod tests {
                 });
             });
         }
-    }
+    }/*
 
     #[test]
     fn oneshot_multi_thread_send_recv_stress() {
