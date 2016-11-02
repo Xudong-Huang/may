@@ -6,15 +6,16 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{TryLockError, TryLockResult, LockResult};
 use sync::poison;
-// use sync::Blocker;
-// use queue::mpsc_list;
+use sync::Blocker;
+use queue::mpsc_list;
 
 pub struct Mutex<T: ?Sized> {
-    poison: poison::Flag,
+
+    // the waiting blocker list
+    to_wake: mpsc_list::Queue<Blocker>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
-    // the waiting blocker list
-    // to_wake: mpsc_list::Queue<Blocker>,
+    poison: poison::Flag,
     data: UnsafeCell<T>,
 }
 
@@ -34,7 +35,7 @@ impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
     pub fn new(t: T) -> Mutex<T> {
         Mutex {
-            // to_wake: mpsc_list::Queue::new(),
+            to_wake: mpsc_list::Queue::new(),
             cnt: AtomicUsize::new(0),
             poison: poison::Flag::new(),
             data: UnsafeCell::new(t),
@@ -44,19 +45,32 @@ impl<T> Mutex<T> {
 
 impl<T: ?Sized> Mutex<T> {
     pub fn lock(&self) -> LockResult<MutexGuard<T>> {
-        // self.lock();
+        // register blocker first
+        self.to_wake.push(Blocker::new());
+        // inc the cnt, if it's the first grab, unpark it self
+        if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
+            self.to_wake.pop().map(|w| w.unpark());
+        }
+        Blocker::park(None);
         MutexGuard::new(self)
     }
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
         if self.cnt.load(Ordering::Relaxed) == 0 {
-            Ok(try!(MutexGuard::new(self)))
+            match self.cnt.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => Ok(try!(MutexGuard::new(self))),
+                Err(_) => Err(TryLockError::WouldBlock),
+            }
         } else {
             Err(TryLockError::WouldBlock)
         }
     }
 
-    fn unlock(&self) {}
+    fn unlock(&self) {
+        if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
+            self.to_wake.pop().map(|w| w.unpark());
+        }
+    }
 
     #[inline]
     pub fn is_poisoned(&self) -> bool {
