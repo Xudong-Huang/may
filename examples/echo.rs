@@ -25,7 +25,7 @@ fn handle_client(mut stream: TcpStream) {
 
 /// simple test: echo hello | nc 127.0.0.1 8080
 fn main() {
-    coroutine::scheduler_set_workers(1);
+    coroutine::scheduler_config().set_workers(1);
 
     coroutine::spawn(|| {
             // let listener = TcpListener::bind("127.0.0.1:8080").unwrap();

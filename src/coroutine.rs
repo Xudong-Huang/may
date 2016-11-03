@@ -11,11 +11,7 @@ use scheduler::get_scheduler;
 use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
 use yield_now::yield_with;
-
-
-// default stack size, in usize
-// windows has a minimal size as 0x4a8!!!!
-pub const DEFAULT_STACK_SIZE: usize = 0x800;
+use config::scheduler_config;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types
@@ -60,7 +56,7 @@ impl Done {
         }
         // recycle the coroutine
         let (size, _) = co.stack_usage();
-        if size == DEFAULT_STACK_SIZE {
+        if size == scheduler_config().get_stack_size() {
             get_scheduler().pool.put(co);
         }
     }
@@ -170,7 +166,7 @@ impl Builder {
 
         let done = &DONE as &EventSource as *const _ as *mut EventSource;
         let Builder { name, stack_size } = self;
-        let stack_size = stack_size.unwrap_or(DEFAULT_STACK_SIZE);
+        let stack_size = stack_size.unwrap_or(scheduler_config().get_stack_size());
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(UnsafeCell::new(None));
         let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
@@ -193,7 +189,7 @@ impl Builder {
         };
 
         let mut co;
-        if stack_size == DEFAULT_STACK_SIZE {
+        if stack_size == scheduler_config().get_stack_size() {
             co = _co;
             // re-init the closure
             co.init(closure);

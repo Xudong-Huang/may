@@ -60,7 +60,7 @@ fn main() {
     let test_seconds = args.flag_t;
     // let io_timeout = 2;
 
-    coroutine::scheduler_set_workers(1);
+    coroutine::scheduler_config().set_workers(1);
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);

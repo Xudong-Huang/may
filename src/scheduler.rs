@@ -12,31 +12,18 @@ use queue::mpmc::Queue as mpmc;
 use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
-use coroutine::{CoroutineImpl, run_coroutine};
 use timeout_list;
 use sync::BoxedOption;
 use pool::CoroutinePool;
 use yield_now::set_co_para;
+use config::scheduler_config;
 use io::{EventLoop, Selector};
+use coroutine::{CoroutineImpl, run_coroutine};
 
 const ID_INIT: usize = ::std::usize::MAX;
 thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
-static mut WORKERS: usize = 1;
-static mut IO_WORKERS: usize = 4;
 const PREFTCH_SIZE: usize = 4;
-
-/// set the worker thread number
-/// this function should be called at the program beginning
-/// successive call would not tack effect for that the scheduler
-/// is already started
-pub fn scheduler_set_workers(workers: usize) {
-    info!("set workers={:?}", workers);
-    unsafe {
-        WORKERS = workers;
-    }
-    get_scheduler();
-}
 
 // here we use Arc<BoxedOption<>> for that in the select implementaion
 // other event may try to consume the coroutine while timer thread consume it
@@ -54,9 +41,9 @@ pub fn get_scheduler() -> &'static Scheduler {
 
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
-        let workers = unsafe { WORKERS };
-        let io_workers = unsafe { IO_WORKERS };
-        let b: Box<Scheduler> = Scheduler::new();
+        let workers = scheduler_config().get_workers();
+        let io_workers = scheduler_config().get_io_workers();
+        let b: Box<Scheduler> = Scheduler::new(workers, io_workers);
         unsafe {
             sched = Box::into_raw(b);
         }
@@ -112,9 +99,7 @@ type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
 type CacheBuf = RingBuf<[CoroutineImpl; PREFTCH_SIZE + 2]>;
 
 impl Scheduler {
-    pub fn new() -> Box<Self> {
-        let workers = unsafe { WORKERS };
-        let io_workers = unsafe { IO_WORKERS };
+    pub fn new(workers: usize, io_workers: usize) -> Box<Self> {
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(io_workers).expect("can't create event_loop"),

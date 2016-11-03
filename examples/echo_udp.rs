@@ -16,7 +16,7 @@ macro_rules! t {
 }
 
 fn main() {
-    coroutine::scheduler_set_workers(1);
+    coroutine::scheduler_config().set_workers(1);
 
     let h = coroutine::spawn(|| {
         let sock = UdpSocket::bind("0.0.0.0:30000").unwrap();

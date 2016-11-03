@@ -1,8 +1,7 @@
-use coroutine::{DEFAULT_STACK_SIZE, CoroutineImpl};
 use generator::Gn;
+use coroutine::CoroutineImpl;
+use config::scheduler_config;
 use queue::mpmc_bounded::Queue;
-
-const DEFAULT_POOL_CAPACITY: usize = 100;
 
 /// the raw coroutine pool, with stack and register prepared
 /// you need to tack care of the local storage
@@ -13,15 +12,16 @@ pub struct CoroutinePool {
 
 impl CoroutinePool {
     fn create_dummy_coroutine() -> CoroutineImpl {
-        let co = Gn::new_opt(DEFAULT_STACK_SIZE, move || {
+        let co = Gn::new_opt(scheduler_config().get_stack_size(), move || {
             unreachable!("dummy coroutine should never be called");
         });
         co
     }
 
     pub fn new() -> Self {
-        let pool = Queue::with_capacity(DEFAULT_POOL_CAPACITY);
-        for _ in 0..DEFAULT_POOL_CAPACITY {
+        let capacity = scheduler_config().get_pool_capacity();
+        let pool = Queue::with_capacity(capacity);
+        for _ in 0..capacity {
             let co = Self::create_dummy_coroutine();
             pool.push(co).unwrap();
         }

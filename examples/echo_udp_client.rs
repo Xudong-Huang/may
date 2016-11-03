@@ -62,7 +62,7 @@ fn main() {
     let test_conn_num = args.flag_c;
     let test_seconds = args.flag_t;
 
-    coroutine::scheduler_set_workers(4);
+    coroutine::scheduler_config().set_workers(1);
 
     // let io_timeout = 5;
     let base_port = AtomicUsize::new(50000);
