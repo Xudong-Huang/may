@@ -73,7 +73,13 @@ impl Park {
     // remove the timeout handle after return back to user space
     pub fn remove_timeout_handle(&self) {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.timeout_handle.take().map(|h| get_scheduler().del_timer(h));
+        me.timeout_handle.take().map(|h| {
+            if h.is_link() {
+                get_scheduler().del_timer(h);
+            }
+            // when timeout the node is unlinked
+            // just drop it to release memory
+        });
     }
 
     #[inline]
