@@ -205,7 +205,8 @@ impl Scheduler {
                     self.wait_list.pop().map(|t| t.unpark());
                 }
 
-                thread::park_timeout(Duration::from_millis(100));
+                // thread::park_timeout(Duration::from_millis(100));
+                thread::park();
             }
         }
     }
