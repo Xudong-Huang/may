@@ -185,7 +185,7 @@ impl Scheduler {
     pub fn schedule(&self, co: CoroutineImpl) {
         let id = ID.with(|m_id| m_id.get());
         if id == ID_INIT {
-            self.visit_list.push(co);
+            self.visit_list.sp_push(co);
             self.wait_list.pop().map(|t| t.unpark());
             return;
         }
