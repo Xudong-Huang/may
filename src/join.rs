@@ -44,7 +44,7 @@ impl Join {
     fn wait(&mut self) {
         if self.state.load(Ordering::Relaxed) {
             // register the blocker first
-            self.to_wake.swap(Blocker::new(), Ordering::Release);
+            self.to_wake.swap(Blocker::current(), Ordering::Release);
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker

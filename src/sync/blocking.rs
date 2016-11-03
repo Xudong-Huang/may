@@ -8,7 +8,7 @@ pub enum Blocker {
 }
 
 impl Blocker {
-    pub fn new() -> Self {
+    pub fn current() -> Self {
         if is_coroutine() {
             Blocker::Coroutine(coroutine::current())
         } else {

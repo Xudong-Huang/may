@@ -50,7 +50,7 @@ impl<T> InnerQueue<T> {
         }
 
         // register the waiter
-        self.to_wake.swap(Blocker::new(), Ordering::Release);
+        self.to_wake.swap(Blocker::current(), Ordering::Release);
         // re-check the queue
         match self.try_recv() {
             Err(TryRecvError::Empty) => Blocker::park(dur),

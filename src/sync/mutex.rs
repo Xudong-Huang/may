@@ -10,7 +10,6 @@ use sync::Blocker;
 use queue::mpsc_list;
 
 pub struct Mutex<T: ?Sized> {
-
     // the waiting blocker list
     to_wake: mpsc_list::Queue<Blocker>,
     // track how many blockers are waiting on the mutex
@@ -46,10 +45,10 @@ impl<T> Mutex<T> {
 impl<T: ?Sized> Mutex<T> {
     pub fn lock(&self) -> LockResult<MutexGuard<T>> {
         // register blocker first
-        self.to_wake.push(Blocker::new());
-        // inc the cnt, if it's the first grab, unpark it self
+        self.to_wake.push(Blocker::current());
+        // inc the cnt, if it's the first grab, unpark itself
         if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
-            self.to_wake.pop().map(|w| w.unpark());
+            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| w.unpark());
         }
         Blocker::park(None);
         MutexGuard::new(self)
@@ -68,7 +67,7 @@ impl<T: ?Sized> Mutex<T> {
 
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
-            self.to_wake.pop().map(|w| w.unpark());
+            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| w.unpark());
         }
     }
 
