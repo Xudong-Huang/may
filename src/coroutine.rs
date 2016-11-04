@@ -55,7 +55,11 @@ impl Done {
             Box::from_raw(co.get_local_data() as *mut CoroutineLocal);
         }
         // recycle the coroutine
-        let (size, _) = co.stack_usage();
+        let (size, used) = co.stack_usage();
+        if used == size {
+            println!("statck overflow detected, size={}", size);
+            ::std::process::exit(1);
+        }
         if size == scheduler_config().get_stack_size() {
             get_scheduler().pool.put(co);
         }
