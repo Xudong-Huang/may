@@ -11,12 +11,12 @@ use docopt::Docopt;
 const VERSION: &'static str = "0.1.0";
 
 const USAGE: &'static str = "
-Tcp echo server.
+Udp echo server.
 
 Usage:
-  echo_client [-t <threads>] [-p <port>]
-  echo_client (-h | --help)
-  echo_client (-v | --version)
+  echo_udp [-t <threads>] [-p <port>]
+  echo_udp (-h | --help)
+  echo_udp (-v | --version)
 
 Options:
   -h --help         Show this screen.
@@ -49,7 +49,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     if args.flag_v {
-        return println!("echo: {}", VERSION);
+        return println!("echo_udp: {}", VERSION);
     }
 
     let port = args.flag_p;

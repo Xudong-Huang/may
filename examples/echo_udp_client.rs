@@ -16,9 +16,9 @@ const USAGE: &'static str = "
 Udp echo client.
 
 Usage:
-  echo_client [-d <time>] [-c <connections>] [-t <threads>] [-l <length>] -a <address>
-  echo_client (-h | --help)
-  echo_client (-v | --version)
+  echo_upd_client [-d <time>] [-c <connections>] [-t <threads>] [-l <length>] -a <address>
+  echo_upd_client (-h | --help)
+  echo_upd_client (-v | --version)
 
 Options:
   -h --help         Show this screen.
@@ -57,7 +57,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     if args.flag_v {
-        return println!("echo_client: {}", VERSION);
+        return println!("echo_udp_client: {}", VERSION);
     }
 
     let target_addr: &str = &args.flag_a;

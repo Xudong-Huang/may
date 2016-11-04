@@ -13,9 +13,9 @@ const USAGE: &'static str = "
 Tcp echo server.
 
 Usage:
-  echo_client [-t <threads>] [-p <port>]
-  echo_client (-h | --help)
-  echo_client (-v | --version)
+  echo [-t <threads>] [-p <port>]
+  echo (-h | --help)
+  echo (-v | --version)
 
 Options:
   -h --help         Show this screen.
