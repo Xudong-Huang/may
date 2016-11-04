@@ -2,8 +2,9 @@ extern crate docopt;
 extern crate coroutine;
 extern crate rustc_serialize;
 
-use std::io::Write;
 use std::time::Duration;
+use std::io::{self, Write};
+use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use coroutine::net::UdpSocket;
 
@@ -12,29 +13,31 @@ use docopt::Docopt;
 const VERSION: &'static str = "0.1.0";
 
 const USAGE: &'static str = "
-Tcp echo client.
+Udp echo client.
 
 Usage:
-  echo_client [-c <connections>] [-t <time>] [-l <length>] -a <address>
+  echo_client [-d <time>] [-c <connections>] [-t <threads>] [-l <length>] -a <address>
   echo_client (-h | --help)
   echo_client (-v | --version)
 
 Options:
   -h --help         Show this screen.
   -v --version      Show version.
+  -t <threads>      number of threads to use [default: 1].
   -l <length>       packet length in bytes [default: 100].
   -c <connections>  concurent connections  [default: 100].
-  -t <time>         time to run in seconds [default: 10].
+  -d <time>         time to run in seconds [default: 10].
   -a <address>      target address (e.g. 127.0.0.1:8080).
 ";
 
 #[derive(Debug, RustcDecodable)]
 struct Args {
     flag_c: usize,
-    flag_a: String,
     flag_l: usize,
     flag_t: usize,
+    flag_d: usize,
     flag_v: bool,
+    flag_a: String,
 }
 
 macro_rules! t {
@@ -60,12 +63,17 @@ fn main() {
     let target_addr: &str = &args.flag_a;
     let test_msg_len = args.flag_l;
     let test_conn_num = args.flag_c;
-    let test_seconds = args.flag_t;
+    let test_seconds = args.flag_d;
 
-    coroutine::scheduler_config().set_workers(4);
+    let err = io::Error::new(io::ErrorKind::Other, "can't resolve socket addresses");
+    let addr = t!(target_addr.to_socket_addrs())
+        .fold(Err(err), |prev, addr| prev.or_else(|_| Ok(addr)))
+        .unwrap();
+
+    coroutine::scheduler_config().set_io_workers(args.flag_t);
 
     // let io_timeout = 5;
-    let base_port = AtomicUsize::new(50000);
+    let base_port = AtomicUsize::new(addr.port() as usize + 100);
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);
