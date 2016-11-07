@@ -51,11 +51,26 @@ impl UdpSocket {
         self.sys.local_addr()
     }
 
+    #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
         let s = try!(self.sys.try_clone().and_then(|s| UdpSocket::new(s)));
         s.set_read_timeout(self.read_timeout).unwrap();
         s.set_write_timeout(self.write_timeout).unwrap();
         Ok(s)
+    }
+
+    // windows doesn't support add dup handler to IOCP
+    #[cfg(windows)]
+    pub fn try_clone(&self) -> io::Result<UdpSocket> {
+        let s = try!(self.sys.try_clone());
+        try!(s.set_nonblocking(true));
+        Ok(UdpSocket {
+            io: io_impl::IoData::new(0),
+            sys: s,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: self.read_timeout,
+            write_timeout: self.write_timeout,
+        })
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {

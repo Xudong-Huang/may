@@ -68,11 +68,26 @@ impl TcpStream {
         self.sys.local_addr()
     }
 
+    #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
         let s = try!(self.sys.try_clone().and_then(|s| TcpStream::new(s)));
         s.set_read_timeout(self.read_timeout).unwrap();
         s.set_write_timeout(self.write_timeout).unwrap();
         Ok(s)
+    }
+
+    // windows doesn't support add dup handler to IOCP
+    #[cfg(windows)]
+    pub fn try_clone(&self) -> io::Result<TcpStream> {
+        let s = try!(self.sys.try_clone());
+        try!(s.set_nonblocking(true));
+        Ok(TcpStream {
+            io: io_impl::IoData::new(0),
+            sys: s,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: self.read_timeout,
+            write_timeout: self.write_timeout,
+        })
     }
 
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
@@ -240,8 +255,21 @@ impl TcpListener {
         self.sys.local_addr()
     }
 
+    #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpListener> {
         self.sys.try_clone().and_then(|s| TcpListener::new(s))
+    }
+
+    // windows doesn't support add dup handler to IOCP
+    #[cfg(windows)]
+    pub fn try_clone(&self) -> io::Result<TcpListener> {
+        let s = try!(self.sys.try_clone());
+        try!(s.set_nonblocking(true));
+        Ok(TcpListener {
+            io: io_impl::IoData::new(0),
+            sys: s,
+            ctx: io_impl::IoContext::new(),
+        })
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {

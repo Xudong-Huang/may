@@ -39,10 +39,10 @@ impl<'a> TcpListenerAccept<'a> {
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
         try!(co_io_result(&self.io_data));
-
+        let socket = &self.socket;
         let s = try!(self.ret
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "tcp listener ret is not set"))
-            .and_then(|s| TcpStream::new(s)));
+            .and_then(|s| socket.accept_complete(&s).and_then(|_| TcpStream::new(s))));
 
         let addr = try!(self.addr.parse(&self.socket).and_then(|a| {
             a.remote().ok_or_else(|| {
