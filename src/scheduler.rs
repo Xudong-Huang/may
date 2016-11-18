@@ -32,10 +32,10 @@ type TimerList = timeout_list::TimeOutList<TimerData>;
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
-    static mut sched: *const Scheduler = 0 as *const _;
+    static mut SCHED: *const Scheduler = 0 as *const _;
     unsafe {
-        if likely(!sched.is_null()) {
-            return &*sched;
+        if likely(!SCHED.is_null()) {
+            return &*SCHED;
         }
     }
 
@@ -45,21 +45,21 @@ pub fn get_scheduler() -> &'static Scheduler {
         let io_workers = scheduler_config().get_io_workers();
         let b: Box<Scheduler> = Scheduler::new(workers, io_workers);
         unsafe {
-            sched = Box::into_raw(b);
+            SCHED = Box::into_raw(b);
         }
 
         // run the workers in background
         for id in 0..workers {
             thread::spawn(move || {
                 ID.with(|m_id| m_id.set(id));
-                let s = unsafe { &*sched };
+                let s = unsafe { &*SCHED };
                 s.run(id);
             });
         }
 
         // timer thread
         thread::spawn(move || {
-            let s = unsafe { &*sched };
+            let s = unsafe { &*SCHED };
             // timer function
             let timer_event_handler = |co: Arc<BoxedOption<CoroutineImpl>>| {
                 // just repush the co to the visit list
@@ -76,14 +76,14 @@ pub fn get_scheduler() -> &'static Scheduler {
         // io event loop thread
         for id in 0..io_workers {
             thread::spawn(move || {
-                let s = unsafe { &*sched };
+                let s = unsafe { &*SCHED };
                 s.event_loop.run(id).unwrap_or_else(|e| {
                     panic!("event_loop failed running, err={}", e);
                 });
             });
         }
     });
-    unsafe { &*sched }
+    unsafe { &*SCHED }
 }
 
 pub struct Scheduler {
