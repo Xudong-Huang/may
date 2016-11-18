@@ -111,14 +111,11 @@ impl Selector {
             data.io_flag.store(true, Ordering::Relaxed);
 
             // first check the atomic co, this may be grab by the worker first
-            let co = data.co.take(Ordering::Acquire);
-            if co.is_none() {
-                // there is no coroutine prepared, just ignore this one
-                // warn!("can't get coroutine in the epoll select");
-                continue;
-            }
-            let co = co.unwrap();
-            // co.prefetch();
+            let co = match data.co.take(Ordering::Acquire) {
+                None => continue,
+                Some(co) => co,
+            };
+            co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
             data.timer.take().map(|h| {

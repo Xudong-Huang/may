@@ -73,7 +73,7 @@ fn spawn_bench_1(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench(b: &mut Bencher) {
-    scheduler_config().set_workers(4);
+    scheduler_config().set_workers(4).set_pool_capacity(10000);
     b.iter(|| {
         let threads = 5;
         let mut vec = Vec::with_capacity(threads);
@@ -99,7 +99,7 @@ fn smoke_bench(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_1(b: &mut Bencher) {
-    scheduler_config().set_workers(4);
+    scheduler_config().set_workers(4).set_pool_capacity(10000);
     b.iter(|| {
         let threads = 5;
         let mut vec = Vec::with_capacity(threads);

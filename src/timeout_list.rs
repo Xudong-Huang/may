@@ -64,14 +64,8 @@ impl<T> IntervalEntry<T> {
         let p = |v: &TimeoutData<T>| v.time <= now;
         loop {
             match self.list.pop_if(&p) {
-                Some(timeout) => {
-                    // println!("got timeout time={:?}", timeout.time);
-                    f(timeout.data);
-                }
-                None => {
-                    // println!("no event in the interval list");
-                    break;
-                }
+                Some(timeout) => f(timeout.data),
+                None => break,
             }
         }
         self.list.peek().map(|t| t.time)
@@ -184,16 +178,10 @@ impl<T> TimeOutList<T> {
             {
                 let timer_bh = self.timer_bh.lock().unwrap();
                 match (*timer_bh).peek() {
-                    None => {
-                        // println!("no time event");
-                        return None;
-                    }
-                    Some(entry) => {
-                        // the latest timeout event not happened yet
-                        if entry.time > now {
-                            return Some(entry.time - now);
-                        }
-                    }
+                    // the latest timeout event not happened yet
+                    Some(entry) if entry.time > now => return Some(entry.time - now),
+                    None => return None,
+                    _ => {}
                 }
             }
             // pop out the entry
@@ -241,17 +229,9 @@ impl<T> TimeOutList<T> {
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
             self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
-            let now = now();
-            let next_expire = self.schedule_timer(now, f);
-            match next_expire {
-                Some(time) => {
-                    // println!("sleep for {:?}", time);
-                    thread::park_timeout(ns_to_dur(time));
-                }
-                None => {
-                    // println!("sleep forever");
-                    thread::park();
-                }
+            match self.schedule_timer(now(), f) {
+                Some(time) => thread::park_timeout(ns_to_dur(time)),
+                None => thread::park(),
             }
         }
     }

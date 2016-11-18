@@ -177,12 +177,8 @@ impl Scheduler {
                 let mut handle = thread::current();
                 loop {
                     match self.wait_list.push(handle) {
-                        Ok(_) => {
-                            break;
-                        }
-                        Err(h) => {
-                            handle = h;
-                        }
+                        Ok(_) => break,
+                        Err(h) => handle = h,
                     }
                 }
 

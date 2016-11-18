@@ -39,12 +39,8 @@ pub fn del_socket(io: &IoData) {
 #[inline]
 fn co_io_result() -> io::Result<()> {
     match get_co_para() {
-        Some(err) => {
-            return Err(err);
-        }
-        None => {
-            return Ok(());
-        }
+        Some(err) => return Err(err),
+        None => return Ok(()),
     }
 }
 
@@ -115,12 +111,10 @@ impl EventData {
     #[inline]
     pub fn schedule(&mut self) {
         info!("event schedul");
-        let co = self.co.take(Ordering::Acquire);
-        if co.is_none() {
-            // it's alreay take by selector
-            return;
-        }
-        let mut co = co.unwrap();
+        let mut co = match self.co.take(Ordering::Acquire) {
+            None => return, // it's alreay take by selector
+            Some(co) => co,
+        };
 
         // it's safe to remove the timer since we are runing the timer_list in the same thread
         self.timer.take().map(|h| {
