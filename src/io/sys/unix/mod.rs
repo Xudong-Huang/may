@@ -12,8 +12,8 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
-use coroutine::CoroutineImpl;
 use yield_now::{get_co_para, set_co_para};
+use coroutine::{CoroutineImpl, run_coroutine};
 use timeout_list::{TimeoutHandle, TimeOutList};
 
 pub use self::select::{SysEvent, Selector};
@@ -70,10 +70,7 @@ fn timeout_handler(data: TimerData) {
     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
 
     // resume the coroutine with timeout error
-    match co.resume() {
-        Some(ev) => ev.subscribe(co),
-        None => panic!("coroutine not return!"),
-    }
+    run_coroutine(co);
 }
 
 
@@ -111,7 +108,7 @@ impl EventData {
     #[inline]
     pub fn schedule(&mut self) {
         info!("event schedul");
-        let mut co = match self.co.take(Ordering::Acquire) {
+        let co = match self.co.take(Ordering::Acquire) {
             None => return, // it's alreay take by selector
             Some(co) => co,
         };
@@ -127,10 +124,7 @@ impl EventData {
         });
 
         // schedule the coroutine
-        match co.resume() {
-            Some(ev) => ev.subscribe(co),
-            None => panic!("coroutine not return!"),
-        }
+        run_coroutine(co);
     }
 }
 
