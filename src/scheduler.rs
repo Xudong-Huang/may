@@ -1,5 +1,4 @@
 use std::io;
-// use std::cmp;
 use std::thread;
 use std::cell::Cell;
 use std::time::Duration;
@@ -92,7 +91,7 @@ pub struct Scheduler {
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
     timer_list: TimerList,
-    wait_list: WaitList<thread::Thread>, // workers: usize,
+    wait_list: WaitList<thread::Thread>,
 }
 
 type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
@@ -110,7 +109,6 @@ impl Scheduler {
         })
     }
 
-    // TODO: use local stack ring buf
     #[inline]
     fn run_coroutines(&self, vec: &mut StackVec, old: &mut CacheBuf, size: usize) {
         let mut drain = vec.drain();
@@ -152,36 +150,26 @@ impl Scheduler {
             let mut size;
 
             // steal from normal thread visit list
-            // let mut size = self.visit_list.size();
-            // if size > 0 {
-            // size = cmp::max(size / self.workers, 1);
             size = self.visit_list.bulk_pop_expect(id, 0, &mut vec);
             if size > 0 {
                 total += size;
                 self.run_coroutines(&mut vec, &mut cached, size);
             }
-            // }
 
             // steal from the ready list
-            // let mut size = self.ready_list.size();
-            // if size > 0 {
-            // size = cmp::max(size / self.workers, 1);
             size = self.ready_list.bulk_pop_expect(id, 0, &mut vec);
             if size > 0 {
                 total += size;
                 self.run_coroutines(&mut vec, &mut cached, size);
             }
-            // }
 
             if total == 0 {
                 let mut handle = thread::current();
-                loop {
-                    match self.wait_list.push(handle) {
-                        Ok(_) => break,
-                        Err(h) => handle = h,
-                    }
+                while let Err(h) = self.wait_list.push(handle) {
+                    handle = h;
                 }
 
+                // do a re-check
                 if !self.ready_list.is_empty() || self.visit_list.size() > 0 {
                     self.wait_list.pop().map(|t| t.unpark());
                 }
@@ -196,13 +184,16 @@ impl Scheduler {
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
         let id = ID.with(|m_id| m_id.get());
-        if id != ID_INIT {
-            self.ready_list.push(id, co);
-        } else {
+        if id == ID_INIT {
             self.visit_list.push(co);
+            self.wait_list.pop().map(|t| t.unpark());
+            return;
         }
-        // signal one waiting thread if any
-        self.wait_list.pop().map(|t| t.unpark());
+
+        self.ready_list.push(id, co);
+        if self.ready_list.size() > BLOCK_SIZE / 2 {
+            self.wait_list.pop().map(|t| t.unpark());
+        }
     }
 
     #[inline]
