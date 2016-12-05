@@ -270,6 +270,7 @@ fn park_timeout_impl(dur: Option<Duration>) {
         //         // this is a unpark return
         //     }
         // }
+        park.remove_timeout_handle();
         // clear the trigger state
         park.check_park();
     }

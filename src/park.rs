@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
+use timeout_list::TimeoutHandle;
 use coroutine::{CoroutineImpl, EventSource};
 
 pub struct Park {
@@ -12,6 +13,7 @@ pub struct Park {
     // the low bit used as flag, and higher bits used as tag to prevent ABA problem
     state: AtomicUsize,
     timeout: Option<Duration>,
+    timeout_handle: Option<TimeoutHandle<Arc<BoxedOption<CoroutineImpl>>>>,
 }
 
 // this is the park resource type (spmc style)
@@ -21,6 +23,7 @@ impl Park {
             wait_co: Arc::new(BoxedOption::none()),
             state: AtomicUsize::new(0),
             timeout: None,
+            timeout_handle: None,
         }
     }
 
@@ -67,9 +70,14 @@ impl Park {
         }
     }
 
+    // remove the timeout handle after return back to user space
+    pub fn remove_timeout_handle(&self) {
+        let me = unsafe { &mut *(self as *const _ as *mut Self) };
+        me.timeout_handle.take().map(|h| get_scheduler().del_timer(h));
+    }
+
     #[inline]
     fn wake_up(&self) {
-        // ::std::sync::atomic::fence(Ordering::SeqCst);
         self.wait_co
             .take_fast(Ordering::Acquire)
             .map(|co| get_scheduler().schedule(co));
@@ -79,11 +87,10 @@ impl Park {
 impl EventSource for Park {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let s = get_scheduler();
+        self.timeout_handle =
+            self.timeout.take().map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
         // register the coroutine
         self.wait_co.swap(co, Ordering::Release);
-        let co = self.wait_co.clone();
-        self.timeout.take().map(|dur| s.add_timer(dur, co));
 
         // re-check the state, only clear once after resume
         if self.state.load(Ordering::Acquire) & 1 == 1 {

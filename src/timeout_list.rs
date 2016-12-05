@@ -7,7 +7,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::collections::{HashMap, BinaryHeap};
 use queue::mpsc_list::Queue as mpsc;
-use queue::mpsc_list::Entry;
+use queue::mpsc_list_v1::Queue as TimeoutList;
+use queue::mpsc_list_v1::Entry;
 use sync::AtomicOption;
 use self::time::precise_time_ns;
 
@@ -45,7 +46,7 @@ pub struct TimeoutData<T> {
 // timeout handler which can be removed/cancelled
 pub type TimeoutHandle<T> = Entry<TimeoutData<T>>;
 
-type IntervalList<T> = Arc<mpsc<TimeoutData<T>>>;
+type IntervalList<T> = Arc<TimeoutList<TimeoutData<T>>>;
 
 
 // this is the data type that used by the binary heap to get the latest timer
@@ -103,8 +104,6 @@ pub struct TimeOutList<T> {
     interval_map: RwLock<HashMap<u64, IntervalList<T>>>,
     // a priority queue, each element is the head of a mpsc queue
     timer_bh: Mutex<BinaryHeap<IntervalEntry<T>>>,
-    // the timer thread wakeup handler
-    wakeup: AtomicOption<thread::Thread>,
 }
 
 impl<T> TimeOutList<T> {
@@ -112,7 +111,6 @@ impl<T> TimeOutList<T> {
         TimeOutList {
             interval_map: RwLock::new(HashMap::new()),
             timer_bh: Mutex::new(BinaryHeap::new()),
-            wakeup: AtomicOption::none(),
         }
     }
 
@@ -146,7 +144,7 @@ impl<T> TimeOutList<T> {
             return (interval_list.push(timeout).0, false);
         }
 
-        let interval_list = Arc::new(mpsc::<TimeoutData<T>>::new());
+        let interval_list = Arc::new(TimeoutList::<TimeoutData<T>>::new());
         let ret = interval_list.push(timeout).0;
         (*interval_map_w).insert(interval, interval_list.clone());
         // drop the write lock here
@@ -163,8 +161,6 @@ impl<T> TimeOutList<T> {
             (*timer_bh).push(entry);
         }
 
-        // wake up the timer thread
-        self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
         (ret, true)
     }
 
@@ -221,15 +217,55 @@ impl<T> TimeOutList<T> {
             }
         }
     }
+}
+
+pub struct TimerThread<T> {
+    timer_list: TimeOutList<T>,
+    // collect the remove request
+    remove_list: mpsc<TimeoutHandle<T>>,
+    // the timer thread wakeup handler
+    wakeup: AtomicOption<thread::Thread>,
+}
+
+impl<T> TimerThread<T> {
+    pub fn new() -> Self {
+        TimerThread {
+            timer_list: TimeOutList::new(),
+            remove_list: mpsc::new(),
+            wakeup: AtomicOption::none(),
+        }
+    }
+
+    pub fn add_timer(&self, dur: Duration, data: T) -> TimeoutHandle<T> {
+        let (h, is_recal) = self.timer_list.add_timer(dur, data);
+        // wake up the timer thread if it's a new queue
+        if is_recal {
+            self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+        }
+        h
+    }
+
+    pub fn del_timer(&self, handle: TimeoutHandle<T>) {
+        self.remove_list.push(handle);
+        self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+    }
 
     // the timer thread function
     pub fn run<F: Fn(T)>(&self, f: &F) {
         let current_thread = thread::current();
         loop {
+            while let Some(h) = self.remove_list.pop() {
+                h.remove();
+            }
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
             self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
-            match self.schedule_timer(now(), f) {
+
+            if !self.remove_list.is_empty() {
+                self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+            }
+
+            match self.timer_list.schedule_timer(now(), f) {
                 Some(time) => thread::park_timeout(ns_to_dur(time)),
                 None => thread::park(),
             }
@@ -246,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_timeout_list() {
-        let timer = Arc::new(TimeOutList::<usize>::new());
+        let timer = Arc::new(TimerThread::<usize>::new());
         let t = timer.clone();
         let f = |data: usize| {
             println!("timeout data:{:?}", data);

@@ -76,19 +76,24 @@ fn multi_yield() {
 
 #[test]
 fn spawn_inside() {
-    coroutine::Builder::new().name("parent".to_owned()).spawn(move || {
-        let me = coroutine::current();
-        println!("hi, I'm parent: {:?}", me);
-        for i in 0..10 {
-            coroutine::spawn(move || {
-                println!("hi, I'm child{:?}", i);
-                yield_now();
-                println!("bye from child{:?}", i);
-            });
-        }
-        yield_now();
-        println!("bye from parent: {:?}", me);
-    }).unwrap().join().unwrap();
+    coroutine::Builder::new()
+        .name("parent".to_owned())
+        .spawn(move || {
+            let me = coroutine::current();
+            println!("hi, I'm parent: {:?}", me);
+            for i in 0..10 {
+                coroutine::spawn(move || {
+                    println!("hi, I'm child{:?}", i);
+                    yield_now();
+                    println!("bye from child{:?}", i);
+                });
+            }
+            yield_now();
+            println!("bye from parent: {:?}", me);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
     thread::sleep(Duration::from_millis(200));
 }
 

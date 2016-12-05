@@ -27,7 +27,7 @@ const PREFTCH_SIZE: usize = 4;
 // here we use Arc<BoxedOption<>> for that in the select implementaion
 // other event may try to consume the coroutine while timer thread consume it
 type TimerData = Arc<BoxedOption<CoroutineImpl>>;
-type TimerList = timeout_list::TimeOutList<TimerData>;
+type TimerThread = timeout_list::TimerThread<TimerData>;
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
@@ -69,7 +69,7 @@ pub fn get_scheduler() -> &'static Scheduler {
                 });
             };
 
-            s.timer_list.run(&timer_event_handler);
+            s.timer_thread.run(&timer_event_handler);
         });
 
         // io event loop thread
@@ -90,8 +90,8 @@ pub struct Scheduler {
     event_loop: EventLoop,
     ready_list: mpmc<CoroutineImpl>,
     visit_list: generic_mpmc<CoroutineImpl>,
-    timer_list: TimerList,
     wait_list: WaitList<thread::Thread>,
+    timer_thread: TimerThread,
 }
 
 type StackVec = SmallVec<[CoroutineImpl; BLOCK_SIZE]>;
@@ -103,7 +103,7 @@ impl Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(io_workers).expect("can't create event_loop"),
             ready_list: mpmc::new(workers),
-            timer_list: TimerList::new(),
+            timer_thread: TimerThread::new(),
             visit_list: generic_mpmc::new(workers),
             wait_list: WaitList::with_capacity(256), // workers: workers,
         })
@@ -197,8 +197,16 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_timer(&self, dur: Duration, co: Arc<BoxedOption<CoroutineImpl>>) {
-        self.timer_list.add_timer(dur, co);
+    pub fn add_timer(&self,
+                     dur: Duration,
+                     co: Arc<BoxedOption<CoroutineImpl>>)
+                     -> timeout_list::TimeoutHandle<TimerData> {
+        self.timer_thread.add_timer(dur, co)
+    }
+
+    #[inline]
+    pub fn del_timer(&self, handle: timeout_list::TimeoutHandle<TimerData>) {
+        self.timer_thread.del_timer(handle);
     }
 
     #[inline]
