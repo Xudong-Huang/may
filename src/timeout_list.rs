@@ -15,6 +15,8 @@ use self::time::precise_time_ns;
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
+const HASH_CAP: usize = 1024;
+
 #[inline]
 fn dur_to_ns(dur: Duration) -> u64 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
@@ -109,9 +111,15 @@ pub struct TimeOutList<T> {
 impl<T> TimeOutList<T> {
     pub fn new() -> Self {
         TimeOutList {
-            interval_map: RwLock::new(HashMap::new()),
+            interval_map: RwLock::new(HashMap::with_capacity(HASH_CAP)),
             timer_bh: Mutex::new(BinaryHeap::new()),
         }
+    }
+
+    fn install_timer_bh(&self, entry: IntervalEntry<T>) {
+        let mut timer_bh = self.timer_bh.lock().unwrap();
+        (*timer_bh).push(entry);
+        // lock drop here
     }
 
     // add a timeout event to the list
@@ -127,21 +135,41 @@ impl<T> TimeOutList<T> {
             data: data,
         };
 
-        {
+        let interval_list = {
             // use the read lock protect
             let interval_map_r = self.interval_map.read().unwrap();
-            // first get the read locker to get the list
-            if let Some(interval_list) = (*interval_map_r).get(&interval) {
-                return (interval_list.push(timeout).0, false);
-            }
+            (*interval_map_r).get(&interval).map(|l| l.clone())
             // drop the read lock here
+        };
+
+        if let Some(interval_list) = interval_list {
+            let (handle, is_head) = interval_list.push(timeout);
+            if is_head {
+                // install the interval list to the binary heap
+                self.install_timer_bh(IntervalEntry {
+                    time: time,
+                    interval: interval,
+                    list: interval_list,
+                });
+            }
+            return (handle, is_head);
         }
+
         // if the interval list is not there, get the write locker to install the list
         // use the write lock protect
         let mut interval_map_w = self.interval_map.write().unwrap();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
-            return (interval_list.push(timeout).0, false);
+            let (handle, is_head) = interval_list.push(timeout);
+            if is_head {
+                // this rarely happens
+                self.install_timer_bh(IntervalEntry {
+                    time: time,
+                    interval: interval,
+                    list: interval_list.clone(),
+                });
+            }
+            return (handle, is_head);
         }
 
         let interval_list = Arc::new(TimeoutList::<TimeoutData<T>>::new());
@@ -150,16 +178,12 @@ impl<T> TimeOutList<T> {
         // drop the write lock here
         mem::drop(interval_map_w);
 
-        {
-            // install the new interval list to the binary heap
-            let entry = IntervalEntry {
-                time: time,
-                interval: interval,
-                list: interval_list,
-            };
-            let mut timer_bh = self.timer_bh.lock().unwrap();
-            (*timer_bh).push(entry);
-        }
+        // install the new interval list to the binary heap
+        self.install_timer_bh(IntervalEntry {
+            time: time,
+            interval: interval,
+            list: interval_list,
+        });
 
         (ret, true)
     }
@@ -202,8 +226,11 @@ impl<T> TimeOutList<T> {
                     let mut interval_map_w = self.interval_map.write().unwrap();
                     // recheck if the interval list is empty, other thread may append data to it
                     if entry.list.is_empty() {
-                        // the list is really empty now, we can safely remove it
-                        (*interval_map_w).remove(&entry.interval);
+                        // if the len of the hash map is big enough just leave the queue there
+                        if (*interval_map_w).len() > HASH_CAP {
+                            // the list is really empty now, we can safely remove it
+                            (*interval_map_w).remove(&entry.interval);
+                        }
                     } else {
                         // release the w lock first, we don't need it any more
                         mem::drop(interval_map_w);
