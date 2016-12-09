@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use sync::BoxedOption;
 use scheduler::get_scheduler;
 use timeout_list::TimeoutHandle;
-use coroutine::{CoroutineImpl, EventSource};
+use coroutine::{CoroutineImpl, EventSource, run_coroutine};
 
 pub struct Park {
     // the coroutine that waiting for this join handler
@@ -53,6 +53,7 @@ impl Park {
     }
 
     // unpark the underlying coroutine if any
+    #[inline]
     pub fn unpark(&self) {
         let mut state = self.state.load(Ordering::Acquire);
         if state & 1 == 1 {
@@ -63,7 +64,7 @@ impl Park {
         loop {
             match self.state
                 .compare_exchange_weak(state, state + 1, Ordering::AcqRel, Ordering::Relaxed) {
-                Ok(_) => return self.wake_up(),
+                Ok(_) => return self.wake_up(false),
                 Err(x) if x & 1 == 1 => break, // already set, do nothing
                 Err(y) => state = y,
             }
@@ -71,6 +72,7 @@ impl Park {
     }
 
     // remove the timeout handle after return back to user space
+    #[inline]
     pub fn remove_timeout_handle(&self) {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.timeout_handle.take().map(|h| {
@@ -83,10 +85,16 @@ impl Park {
     }
 
     #[inline]
-    fn wake_up(&self) {
+    fn wake_up(&self, b_sync: bool) {
         self.wait_co
             .take_fast(Ordering::Acquire)
-            .map(|co| get_scheduler().schedule(co));
+            .map(|co| {
+                if b_sync {
+                    run_coroutine(co);
+                } else {
+                    get_scheduler().schedule(co);
+                }
+            });
     }
 }
 
@@ -100,7 +108,9 @@ impl EventSource for Park {
 
         // re-check the state, only clear once after resume
         if self.state.load(Ordering::Acquire) & 1 == 1 {
-            self.wake_up();
+            // here may have recursive call for subscribe
+            // normally the recursion depth is not too deep
+            self.wake_up(true);
         }
     }
 }

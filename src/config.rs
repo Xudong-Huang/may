@@ -6,7 +6,7 @@ static mut POOL_CAPACITY: usize = 100;
 
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
-static mut STACK_SIZE: usize = 0x800;
+static mut STACK_SIZE: usize = 0x1000;
 
 pub struct Config;
 
