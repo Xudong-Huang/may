@@ -12,7 +12,7 @@ use queue::mpmc_v1::Queue as generic_mpmc;
 use queue::mpmc_bounded::Queue as WaitList;
 use queue::stack_ringbuf::RingBuf;
 use timeout_list;
-use sync::BoxedOption;
+use sync::AtomicOption;
 use pool::CoroutinePool;
 use yield_now::set_co_para;
 use config::scheduler_config;
@@ -24,9 +24,9 @@ thread_local!{static ID: Cell<usize> = Cell::new(ID_INIT);}
 
 const PREFTCH_SIZE: usize = 4;
 
-// here we use Arc<BoxedOption<>> for that in the select implementaion
+// here we use Arc<AtomicOption<>> for that in the select implementaion
 // other event may try to consume the coroutine while timer thread consume it
-type TimerData = Arc<BoxedOption<CoroutineImpl>>;
+type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
 
 #[inline]
@@ -60,7 +60,7 @@ pub fn get_scheduler() -> &'static Scheduler {
         thread::spawn(move || {
             let s = unsafe { &*SCHED };
             // timer function
-            let timer_event_handler = |co: Arc<BoxedOption<CoroutineImpl>>| {
+            let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
                 // just repush the co to the visit list
                 co.take_fast(Ordering::Relaxed).map(|mut c| {
                     // set the timeout result for the coroutine
@@ -199,7 +199,7 @@ impl Scheduler {
     #[inline]
     pub fn add_timer(&self,
                      dur: Duration,
-                     co: Arc<BoxedOption<CoroutineImpl>>)
+                     co: Arc<AtomicOption<CoroutineImpl>>)
                      -> timeout_list::TimeoutHandle<TimerData> {
         self.timer_thread.add_timer(dur, co)
     }

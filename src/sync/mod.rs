@@ -4,7 +4,6 @@
 mod mutex;
 mod poison;
 mod blocking;
-mod boxed_option;
 mod atomic_option;
 // mod barrier;
 // mod condvar;
@@ -13,6 +12,5 @@ mod atomic_option;
 pub mod mpsc;
 // pub mod mpmc;
 pub use self::blocking::Blocker;
-pub use self::boxed_option::BoxedOption;
 pub use self::mutex::{Mutex, MutexGuard};
 pub use self::atomic_option::AtomicOption;

@@ -10,7 +10,7 @@ pub mod net;
 use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
-use sync::BoxedOption;
+use sync::AtomicOption;
 use scheduler::get_scheduler;
 use yield_now::{get_co_para, set_co_para};
 use coroutine::{CoroutineImpl, run_coroutine};
@@ -59,14 +59,11 @@ fn timeout_handler(data: TimerData) {
     event_data.timer.take();
 
     // get and check the coroutine
-    let co = event_data.co.take(Ordering::Relaxed);
-    if co.is_none() {
-        // there is no coroutine, just ignore this one
-        error!("can't get coroutine in timeout handler");
-        return;
-    }
+    let mut co = match event_data.co.take(Ordering::Relaxed) {
+        Some(co) => co,
+        None => return,
+    };
 
-    let mut co = co.unwrap();
     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
 
     // resume the coroutine with timeout error
@@ -88,7 +85,7 @@ pub struct EventData {
     pub fd: RawFd,
     pub io_flag: AtomicBool,
     pub timer: Option<TimerHandle>,
-    pub co: BoxedOption<CoroutineImpl>,
+    pub co: AtomicOption<CoroutineImpl>,
 }
 
 impl EventData {
@@ -97,7 +94,7 @@ impl EventData {
             fd: fd,
             io_flag: AtomicBool::new(false),
             timer: None,
-            co: BoxedOption::none(),
+            co: AtomicOption::none(),
         }
     }
 

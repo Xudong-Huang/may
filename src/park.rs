@@ -1,26 +1,26 @@
 use std::sync::Arc;
 use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use sync::BoxedOption;
+use sync::AtomicOption;
 use scheduler::get_scheduler;
 use timeout_list::TimeoutHandle;
 use coroutine::{CoroutineImpl, EventSource, run_coroutine};
 
 pub struct Park {
     // the coroutine that waiting for this join handler
-    wait_co: Arc<BoxedOption<CoroutineImpl>>,
+    wait_co: Arc<AtomicOption<CoroutineImpl>>,
     // when odd means the Park no need to block
     // the low bit used as flag, and higher bits used as tag to prevent ABA problem
     state: AtomicUsize,
     timeout: Option<Duration>,
-    timeout_handle: Option<TimeoutHandle<Arc<BoxedOption<CoroutineImpl>>>>,
+    timeout_handle: Option<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
 }
 
 // this is the park resource type (spmc style)
 impl Park {
     pub fn new() -> Self {
         Park {
-            wait_co: Arc::new(BoxedOption::none()),
+            wait_co: Arc::new(AtomicOption::none()),
             state: AtomicUsize::new(0),
             timeout: None,
             timeout_handle: None,

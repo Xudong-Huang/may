@@ -1,4 +1,6 @@
 #![feature(core_intrinsics)]
+#![feature(specialization)]
+#![feature(rc_raw)]
 
 #[macro_use]
 extern crate log;
