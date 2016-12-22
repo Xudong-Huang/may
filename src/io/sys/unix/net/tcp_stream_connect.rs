@@ -14,7 +14,6 @@ pub struct TcpStreamConnect {
     io_data: IoData,
     builder: TcpBuilder,
     addr: SocketAddr,
-    ret: Option<io::Result<TcpStream>>,
 }
 
 impl TcpStreamConnect {
@@ -39,18 +38,10 @@ impl TcpStreamConnect {
                 s.into_raw_fd();
 
                 add_socket(&builder).map(|io| {
-                    // unix connect is some like completion mode
-                    // we must give the connect request first to the system
-                    let ret = match builder.connect(&addr) {
-                        Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
-                        ret => Some(ret.map(|s| TcpStream::from_stream(s, io))),
-                    };
-
                     TcpStreamConnect {
                         io_data: io,
                         builder: builder,
                         addr: addr,
-                        ret: ret,
                     }
                 })
             })
@@ -58,16 +49,16 @@ impl TcpStreamConnect {
 
     #[inline]
     pub fn get_stream(&mut self) -> Option<io::Result<TcpStream>> {
-        self.ret.take()
+        // unix connect is some like completion mode
+        // we must give the connect request first to the system
+        match self.builder.connect(&self.addr) {
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
+            ret => Some(ret.map(|s| TcpStream::from_stream(s, self.io_data.clone()))),
+        }
     }
 
     #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
-        match self.ret {
-            Some(s) => return s,
-            None => {}
-        }
-
         loop {
             try!(co_io_result());
 
@@ -77,7 +68,7 @@ impl TcpStreamConnect {
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
-                ret => return ret.map(|s| TcpStream::from_stream(s, self.io_data)),
+                ret => return ret.map(|s| TcpStream::from_stream(s, self.io_data.clone())),
             }
 
             if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {

@@ -7,6 +7,7 @@ mod select;
 
 pub mod net;
 
+use std::sync::Arc;
 use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,19 +21,13 @@ pub use self::select::{SysEvent, Selector};
 
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
-    let io_data = IoData::new(t);
-    match get_scheduler().get_selector().add_fd(io_data.inner()) {
-        Ok(_) => return Ok(io_data),
-        Err(e) => {
-            unsafe { Box::from_raw(io_data.0) };
-            return Err(e);
-        }
-    }
+    get_scheduler().get_selector().add_fd(IoData::new(t))
 }
 
 #[inline]
 pub fn del_socket(io: &IoData) {
-    get_scheduler().get_selector().del_fd(io.inner());
+    // transfer the io to the selector
+    get_scheduler().get_selector().del_fd(io.clone());
 }
 
 // deal with the io result
@@ -126,19 +121,19 @@ impl EventData {
 }
 
 // each file associated data
-#[derive(Clone, Copy)]
-pub struct IoData(*mut EventData);
+#[derive(Clone)]
+pub struct IoData(Arc<EventData>);
 
 impl IoData {
     pub fn new<T: AsRawFd + ?Sized>(t: &T) -> Self {
         let fd = t.as_raw_fd();
-        let event_data = Box::new(EventData::new(fd));
-        IoData(Box::into_raw(event_data))
+        let event_data = Arc::new(EventData::new(fd));
+        IoData(event_data)
     }
 
     #[inline]
     pub fn inner(&self) -> &mut EventData {
-        unsafe { &mut *self.0 }
+        unsafe { &mut *(&*self.0 as *const _ as *mut _) }
     }
 
     // clear the io flag

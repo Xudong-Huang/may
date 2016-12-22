@@ -9,7 +9,7 @@ use queue::mpsc_list::Queue as mpsc;
 use super::nix::sys::epoll::*;
 use super::nix::unistd::{read, write, close};
 use super::libc::{eventfd, EFD_NONBLOCK};
-use super::{EventData, TimerList, from_nix_error, timeout_handler};
+use super::{EventData, IoData, TimerList, from_nix_error, timeout_handler};
 
 fn create_eventfd() -> io::Result<RawFd> {
     let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
@@ -25,7 +25,7 @@ struct SingleSelector {
     epfd: RawFd,
     evfd: RawFd,
     timer_list: TimerList,
-    free_ev: mpsc<*mut EventData>,
+    free_ev: mpsc<IoData>,
 }
 
 impl SingleSelector {
@@ -150,41 +150,50 @@ impl Selector {
 
     // register io event to the selector
     #[inline]
-    pub fn add_fd(&self, ev_data: &EventData) -> io::Result<()> {
-        let info = EpollEvent {
-            events: EPOLLIN | EPOLLOUT | EPOLLET,
-            data: ev_data as *const _ as _,
+    pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
+        let (info, fd) = {
+            let ev_data = io_data.inner();
+            (EpollEvent {
+                events: EPOLLIN | EPOLLOUT | EPOLLET,
+                data: ev_data as *const _ as _,
+            },
+             ev_data.fd)
         };
-        let fd = ev_data.fd;
+
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
         info!("add fd to epoll select, fd={:?}", fd);
-        epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error)
+        epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &info).map_err(from_nix_error).map(|_| io_data)
     }
 
     #[inline]
-    pub fn del_fd(&self, ev_data: &mut EventData) {
+    pub fn del_fd(&self, io_data: IoData) {
         let info = EpollEvent {
             events: EpollEventKind::empty(),
             data: 0,
         };
-        ev_data.timer.take().map(|h| {
-            unsafe {
-                // mark the timer as removed if any, this only happened
-                // when cancel an IO. what if the timer expired at the same time?
-                // because we run this func in the user space, so the timer handler
-                // will not got the coroutine
-                h.get_data().data.event_data = ptr::null_mut();
-            }
-        });
-        let fd = ev_data.fd;
+
+        let fd = {
+            let ev_data = io_data.inner();
+            ev_data.timer.take().map(|h| {
+                unsafe {
+                    // mark the timer as removed if any, this only happened
+                    // when cancel an IO. what if the timer expired at the same time?
+                    // because we run this func in the user space, so the timer handler
+                    // will not got the coroutine
+                    h.get_data().data.event_data = ptr::null_mut();
+                }
+            });
+            ev_data.fd
+        };
+
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
         info!("add fd to epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &info).ok();
 
         // after EpollCtlDel push the unused event data
-        self.vec[id].free_ev.push(ev_data);
+        self.vec[id].free_ev.push(io_data);
     }
 
     // we can't free the event data directly in the worker thread
@@ -192,9 +201,7 @@ impl Selector {
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
         let free_ev = &self.vec[id].free_ev;
-        while let Some(ev) = free_ev.pop() {
-            let _ = unsafe { Box::from_raw(ev) };
-        }
+        while let Some(_) = free_ev.pop() {}
     }
 
     // register the io request to the timeout list
