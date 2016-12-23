@@ -1,8 +1,10 @@
 extern crate miow;
 extern crate winapi;
+extern crate kernel32;
 
 mod iocp;
 pub mod net;
+pub mod cancel;
 
 use std::{io, fmt, ptr};
 use std::os::windows::io::AsRawSocket;

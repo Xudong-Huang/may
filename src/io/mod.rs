@@ -23,6 +23,7 @@ mod event_loop;
 use std::io;
 use coroutine::is_coroutine;
 
+pub use self::sys::cancel;
 pub use self::event_loop::EventLoop;
 pub use self::sys::{IoData, EventData, Selector, add_socket, del_socket, net};
 

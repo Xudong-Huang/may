@@ -95,7 +95,7 @@ impl<T> JoinHandle<T> {
         // take the result
         self.packet.take(Ordering::Acquire).ok_or_else(|| {
             let p = unsafe { &mut *self.panic.get() };
-            p.take().expect("can't get panic data")
+            p.take().unwrap_or_else(|| Box::new("coroutine cancelled"))
         })
     }
 }

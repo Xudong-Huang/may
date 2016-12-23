@@ -6,15 +6,18 @@ use super::super::winapi::*;
 use super::super::EventData;
 use super::super::co_io_result;
 use super::super::miow::net::TcpStreamExt;
+use cancel::Cancel;
 use net::TcpStream;
 use net2::TcpBuilder;
 use scheduler::get_scheduler;
-use coroutine::{CoroutineImpl, EventSource};
+use io::cancel::{CancelIoData, CancelIoImpl};
+use coroutine::{CoroutineImpl, EventSource, get_cancel_data};
 
 pub struct TcpStreamConnect {
     io_data: EventData,
     stream: TcpStream,
     addr: SocketAddr,
+    io_cancel: &'static Cancel<CancelIoImpl>,
 }
 
 impl TcpStreamConnect {
@@ -50,6 +53,7 @@ impl TcpStreamConnect {
                     TcpStream::new(s).map(|s| {
                         TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
+                            io_cancel: get_cancel_data(),
                             addr: addr,
                             stream: s,
                         }
@@ -73,6 +77,10 @@ impl TcpStreamConnect {
 }
 
 impl EventSource for TcpStreamConnect {
+    fn get_cancel_data(&self) -> Option<&Cancel<CancelIoImpl>> {
+        Some(self.io_cancel)
+    }
+
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         s.get_selector().add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
@@ -81,6 +89,16 @@ impl EventSource for TcpStreamConnect {
         // call the overlapped connect API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.stream.inner().connect_overlapped(&self.addr, self.io_data.get_overlapped())
+        });
+
+        // deal with the cancel
+        self.get_cancel_data().map(|cancel| {
+            // register the cancel io data
+            cancel.set_io(CancelIoData::new(&self.io_data));
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
         });
     }
 }

@@ -274,7 +274,7 @@ impl<T> TimerThread<T> {
 
     pub fn del_timer(&self, handle: TimeoutHandle<T>) {
         self.remove_list.push(handle);
-        self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+        self.wakeup.take_fast(Ordering::Relaxed).map(|t| t.unpark());
     }
 
     // the timer thread function

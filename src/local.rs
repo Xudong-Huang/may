@@ -24,8 +24,8 @@ impl CoroutineLocal {
     }
 
     // get the coroutine handle
-    pub fn get_co(&self) -> Coroutine {
-        self.co.clone()
+    pub fn get_co(&self) -> &Coroutine {
+        &self.co
     }
 
     // get the join handle

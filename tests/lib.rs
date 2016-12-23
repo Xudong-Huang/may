@@ -25,6 +25,63 @@ fn panic_coroutine() {
 }
 
 #[test]
+fn cancel_coroutine() {
+    let j = coroutine::spawn(move || {
+        // suspend the coroutine to simulate an endless loop
+        println!("before cancel");
+        coroutine::park();
+        println!("canceled, should not come here");
+        // next 'sys call would cause a Cancel panic'
+        coroutine::sleep(Duration::from_secs(1000000));
+    });
+
+    // let the coroutine run
+    thread::sleep(Duration::from_millis(10));
+
+    unsafe { j.coroutine().cancel() };
+
+    match j.join() {
+        Ok(_) => panic!("test should return panic"),
+        Err(panic) => {
+            match panic.downcast_ref::<&str>() {
+                Some(e) => return println!("Panicked inside: {:?}", e),
+                None => panic!("panic type wrong"),
+            }
+        }
+    }
+}
+
+#[test]
+fn cancel_io_coroutine() {
+    let j = coroutine::spawn(move || {
+        let listener = coroutine::net::TcpListener::bind(("0.0.0.0", 1234)).unwrap();
+        println!("listening on {:?}", listener.local_addr().unwrap());
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(_s) => println!("got a connection"),
+                Err(e) => println!("err = {:?}", e),
+            }
+        }
+    });
+
+    // let the coroutine run
+    thread::sleep(Duration::from_millis(10));
+
+    unsafe { j.coroutine().cancel() };
+
+    match j.join() {
+        Ok(_) => panic!("test should return panic"),
+        Err(panic) => {
+            match panic.downcast_ref::<&str>() {
+                Some(e) => return println!("Panicked inside: {:?}", e),
+                None => panic!("panic type wrong"),
+            }
+        }
+    }
+}
+
+#[test]
 fn one_coroutine() {
     let j = coroutine::spawn(move || {
         println!("hello, coroutine");

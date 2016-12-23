@@ -1,5 +1,3 @@
-extern crate kernel32;
-
 use std::time::Duration;
 use std::cell::UnsafeCell;
 use std::{cmp, io, ptr, u32};
@@ -7,6 +5,7 @@ use std::os::windows::io::AsRawSocket;
 use yield_now::set_co_para;
 use coroutine::{CoroutineImpl, run_coroutine};
 use timeout_list::{TimeoutHandle, TimeOutList, now, ns_to_ms};
+use super::kernel32;
 use super::winapi::*;
 use super::miow::Overlapped;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
@@ -22,12 +21,11 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 // event associated io data, must be construct in the coroutine
 // this passed in to the _overlapped verion API and will read back
 // when IOCP get an io event. the timer handle is used to remove
-// from the timeout list and co will be pushed to the event_list
-// for scheduler
+// from the timeout list and co will be run in the io thread
 #[repr(C)]
 pub struct EventData {
     overlapped: UnsafeCell<Overlapped>,
-    handle: HANDLE,
+    pub handle: HANDLE,
     pub timer: Option<TimerHandle>,
     pub co: Option<CoroutineImpl>,
 }

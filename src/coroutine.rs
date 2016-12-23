@@ -5,13 +5,15 @@ use std::time::Duration;
 use std::cell::UnsafeCell;
 use std::sync::atomic::Ordering;
 use park::Park;
+use cancel::Cancel;
 use sync::AtomicOption;
-use generator::{Gn, Generator, get_local_data, is_generator};
-use scheduler::get_scheduler;
-use join::{Join, JoinHandle, make_join_handle};
 use local::CoroutineLocal;
 use yield_now::yield_with;
+use scheduler::get_scheduler;
 use config::scheduler_config;
+use io::cancel::CancelIoImpl;
+use join::{Join, JoinHandle, make_join_handle};
+use generator::{Gn, Generator, get_local_data, is_generator};
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types
@@ -36,7 +38,10 @@ impl EventSubscriber {
 
 pub trait EventSource {
     /// register a coroutine waiting on the resource
-    fn subscribe(&mut self, _c: CoroutineImpl) {}
+    fn subscribe(&mut self, _c: CoroutineImpl);
+    fn get_cancel_data(&self) -> Option<&Cancel<CancelIoImpl>> {
+        None
+    }
 }
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -84,6 +89,7 @@ pub type CoroutineImpl = Generator<'static, EventResult, EventSubscriber>;
 struct Inner {
     name: Option<String>,
     park: Park,
+    cancel: Cancel<CancelIoImpl>,
 }
 
 #[derive(Clone)]
@@ -99,12 +105,21 @@ impl Coroutine {
             inner: Arc::new(Inner {
                 name: name,
                 park: Park::new(),
+                cancel: Cancel::new(),
             }),
         }
     }
 
     /// Atomically makes the handle's token available if it is not already.
     pub fn unpark(&self) {
+        self.inner.park.unpark();
+    }
+
+    /// cancel a coroutine
+    pub unsafe fn cancel(&self) {
+        // cancel the underlying io if any
+        self.inner.cancel.cancel();
+        // anyway just wakeup it from park() based API
         self.inner.park.unpark();
     }
 
@@ -229,7 +244,7 @@ pub fn spawn<F, T>(f: F) -> JoinHandle<T>
 #[inline]
 pub fn current() -> Coroutine {
     let local = unsafe { &*(get_local_data() as *mut CoroutineLocal) };
-    local.get_co()
+    local.get_co().clone()
 }
 
 /// if current context is coroutine
@@ -240,6 +255,13 @@ pub fn is_coroutine() -> bool {
     // either in a thread context or in a coroutine context
     // !get_local_data().is_null()
     is_generator()
+}
+
+/// if current coroutine is canceled
+#[inline]
+pub fn get_cancel_data() -> &'static Cancel<CancelIoImpl> {
+    let local = unsafe { &*(get_local_data() as *mut CoroutineLocal) };
+    &local.get_co().inner.cancel
 }
 
 /// timeout block the current coroutine until it's get unparked
@@ -259,6 +281,8 @@ fn park_timeout_impl(dur: Option<Duration>) {
         // what if the state is set before yield?
         // the subscribe would re-check it
         yield_with(park);
+        // clear the trigger state
+        park.check_park();
         // after return back, we should check if it's timeout
         // we can't cancel the timer handle safely here
         // just let timeout happens
@@ -272,8 +296,6 @@ fn park_timeout_impl(dur: Option<Duration>) {
         //     }
         // }
         park.remove_timeout_handle();
-        // clear the trigger state
-        park.check_park();
     }
 }
 
@@ -285,6 +307,14 @@ pub fn park() {
 /// timeout block the current coroutine until it's get unparked
 pub fn park_timeout(dur: Duration) {
     park_timeout_impl(Some(dur));
+}
+
+/// block the current coroutine until timeout
+pub fn sleep(dur: Duration) {
+    if !is_coroutine() {
+        return ::std::thread::sleep(dur);
+    }
+    park_timeout(dur);
 }
 
 /// run the coroutine

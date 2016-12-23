@@ -1,6 +1,7 @@
 use std::thread;
-use generator::{co_yield_with, co_get_yield};
-use coroutine::{CoroutineImpl, EventResult, EventSource, EventSubscriber, is_coroutine};
+use generator::{co_yield_with, co_get_yield, Error};
+use coroutine::{is_coroutine, get_cancel_data};
+use coroutine::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
 
 struct Yield {
@@ -19,9 +20,20 @@ impl EventSource for Yield {
 /// just like return the ref of a struct member
 #[inline]
 pub fn yield_with<T: EventSource>(resource: &T) {
+    let cancel = resource.get_cancel_data().unwrap_or_else(|| get_cancel_data());
+    if cancel.is_canceled() {
+        panic!(Error::Cancel);
+    }
+
     let r = resource as &EventSource as *const _ as *mut _;
     let es = EventSubscriber::new(r);
     co_yield_with(es);
+
+    // after return back we should re-check the panic and clear it
+    if cancel.is_canceled() {
+        panic!(Error::Cancel);
+    }
+    resource.get_cancel_data().map(|cancel| cancel.clear_io());
 }
 
 /// set the coroutine para that passed into it
