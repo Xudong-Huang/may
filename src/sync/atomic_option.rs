@@ -19,6 +19,16 @@ impl<T> Wrapped for T {
     }
 }
 
+impl<T> Wrapped for *mut T {
+    type Data = T;
+    fn into_raw(self) -> *mut T {
+        self
+    }
+    unsafe fn from_raw(p: *mut T) -> *mut T {
+        p
+    }
+}
+
 impl<T> Wrapped for Arc<T> {
     type Data = T;
     fn into_raw(self) -> *mut T {
