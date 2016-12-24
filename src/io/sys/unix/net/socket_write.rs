@@ -1,23 +1,23 @@
 use std::io;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
-use io::AsEventData;
+use super::super::nix::unistd::write;
+use super::super::{IoData, from_nix_error, co_io_result};
+use io::AsIoData;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use coroutine::{CoroutineImpl, EventSource};
-use super::super::nix::unistd::write;
-use super::super::{EventData, from_nix_error, co_io_result};
 
 pub struct SocketWrite<'a> {
-    io_data: &'a mut EventData,
+    io_data: &'a IoData,
     buf: &'a [u8],
     timeout: Option<Duration>,
 }
 
 impl<'a> SocketWrite<'a> {
-    pub fn new<T: AsEventData>(s: &'a T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsIoData>(s: &'a T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
         SocketWrite {
-            io_data: s.as_event_data(),
+            io_data: s.as_io_data(),
             buf: buf,
             timeout: timeout,
         }
@@ -48,15 +48,12 @@ impl<'a> SocketWrite<'a> {
 
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        get_scheduler().get_selector().add_io_timer(&mut self.io_data, self.timeout);
+        get_scheduler().get_selector().add_io_timer(self.io_data, self.timeout);
         self.io_data.co.swap(co, Ordering::Release);
 
-        // there is no event
-        if !self.io_data.io_flag.load(Ordering::Relaxed) {
-            return;
+        // there is event, re-run the coroutine
+        if self.io_data.io_flag.load(Ordering::Relaxed) {
+            self.io_data.schedule();
         }
-
-        // since we got data here, need to remove the timer handle and schedule
-        self.io_data.schedule();
     }
 }

@@ -1,19 +1,23 @@
 use std::{self, io};
+use std::ops::Deref;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
 use std::net::{ToSocketAddrs, SocketAddr};
 use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
+use super::super::{libc, IoData, co_io_result, add_socket};
+use cancel::Cancel;
 use net::TcpStream;
 use net2::TcpBuilder;
 use yield_now::yield_with;
+use io::cancel::CancelIoImpl;
 use scheduler::get_scheduler;
-use coroutine::{CoroutineImpl, EventSource};
-use super::super::{libc, IoData, co_io_result, add_socket};
+use coroutine::{CoroutineImpl, EventSource, get_cancel_data};
 
 pub struct TcpStreamConnect {
     io_data: IoData,
     builder: TcpBuilder,
     addr: SocketAddr,
+    io_cancel: &'static Cancel<CancelIoImpl>,
 }
 
 impl TcpStreamConnect {
@@ -42,6 +46,7 @@ impl TcpStreamConnect {
                         io_data: io,
                         builder: builder,
                         addr: addr,
+                        io_cancel: get_cancel_data(),
                     }
                 })
             })
@@ -63,7 +68,7 @@ impl TcpStreamConnect {
             try!(co_io_result());
 
             // clear the io_flag
-            self.io_data.inner().io_flag.store(false, Ordering::Relaxed);
+            self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.builder.connect(&self.addr) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
@@ -71,7 +76,7 @@ impl TcpStreamConnect {
                 ret => return ret.map(|s| TcpStream::from_stream(s, self.io_data.clone())),
             }
 
-            if self.io_data.inner().io_flag.swap(false, Ordering::Relaxed) {
+            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
                 continue;
             }
 
@@ -82,17 +87,28 @@ impl TcpStreamConnect {
 }
 
 impl EventSource for TcpStreamConnect {
+    fn get_cancel_data(&self) -> Option<&Cancel<CancelIoImpl>> {
+        Some(self.io_cancel)
+    }
+
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let io_data = self.io_data.inner();
+        let io_data = &self.io_data;
         get_scheduler().get_selector().add_io_timer(io_data, Some(Duration::from_secs(10)));
         io_data.co.swap(co, Ordering::Release);
 
-        // there is no event
-        if !io_data.io_flag.load(Ordering::Relaxed) {
-            return;
+        // there is event, re-run the coroutine
+        if io_data.io_flag.load(Ordering::Relaxed) {
+            return io_data.schedule();
         }
 
-        // since we got data here, need to remove the timer handle and schedule
-        io_data.schedule();
+        // deal with the cancel
+        self.get_cancel_data().map(|cancel| {
+            // register the cancel io data
+            cancel.set_io(self.io_data.deref().clone());
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
+        });
     }
 }

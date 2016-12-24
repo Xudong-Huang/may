@@ -240,9 +240,9 @@ impl Drop for UdpSocket {
 }
 
 #[cfg(unix)]
-impl io_impl::AsEventData for UdpSocket {
-    fn as_event_data(&self) -> &mut io_impl::EventData {
-        self.io.inner()
+impl io_impl::AsIoData for UdpSocket {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        &self.io
     }
 }
 

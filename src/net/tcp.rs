@@ -188,9 +188,9 @@ impl Drop for TcpStream {
 }
 
 #[cfg(unix)]
-impl io_impl::AsEventData for TcpStream {
-    fn as_event_data(&self) -> &mut io_impl::EventData {
-        self.io.inner()
+impl io_impl::AsIoData for TcpStream {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        &self.io
     }
 }
 
@@ -287,9 +287,9 @@ impl Drop for TcpListener {
 }
 
 #[cfg(unix)]
-impl io_impl::AsEventData for TcpListener {
-    fn as_event_data(&self) -> &mut io_impl::EventData {
-        self.io.inner()
+impl io_impl::AsIoData for TcpListener {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        &self.io
     }
 }
 

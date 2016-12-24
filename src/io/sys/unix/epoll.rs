@@ -118,7 +118,7 @@ impl Selector {
             co.prefetch();
 
             // it's safe to remove the timer since we are runing the timer_list in the same thread
-            data.timer.take().map(|h| {
+            data.timer.borrow_mut().take().map(|h| {
                 unsafe {
                     // tell the timer hanler not to cancel the io
                     // it's not always true that you can really remove the timer entry
@@ -151,15 +151,12 @@ impl Selector {
     // register io event to the selector
     #[inline]
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
-        let (info, fd) = {
-            let ev_data = io_data.inner();
-            (EpollEvent {
-                events: EPOLLIN | EPOLLOUT | EPOLLET,
-                data: ev_data as *const _ as _,
-            },
-             ev_data.fd)
+        let info = EpollEvent {
+            events: EPOLLIN | EPOLLOUT | EPOLLET,
+            data: io_data.as_ref() as *const _ as _,
         };
 
+        let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
         info!("add fd to epoll select, fd={:?}", fd);
@@ -173,20 +170,17 @@ impl Selector {
             data: 0,
         };
 
-        let fd = {
-            let ev_data = io_data.inner();
-            ev_data.timer.take().map(|h| {
-                unsafe {
-                    // mark the timer as removed if any, this only happened
-                    // when cancel an IO. what if the timer expired at the same time?
-                    // because we run this func in the user space, so the timer handler
-                    // will not got the coroutine
-                    h.get_data().data.event_data = ptr::null_mut();
-                }
-            });
-            ev_data.fd
-        };
+        io_data.timer.borrow_mut().take().map(|h| {
+            unsafe {
+                // mark the timer as removed if any, this only happened
+                // when cancel an IO. what if the timer expired at the same time?
+                // because we run this func in the user space, so the timer handler
+                // will not got the coroutine
+                h.get_data().data.event_data = ptr::null_mut();
+            }
+        });
 
+        let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
         let epfd = self.vec[id].epfd;
         info!("add fd to epoll select, fd={:?}", fd);
@@ -206,9 +200,9 @@ impl Selector {
 
     // register the io request to the timeout list
     #[inline]
-    pub fn add_io_timer(&self, io: &mut EventData, timeout: Option<Duration>) {
+    pub fn add_io_timer(&self, io: &IoData, timeout: Option<Duration>) {
         let id = io.fd as usize % self.vec.len();
-        io.timer = timeout.map(|dur| {
+        *io.timer.borrow_mut() = timeout.map(|dur| {
             // info!("io timeout = {:?}", dur);
             let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
             if b_new {

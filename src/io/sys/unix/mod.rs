@@ -6,8 +6,11 @@ extern crate libc;
 mod select;
 
 pub mod net;
+pub mod cancel;
 
 use std::sync::Arc;
+use std::ops::Deref;
+use std::cell::RefCell;
 use std::{io, fmt, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,7 +54,7 @@ fn timeout_handler(data: TimerData) {
 
     let event_data = unsafe { &mut *data.event_data };
     // remove the event timer
-    event_data.timer.take();
+    event_data.timer.borrow_mut().take();
 
     // get and check the coroutine
     let mut co = match event_data.co.take(Ordering::Relaxed) {
@@ -79,7 +82,7 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 pub struct EventData {
     pub fd: RawFd,
     pub io_flag: AtomicBool,
-    pub timer: Option<TimerHandle>,
+    pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
 
@@ -88,7 +91,7 @@ impl EventData {
         EventData {
             fd: fd,
             io_flag: AtomicBool::new(false),
-            timer: None,
+            timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
     }
@@ -98,7 +101,7 @@ impl EventData {
     }
 
     #[inline]
-    pub fn schedule(&mut self) {
+    pub fn schedule(&self) {
         info!("event schedul");
         let co = match self.co.take(Ordering::Acquire) {
             None => return, // it's alreay take by selector
@@ -106,7 +109,7 @@ impl EventData {
         };
 
         // it's safe to remove the timer since we are runing the timer_list in the same thread
-        self.timer.take().map(|h| {
+        self.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // tell the timer function not to cancel the io
                 // it's not always true that you can really remove the timer entry
@@ -131,15 +134,19 @@ impl IoData {
         IoData(event_data)
     }
 
-    #[inline]
-    pub fn inner(&self) -> &mut EventData {
-        unsafe { &mut *(&*self.0 as *const _ as *mut _) }
-    }
 
     // clear the io flag
     #[inline]
     pub fn reset(&self) {
-        self.inner().io_flag.store(false, Ordering::Relaxed);
+        self.io_flag.store(false, Ordering::Relaxed);
+    }
+}
+
+impl Deref for IoData {
+    type Target = Arc<EventData>;
+
+    fn deref(&self) -> &Arc<EventData> {
+        &self.0
     }
 }
 

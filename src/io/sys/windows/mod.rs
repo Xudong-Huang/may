@@ -6,7 +6,7 @@ mod iocp;
 pub mod net;
 pub mod cancel;
 
-use std::{io, fmt, ptr};
+use std::{io, fmt};
 use std::os::windows::io::AsRawSocket;
 use yield_now::get_co_para;
 use scheduler::get_scheduler;
@@ -22,13 +22,7 @@ impl IoData {
         IoData
     }
 
-    #[inline]
-    pub fn inner(&self) -> &mut EventData {
-        unsafe { &mut *ptr::null_mut() }
-    }
-
     // clear the io flag
-    #[inline]
     pub fn reset(&self) {}
 }
 

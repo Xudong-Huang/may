@@ -25,10 +25,10 @@ use coroutine::is_coroutine;
 
 pub use self::sys::cancel;
 pub use self::event_loop::EventLoop;
-pub use self::sys::{IoData, EventData, Selector, add_socket, del_socket, net};
+pub use self::sys::{IoData, Selector, add_socket, del_socket, net};
 
-pub trait AsEventData {
-    fn as_event_data(&self) -> &mut EventData;
+pub trait AsIoData {
+    fn as_io_data(&self) -> &IoData;
 }
 
 #[derive(Debug)]
