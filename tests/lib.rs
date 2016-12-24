@@ -1,7 +1,5 @@
-#![feature(test)]
 use std::thread;
 use std::time::{Instant, Duration};
-extern crate test;
 extern crate coroutine;
 extern crate generator;
 

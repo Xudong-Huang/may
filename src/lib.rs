@@ -26,6 +26,7 @@ mod timeout_list;
 pub mod net;
 pub mod sync;
 pub use scoped::scope;
+pub use local::LocalKey;
 pub use join::JoinHandle;
 pub use yield_now::yield_now;
 pub use config::scheduler_config;
