@@ -87,6 +87,12 @@ impl<T> JoinHandle<T> {
         &self.co
     }
 
+    /// return true if the coroutine is finished
+    pub fn is_done(&self) -> bool {
+        let join = unsafe { &*self.join.get() };
+        !join.state.load(Ordering::Relaxed)
+    }
+
     /// Join the coroutine, returning the result it produced.
     pub fn join(self) -> Result<T> {
         let join = unsafe { &mut *self.join.get() };

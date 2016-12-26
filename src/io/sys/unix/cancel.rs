@@ -24,9 +24,7 @@ impl CancelIo for CancelIoImpl {
 
     unsafe fn cancel(&self) {
         self.0.take(Ordering::Acquire).map(|e| {
-            e.co.take(Ordering::Acquire).map(|co| {
-                run_coroutine(co);
-            });
+            e.co.take(Ordering::Acquire).map(run_coroutine);
         });
     }
 }

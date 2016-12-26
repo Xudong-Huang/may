@@ -25,6 +25,7 @@ mod timeout_list;
 
 pub mod net;
 pub mod sync;
+pub mod cqueue;
 pub use scoped::scope;
 pub use local::LocalKey;
 pub use join::JoinHandle;

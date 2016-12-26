@@ -9,8 +9,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 
-use spawn;
-use coroutine::Coroutine;
+use coroutine::{Coroutine, spawn};
 use join::JoinHandle;
 use sync::AtomicOption;
 
@@ -34,7 +33,6 @@ pub unsafe fn spawn_unsafe<'a, F>(f: F) -> JoinHandle<()>
     let closure: Box<FnBox + Send> = mem::transmute(closure);
     spawn(move || closure.call_box())
 }
-
 
 pub struct Scope<'a> {
     dtors: RefCell<Option<DtorChain<'a>>>,
@@ -139,7 +137,7 @@ impl<'a> Scope<'a> {
     /// `spawn` is similar to the `spawn` function in this library. The
     /// difference is that this coroutine is scoped, meaning that it's guaranteed to terminate
     /// before the current stack frame goes away, allowing you to reference the parent stack frame
-    /// directly. This is ensured by having the parent thread join on the child thread before the
+    /// directly. This is ensured by having the parent join on the child coroutine before the
     /// scope exits.
     pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
         where F: FnOnce() -> T + Send + 'a,
@@ -172,13 +170,13 @@ impl<'a> Scope<'a> {
 }
 
 impl<T> ScopedJoinHandle<T> {
-    /// Join the scoped thread, returning the result it produced.
+    /// Join the scoped coroutine, returning the result it produced.
     pub fn join(self) -> T {
         self.inner.borrow_mut().join();
         self.packet.take(Ordering::Relaxed).unwrap()
     }
 
-    /// Get the underlying thread handle.
+    /// Get the underlying coroutine handle.
     pub fn coroutine(&self) -> &Coroutine {
         &self.co
     }
