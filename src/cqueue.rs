@@ -1,3 +1,4 @@
+use std::panic;
 use std::time::{Instant, Duration};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use queue::mpsc_list;
@@ -41,6 +42,8 @@ pub struct Event {
     pub tocken: usize,
     /// the select coroutine can use it to pass extra data with the caller
     pub extra: usize,
+    /// id of the select coroutine, used internally to locate the JoinHandle
+    id: usize,
     /// the event type
     kind: EventKind,
     // the async coroutine that work on an select
@@ -72,6 +75,8 @@ impl Selector {
 /// each select coroutine would use this struct to communicate with
 /// the cqueue. the struct is created in `add` for each select coroutine
 pub struct EventSender<'a> {
+    // index of the select coroutine
+    id: usize,
     // associated tocken, passed from `add`
     tocken: usize,
     // the select coroutine can use it to pass extra data to the caller
@@ -105,6 +110,7 @@ impl<'a> EventSender<'a> {
 impl<'a> EventSource for EventSender<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         self.cqueue.ev_queue.push(Event {
+            id: self.id,
             tocken: self.tocken,
             extra: self.extra,
             kind: EventKind::Normal,
@@ -118,6 +124,7 @@ impl<'a> Drop for EventSender<'a> {
     // when the select coroutine finished will trigger this drop
     fn drop(&mut self) {
         self.cqueue.ev_queue.push(Event {
+            id: self.id,
             tocken: self.tocken,
             extra: self.extra,
             kind: EventKind::Done,
@@ -137,8 +144,12 @@ pub struct Cqueue {
     // track how many coroutines left
     cnt: AtomicUsize,
     // store the select coroutine handles
-    selectors: mpsc_list::Queue<JoinHandle<()>>,
+    selectors: Vec<Option<JoinHandle<()>>>,
+    // total created select coroutines
+    total: usize,
 }
+
+unsafe impl Sync for Cqueue {}
 
 impl Cqueue {
     /// register a select coroutine with the cqueue
@@ -148,6 +159,7 @@ impl Cqueue {
         where F: FnOnce(EventSender) + Send + 'a
     {
         let sender = EventSender {
+            id: self.total,
             tocken: tocken,
             extra: 0,
             cqueue: self,
@@ -155,24 +167,53 @@ impl Cqueue {
         let h = unsafe { spawn_unsafe(move || f(sender)) };
         let co = h.coroutine().clone();
         self.cnt.fetch_add(1, Ordering::Relaxed);
-        self.selectors.push(h);
+
+        let me = unsafe { &mut *(self as *const _ as *mut Self) };
+        me.total += 1;
+        me.selectors.push(Some(h));
         Selector { co: co }
+    }
+
+    // when the select coroutine is done, check the panic status
+    // if it's paniced, re throw the panic data
+    fn check_panic(&self, id: usize) {
+        use generator::Error;
+        let me = unsafe { &mut *(self as *const _ as *mut Self) };
+        match me.selectors[id].take().expect("join handler not set").join() {
+            Ok(_) => {}
+            Err(panic) => {
+                if let Some(err) = panic.downcast_ref::<Error>() {
+                    // ignore the cancel panic
+                    if *err == Error::Cancel {
+                        return;
+                    }
+                }
+                panic::resume_unwind(panic);
+            }
+        }
     }
 
     /// poll an event that is ready to process
     /// when the event is returned the bottom half is already run
     /// the API is "completion" mode
+    /// if any panic in select coroutine detected during the poll
+    /// it will propagate the panic to the caller
     pub fn poll(&self, timeout: Option<Duration>) -> Result<Event, PollError> {
+        macro_rules! run_ev {
+            ($ev:ident) => ({
+                if $ev.kind == EventKind::Done {
+                    self.check_panic($ev.id);
+                    continue;
+                }
+                $ev.continue_bottom();
+                return Ok($ev);
+            })
+        }
+
         let deadline = timeout.map(|dur| Instant::now() + dur);
         loop {
             match self.ev_queue.pop() {
-                Some(mut ev) => {
-                    if ev.kind == EventKind::Done {
-                        continue;
-                    }
-                    ev.continue_bottom();
-                    return Ok(ev);
-                }
+                Some(mut ev) => run_ev!(ev),
                 None if self.cnt.load(Ordering::Relaxed) == 0 => return Err(PollError::Finished),
                 _ => {}
             }
@@ -185,11 +226,7 @@ impl Cqueue {
                 Some(mut ev) => {
                     self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
                     Blocker::park(timeout);
-                    if ev.kind == EventKind::Done {
-                        continue;
-                    }
-                    ev.continue_bottom();
-                    return Ok(ev);
+                    run_ev!(ev);
                 }
             }
 
@@ -207,12 +244,13 @@ impl Drop for Cqueue {
     // and wait until all of them return back
     fn drop(&mut self) {
         // first cancel all the select coroutines if they are running
-        while let Some(join) = self.selectors.pop() {
-            if !join.is_done() {
-                let co = join.coroutine();
-                unsafe { co.cancel() };
+        self.selectors.iter().map(|j| j.as_ref()).fold((), |_, join| {
+            match join {
+                Some(j) if !j.is_done() => unsafe { j.coroutine().cancel() },
+                _ => {}
             }
-        }
+        });
+
         // run the rest event
         loop {
             match self.poll(None) {
@@ -236,7 +274,8 @@ pub fn scope<'a, F, R>(f: F) -> R
         ev_queue: mpsc_list::Queue::new(),
         to_wake: AtomicOption::none(),
         cnt: AtomicUsize::new(0),
-        selectors: mpsc_list::Queue::new(),
+        selectors: Vec::new(),
+        total: 0,
     };
     f(&cqueue)
 }

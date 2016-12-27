@@ -50,6 +50,18 @@ fn cqueue_panic() {
 }
 
 #[test]
+#[should_panic]
+fn cqueue_panic_in_select() {
+    cqueue::scope(|cqueue| {
+        cqueue.add(0, |_es| {
+            panic!("painc in selector");
+        });
+    });
+
+    println!("cqueue finished");
+}
+
+#[test]
 fn cqueue_poll() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {

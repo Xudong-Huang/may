@@ -3,6 +3,7 @@ use std::any::Any;
 use std::sync::Arc;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
+use generator::Error;
 use coroutine::Coroutine;
 use sync::{Blocker, AtomicOption};
 
@@ -101,7 +102,7 @@ impl<T> JoinHandle<T> {
         // take the result
         self.packet.take(Ordering::Acquire).ok_or_else(|| {
             let p = unsafe { &mut *self.panic.get() };
-            p.take().unwrap_or_else(|| Box::new("coroutine cancelled"))
+            p.take().unwrap_or_else(|| Box::new(Error::Cancel))
         })
     }
 }
