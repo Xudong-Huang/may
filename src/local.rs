@@ -7,6 +7,10 @@ use join::Join;
 use coroutine::Coroutine;
 use generator::get_local_data;
 
+// thread local map storage
+thread_local!{static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
+
+
 /// coroutine local storage
 pub struct CoroutineLocal {
     co: Coroutine, // current coroutine handle
@@ -44,11 +48,13 @@ impl CoroutineLocal {
 
 fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     let ptr = get_local_data();
-    assert!(!ptr.is_null(),
-            "got null local data ptr, not in coroutine context");
-    let local = unsafe { &*(ptr as *mut CoroutineLocal) };
-    let data = &local.local_data;
-    f(data)
+    if ptr.is_null() {
+        LOCALMAP.with(|data| f(data))
+    } else {
+        let local = unsafe { &*(ptr as *mut CoroutineLocal) };
+        let data = &local.local_data;
+        f(data)
+    }
 }
 
 /// A macro to create a `static` of type `LocalKey`
@@ -141,11 +147,13 @@ impl<T: Send + 'static> LocalKey<T> {
     /// underlying data associated with this coroutine-local-key. The data itself
     /// is stored inside of the current coroutine.
     ///
+    /// if it's not accessed in a coroutine context, it will use the thread local
+    /// storage as a backend, so it's safe to use it in thread context
+    ///
     /// # Panics
     ///
     /// This function can possibly panic for a number of reasons:
     ///
-    /// * If the context is not a coroutine.
     /// * If the initialization expression is run and it panics
     /// * If the closure provided panics
     pub fn with<F, R>(&'static self, f: F) -> R

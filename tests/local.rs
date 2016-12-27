@@ -3,8 +3,7 @@ extern crate coroutine;
 
 
 #[test]
-#[should_panic]
-fn panic_not_coroutine() {
+fn local_in_thread() {
     coroutine_local!(static FOO: i32 = 3);
 
     // can only be called in coroutine context
