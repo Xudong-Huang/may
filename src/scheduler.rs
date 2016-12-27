@@ -29,6 +29,21 @@ const PREFTCH_SIZE: usize = 4;
 type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
 
+// filter out the cancel panic, don't print anything for it
+fn filter_cancel_panic() {
+    use ::std::panic;
+    use generator::Error;
+    let old = panic::take_hook();
+    ::std::panic::set_hook(Box::new(move |info| {
+        match info.payload().downcast_ref::<Error>() {
+            // this is not an error at all, ignore it
+            Some(_e @ &Error::Cancel) => return,
+            _ => {}
+        }
+        old(info);
+    }));
+}
+
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
     static mut SCHED: *const Scheduler = 0 as *const _;
@@ -50,6 +65,7 @@ pub fn get_scheduler() -> &'static Scheduler {
         // run the workers in background
         for id in 0..workers {
             thread::spawn(move || {
+                filter_cancel_panic();
                 ID.with(|m_id| m_id.set(id));
                 let s = unsafe { &*SCHED };
                 s.run(id);
@@ -58,6 +74,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 
         // timer thread
         thread::spawn(move || {
+            filter_cancel_panic();
             let s = unsafe { &*SCHED };
             // timer function
             let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
@@ -75,6 +92,7 @@ pub fn get_scheduler() -> &'static Scheduler {
         // io event loop thread
         for id in 0..io_workers {
             thread::spawn(move || {
+                filter_cancel_panic();
                 let s = unsafe { &*SCHED };
                 s.event_loop.run(id).unwrap_or_else(|e| {
                     panic!("event_loop failed running, err={}", e);

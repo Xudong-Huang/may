@@ -15,6 +15,13 @@ impl EventSource for Yield {
     }
 }
 
+#[inline]
+pub fn raw_yield_with<T: EventSource>(resource: &T) {
+    let r = resource as &EventSource as *const _ as *mut _;
+    let es = EventSubscriber::new(r);
+    co_yield_with(es);
+}
+
 /// yield internal `EventSource` ref
 /// it's ok to return a ref of object on the generator's stack
 /// just like return the ref of a struct member
@@ -25,9 +32,7 @@ pub fn yield_with<T: EventSource>(resource: &T) {
         panic!(Error::Cancel);
     }
 
-    let r = resource as &EventSource as *const _ as *mut _;
-    let es = EventSubscriber::new(r);
-    co_yield_with(es);
+    raw_yield_with(resource);
 
     // after return back we should re-check the panic and clear it
     if cancel.is_canceled() {
