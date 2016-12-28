@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate coroutine;
-pub use coroutine::cqueue;
-pub use coroutine::cqueue::PollError::*;
+use coroutine::cqueue;
+use coroutine::cqueue::PollError::*;
 
 use std::time::Duration;
 
