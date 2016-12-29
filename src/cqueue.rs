@@ -147,6 +147,8 @@ pub struct Cqueue {
     selectors: Vec<Option<JoinHandle<()>>>,
     // total created select coroutines
     total: usize,
+    // panic status
+    is_panicking: bool,
 }
 
 unsafe impl Sync for Cqueue {}
@@ -177,6 +179,10 @@ impl Cqueue {
     // when the select coroutine is done, check the panic status
     // if it's paniced, re throw the panic data
     fn check_panic(&self, id: usize) {
+        if self.is_panicking {
+            return;
+        }
+
         use generator::Error;
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         match me.selectors[id].take().expect("join handler not set").join() {
@@ -188,6 +194,7 @@ impl Cqueue {
                         return;
                     }
                 }
+                me.is_panicking = true;
                 panic::resume_unwind(panic);
             }
         }
@@ -251,6 +258,10 @@ impl Drop for Cqueue {
             }
         });
 
+        if self.is_panicking {
+            return;
+        }
+
         // run the rest event
         loop {
             match self.poll(None) {
@@ -276,6 +287,7 @@ pub fn scope<'a, F, R>(f: F) -> R
         cnt: AtomicUsize::new(0),
         selectors: Vec::new(),
         total: 0,
+        is_panicking: false,
     };
     f(&cqueue)
 }
