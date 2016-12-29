@@ -1,28 +1,34 @@
-#![feature(libc)]
-
 #[macro_use]
 extern crate coroutine;
 extern crate generator;
-extern crate libc;
 
-use libc::rand;
 use std::time::Duration;
-
 use coroutine::cqueue;
+
+// this is wrapper to work around the compile error
+// we are safe to share the data in bottom half since we run them orderly
+struct SyncCell<T>(T);
+impl<T> SyncCell<T> {
+    unsafe fn get(&self) -> &mut T {
+        &mut *(&self.0 as *const _ as *mut T)
+    }
+}
 
 // sum ten data resources
 fn main() {
+    coroutine::scheduler_config().set_workers(4);
     let mut gv = vec![];
-    let mut total = 0;
+    let total = SyncCell(0);
 
     // create the event producers
-    for i in 0..4 {
+    for i in 0..10 {
         let g = generator::Gn::new_scoped(move |mut s| {
+            let mut data = 10;
             loop {
                 coroutine::sleep(Duration::from_millis(500 * (i + 1)));
-                let data = unsafe { rand() };
                 // println!("coroutine{}: data = {:?}", i, data);
-                s.yield_with(data >> 8);
+                s.yield_with(data);
+                data += 10;
             }
         });
 
@@ -33,21 +39,22 @@ fn main() {
     // the select body that monitor the rx event and recalc the new total
     cqueue::scope(|cqueue| {
         // registe select coroutines
-        for t in 0..4 {
+        for t in 0..10 {
             cqueue.add(t, |es| {
                 let mut last = 0;
                 let tocken = es.get_tocken();
                 while let Some(data) = gv[tocken].next() {
+                    // =====================================================
+                    es.send(0);
+                    // =====================================================
+
                     let delta = data - last;
-
-                    // =====================================================
-                    // send out our delta
-                    es.send(&delta as *const _ as _);
-                    // =====================================================
-
+                    let total = unsafe { total.get() };
                     // bottom half that will run sequencially in the poller
-                    println!("in selector: update from {}, data={}, last_total={}",
-                                     tocken, data, total);
+                    println!("in selector: update from {}, delta={}, last_total={}",
+                             tocken, delta, total);
+
+                    *total += delta;
                     last = data;
                 }
             });
@@ -58,15 +65,14 @@ fn main() {
             println!("poll time over!");
         });
 
+        let total = unsafe { total.get() };
         // poll the event
         while let Ok(ev) = cqueue.poll(None) {
             if ev.tocken == 9999 {
                 break;
             }
-            // calc the new total
-            let delta = unsafe { *(ev.extra as *const _) };
-            total += delta;
-            println!("in poller: delta={}, total={}", delta, total);
+            // print the new total
+            println!("in poller: total={}", total);
         }
     });
 
