@@ -27,6 +27,35 @@ fn cqueue_drop() {
 }
 
 #[test]
+fn cqueue_in_coroutine() {
+    coroutine::scheduler_config().set_workers(4);
+    let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
+    coroutine::spawn(move || {
+            cqueue::scope(|cqueue| {
+                for tocken in 0..10 {
+                    cqueue.add(tocken, |es| {
+                        let tocken = es.get_tocken();
+                        let j = v[tocken];
+                        es.send(0);
+                        println!("j={}", j)
+                    });
+                }
+
+                loop {
+                    match cqueue.poll(None) {
+                        Ok(ev) => println!("ev = {:?}", ev),
+                        Err(Finished) => break,
+                        Err(Timeout) => unreachable!(),
+                    }
+                }
+            });
+        })
+        .join()
+        .unwrap();
+    println!("cqueue finished");
+}
+
+#[test]
 #[should_panic]
 fn cqueue_panic() {
     coroutine::scheduler_config().set_workers(4);
