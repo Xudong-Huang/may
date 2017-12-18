@@ -7,10 +7,10 @@ os:
  - osx
 
 rust:
+  - stable
   - nightly
 
 evn:
-
   - RUST_BACKTRACE=1
 
 script:

@@ -677,6 +677,7 @@ mod tests {
 
         // cancel read coroutine that is waiting for the rwlock
         unsafe { h.coroutine().cancel() };
+        h.join().unwrap_err();
 
         // release the write lock, so that other thread can got the lock
         drop(wlock);
