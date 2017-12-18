@@ -1,0 +1,19 @@
+[package]
+name = "may_queue"
+version = "0.1.0"
+authors = ["Xudong Huang <huangxu008@hotmail.com>"]
+license = "LGPL-2.1"
+repository = "https://github.com/Xudong-Huang/may.git"
+homepage = "https://github.com/Xudong-Huang/may.git"
+documentation = "https://docs.rs/may_queue"
+description = "May's internal queue library"
+keywords = ["coroutine", "mpsc"]
+categories = ["concurrency"]
+build = "build.rs"
+
+[dependencies]
+smallvec = "0.4"
+
+[build-dependencies]
+rustc_version = "0.2"
+

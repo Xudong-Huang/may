@@ -1,0 +1,263 @@
+use std::{io, ptr};
+use std::time::Duration;
+use std::os::unix::io::RawFd;
+use std::sync::atomic::Ordering;
+
+use smallvec::SmallVec;
+use coroutine_impl::run_coroutine;
+use timeout_list::{now, ns_to_dur};
+use may_queue::mpsc_list::Queue as mpsc;
+
+use super::libc;
+use super::{EventData, IoData, TimerList, timeout_handler};
+
+pub type SysEvent = libc::kevent;
+
+// used for notify wakeup
+const NOTIFY_IDENT: usize = 42;
+
+macro_rules! kevent {
+    ($id: expr, $filter: expr, $flags: expr, $data: expr) => {
+        libc::kevent {
+            ident: $id as libc::uintptr_t,
+            filter: $filter,
+            flags: $flags,
+            fflags: 0,
+            data: 0,
+            udata: $data as *mut _,
+        }
+    }
+}
+
+struct SingleSelector {
+    kqfd: RawFd,
+    timer_list: TimerList,
+    free_ev: mpsc<IoData>,
+}
+
+impl SingleSelector {
+    pub fn new() -> io::Result<Self> {
+        let kqfd = unsafe { libc::kqueue() };
+        if kqfd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let kev = libc::kevent {
+            ident: NOTIFY_IDENT,
+            filter: libc::EVFILT_USER,
+            flags: libc::EV_ADD | libc::EV_CLEAR,
+            fflags: 0,
+            data: 0,
+            udata: ptr::null_mut(),
+        };
+
+        let ret = unsafe {
+            libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null())
+        };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(SingleSelector {
+            kqfd: kqfd,
+            free_ev: mpsc::new(),
+            timer_list: TimerList::new(),
+        })
+    }
+}
+
+impl Drop for SingleSelector {
+    fn drop(&mut self) {
+        let _ = unsafe { libc::close(self.kqfd) };
+    }
+}
+
+pub struct Selector {
+    // 128 should be fine for max io threads
+    vec: SmallVec<[SingleSelector; 128]>,
+}
+
+impl Selector {
+    pub fn new(io_workers: usize) -> io::Result<Self> {
+        let mut s = Selector { vec: SmallVec::new() };
+
+        for _ in 0..io_workers {
+            let ss = try!(SingleSelector::new());
+            s.vec.push(ss);
+        }
+
+        Ok(s)
+    }
+
+    pub fn select(&self,
+                  id: usize,
+                  events: &mut [SysEvent],
+                  timeout: Option<u64>)
+                  -> io::Result<Option<u64>> {
+        let timeout = timeout.map(|to| {
+            let dur = ns_to_dur(to);
+            libc::timespec {
+                tv_sec: dur.as_secs() as libc::time_t,
+                tv_nsec: dur.subsec_nanos() as libc::c_long,
+            }
+        });
+
+        let timeout = timeout.as_ref().map(|s| s as *const _).unwrap_or(ptr::null_mut());
+        // info!("select; timeout={:?}", timeout_ms);
+
+        // Wait for epoll events for at most timeout_ms milliseconds
+        let kqfd = self.vec[id].kqfd;
+        let n = unsafe {
+            libc::kevent(kqfd, ptr::null(), 0,
+                         events.as_mut_ptr(), events.len() as libc::c_int, timeout)
+        };
+        if n < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let n = n as usize;
+
+        for event in events[..n].iter() {
+            if event.udata == ptr::null_mut() {
+                // this is just a wakeup event, ignore it
+                // let mut buf = [0u8; 8];
+                // clear the eventfd, ignore the result
+                // read(self.vec[id].evfd, &mut buf).ok();
+                info!("got wakeup event in select, id={}", id);
+                continue;
+            }
+            let data = unsafe { &mut *(event.udata as *mut EventData) };
+            // info!("select got event, data={:p}", data);
+            data.io_flag.store(true, Ordering::Relaxed);
+
+            // first check the atomic co, this may be grab by the worker first
+            let co = match data.co.take(Ordering::Acquire) {
+                None => continue,
+                Some(co) => co,
+            };
+            co.prefetch();
+
+            // it's safe to remove the timer since we are runing the timer_list in the same thread
+            data.timer.borrow_mut().take().map(|h| {
+                 unsafe {
+                     // tell the timer hanler not to cancel the io
+                     // it's not always true that you can really remove the timer entry
+                     h.get_data().data.event_data = ptr::null_mut();
+                 }
+                 h.remove()
+            });
+
+            // schedule the coroutine
+            run_coroutine(co);
+        }
+
+        // free the unused event_data
+        self.free_unused_event_data(id);
+
+        // deal with the timer list
+        let next_expire = self.vec[id].timer_list.schedule_timer(now(), &timeout_handler);
+        Ok(next_expire)
+    }
+
+    // this will post an os event so that we can wakeup the event loop
+    #[inline]
+    fn wakeup(&self, id: usize) {
+        let kqfd = self.vec[id].kqfd;
+        let kev = libc::kevent {
+            ident: NOTIFY_IDENT,
+            filter: libc::EVFILT_USER,
+            flags: 0,
+            fflags: libc::NOTE_TRIGGER,
+            data: 0,
+            udata: ptr::null_mut(),
+        };
+
+        let ret = unsafe {
+            libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null())
+        };
+
+        info!("wakeup id={:?}, ret={:?}", id, ret);
+    }
+
+
+    // register io event to the selector
+    #[inline]
+    pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
+        let fd = io_data.fd;
+        let id = fd as usize % self.vec.len();
+        let kqfd = self.vec[id].kqfd;
+        info!("add fd to kqueue select, fd={:?}", fd);
+
+        let flags = libc::EV_ADD | libc::EV_CLEAR;
+        let udata = io_data.as_ref() as *const _;
+        let changes = [
+            kevent!(fd, libc::EVFILT_READ, flags, udata),
+            kevent!(fd, libc::EVFILT_WRITE, flags, udata)
+        ];
+
+        let n = unsafe {
+            libc::kevent(kqfd, changes.as_ptr(), changes.len() as libc::c_int,
+                         ptr::null_mut(), 0, ptr::null())
+        };
+        if n < 0 {
+             return Err(io::Error::last_os_error());
+        }
+
+        Ok(io_data)
+    }
+
+    #[inline]
+    pub fn del_fd(&self, io_data: IoData) {
+        io_data.timer.borrow_mut().take().map(|h| {
+            unsafe {
+                // mark the timer as removed if any, this only happened
+                // when cancel an IO. what if the timer expired at the same time?
+                // because we run this func in the user space, so the timer handler
+                // will not got the coroutine
+                h.get_data().data.event_data = ptr::null_mut();
+            }
+        });
+
+        let fd = io_data.fd;
+        let id = fd as usize % self.vec.len();
+        let kqfd = self.vec[id].kqfd;
+        info!("del fd from kqueue select, fd={:?}", fd);
+
+        let filter = libc::EV_DELETE;
+        let changes = [
+            kevent!(fd, libc::EVFILT_READ, filter, ptr::null_mut()),
+            kevent!(fd, libc::EVFILT_WRITE, filter, ptr::null_mut()),
+        ];
+        // ignore the error
+        unsafe {
+            libc::kevent(kqfd, changes.as_ptr(), changes.len() as libc::c_int,
+                         ptr::null_mut(), 0, ptr::null());
+        }
+
+        // after EpollCtlDel push the unused event data
+        self.vec[id].free_ev.push(io_data);
+    }
+
+    // we can't free the event data directly in the worker thread
+    // must free them before the next epoll_wait
+    #[inline]
+    fn free_unused_event_data(&self, id: usize) {
+        let free_ev = &self.vec[id].free_ev;
+        while let Some(_) = free_ev.pop() {}
+    }
+
+    // register the io request to the timeout list
+    #[inline]
+    pub fn add_io_timer(&self, io: &IoData, timeout: Option<Duration>) {
+        let id = io.fd as usize % self.vec.len();
+        *io.timer.borrow_mut() = timeout.map(|dur| {
+            // info!("io timeout = {:?}", dur);
+            let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
+            if b_new {
+                // wakeup the event loop threead to recal the next wait timeout
+                self.wakeup(id);
+            }
+            h
+        });
+    }
+}

@@ -1,0 +1,51 @@
+[package]
+name = "may"
+version = "0.1.0"
+authors = ["Xudong Huang <huangxu008@hotmail.com>"]
+license = "LGPL-2.1"
+repository = "https://github.com/Xudong-Huang/may.git"
+homepage = "https://github.com/Xudong-Huang/may.git"
+documentation = "https://docs.rs/may"
+description = "Rust Coroutine Library"
+readme = "README.md"
+keywords = ["coroutine", "async", "multi thread"]
+categories = ["concurrency"]
+build = "build.rs"
+exclude = [
+    ".gitignore",
+    ".travis.yml",
+    "appveyor.yml",
+    "benches/**/*",
+]
+
+[dependencies]
+log = "0.3.6"
+net2 = "0.2"
+time = "0.1"
+smallvec = "0.4"
+generator = "0.6"
+crossbeam = "0.3"
+may_queue = { version = "0.1.0", path = "may_queue" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+nix = "0.9"
+
+[target.'cfg(windows)'.dependencies]
+miow = "0.2"
+winapi = "0.2"
+kernel32-sys = "0.2"
+
+[dev-dependencies]
+docopt = "0.8"
+serde = "1.0"
+serde_derive = "1.0"
+
+[profile.release]
+opt-level=3
+lto = true
+
+[build-dependencies]
+rustc_version = "0.2"
+
+[workspace]
