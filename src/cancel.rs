@@ -1,7 +1,7 @@
 use std::io;
 use std::thread;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use generator::Error;
 use sync::AtomicOption;
 use yield_now::set_co_para;
@@ -22,7 +22,7 @@ pub fn trigger_cancel_panic() -> ! {
 
     // should we clear the cancel flag to let other API continue?
     // so that we can avoid the re-panic problem
-    current_cancel_data().state.store(false, Ordering::Release);
+    current_cancel_data().state.store(0, Ordering::Release);
     panic!(Error::Cancel);
 }
 
@@ -37,7 +37,7 @@ pub trait CancelIo {
 // each coroutine has it's own Cancel data
 pub struct CancelImpl<T: CancelIo> {
     // true if need to cancel the coroutine
-    state: AtomicBool,
+    state: AtomicUsize,
     // the io data when the coroutine is suspended
     io: T,
     // other suspended type would register the co itself
@@ -50,7 +50,7 @@ pub struct CancelImpl<T: CancelIo> {
 impl<T: CancelIo> CancelImpl<T> {
     pub fn new() -> Self {
         CancelImpl {
-            state: AtomicBool::new(false),
+            state: AtomicUsize::new(0),
             io: T::new(),
             co: AtomicOption::none(),
         }
@@ -58,19 +58,19 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // judge if the coroutine cancel flag is set
     pub fn is_canceled(&self) -> bool {
-        self.state.load(Ordering::Acquire)
+        self.state.load(Ordering::Acquire) != 0
     }
 
     // panic if cancel was set
     pub fn check_cancel(&self) {
-        if self.state.load(Ordering::Acquire) {
+        if self.state.load(Ordering::Acquire) != 0 {
             trigger_cancel_panic();
         }
     }
 
     // async cancel for a coroutine
     pub unsafe fn cancel(&self) {
-        self.state.store(true, Ordering::Release);
+        self.state.store(1, Ordering::Release);
         match self.co.take(Ordering::Acquire) {
             Some(co) => {
                 co.take(Ordering::Acquire)

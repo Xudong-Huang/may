@@ -25,6 +25,8 @@ pub struct Park {
     state: AtomicUsize,
     // control how to deal with the cancelation
     check_cancel: bool,
+    // if cancel happend
+    is_canceled: AtomicBool,
     // timeout settings
     timeout: Option<Duration>,
     timeout_handle: Option<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
@@ -39,6 +41,7 @@ impl Park {
             wait_co: Arc::new(AtomicOption::none()),
             state: AtomicUsize::new(0),
             check_cancel: true,
+            is_canceled: AtomicBool::new(false),
             timeout: None,
             timeout_handle: None,
             wait_kernel: AtomicBool::new(false),
@@ -164,6 +167,11 @@ impl Park {
         // println!("unparked gen={}, self={:p}", gen, self);
 
         // after return back, we should check if it's timeout or canceled
+        if self.is_canceled.swap(false, Ordering::AcqRel) {
+            println!("some thing eval");
+            return Err(ParkError::Canceled);
+        }
+
         if let Some(err) = get_co_para() {
             match err.kind() {
                 ErrorKind::TimedOut => return Err(ParkError::Timeout),
@@ -234,6 +242,11 @@ impl EventSource for Park {
     fn yield_back(&self, cancel: &'static Cancel) {
         // we would inc the gernation by 2 to another generation
         self.state.fetch_add(0x02, Ordering::Release);
+
+        // should deal with cancel that happened just before the kernel
+        if cancel.is_canceled() {
+            self.is_canceled.store(true, Ordering::Release);
+        }
 
         if self.check_cancel {
             cancel.check_cancel();
