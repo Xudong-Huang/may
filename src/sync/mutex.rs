@@ -62,27 +62,51 @@ impl<T: ?Sized> Mutex<T> {
         self.to_wake.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
-            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+            self.to_wake.pop().map_or_else(
+                || panic!("got null blocker!"),
+                |w| self.unpark_one(w),
+            );
         }
-        match cur.park(None) {
-            Ok(_) => {}
-            Err(ParkError::Timeout) => unreachable!("mutext timeout"),
-            Err(ParkError::Canceled) => {
-                // check the unpark status
-                if cur.is_unparked() {
-                    self.unlock();
-                } else {
-                    // register
-                    cur.set_release();
-                    // re-check unpark status
+        loop {
+            match cur.park(None) {
+                Ok(_) => {
+                    break;
+                }
+                Err(ParkError::Timeout) => unreachable!("mutext timeout"),
+                Err(ParkError::Canceled) => {
+                    let b_ignore = if ::coroutine_impl::is_coroutine() {
+                        let cancel = ::coroutine_impl::current_cancel_data();
+                        cancel.is_disabled()
+                    } else {
+                        false
+                    };
+                    // check the unpark status
                     if cur.is_unparked() {
-                        if cur.take_release() {
-                            self.unlock();
+                        if b_ignore {
+                            break;
+                        }
+                        self.unlock();
+                    } else {
+                        // register
+                        cur.set_release();
+                        // re-check unpark status
+                        if cur.is_unparked() {
+                            if cur.take_release() {
+                                if b_ignore {
+                                    break;
+                                }
+                                self.unlock();
+                            }
                         }
                     }
+                    // we ignore the cancel, just to wait the actual event
+                    if b_ignore {
+                        continue;
+                    }
+
+                    // now we can safely go with the cancel panic
+                    trigger_cancel_panic();
                 }
-                // now we can safely go with the cancel panic
-                trigger_cancel_panic();
             }
         }
 
@@ -91,7 +115,12 @@ impl<T: ?Sized> Mutex<T> {
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
         if self.cnt.load(Ordering::Relaxed) == 0 {
-            match self.cnt.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed) {
+            match self.cnt.compare_exchange(
+                0,
+                1,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => Ok(try!(MutexGuard::new(self))),
                 Err(_) => Err(TryLockError::WouldBlock),
             }
@@ -109,7 +138,10 @@ impl<T: ?Sized> Mutex<T> {
 
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
-            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+            self.to_wake.pop().map_or_else(
+                || panic!("got null blocker!"),
+                |w| self.unpark_one(w),
+            );
         }
     }
 
@@ -119,7 +151,8 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     pub fn into_inner(self) -> LockResult<T>
-        where T: Sized
+    where
+        T: Sized,
     {
         let data = unsafe { self.data.into_inner() };
         poison::map_result(self.poison.borrow(), |_| data)
@@ -306,10 +339,9 @@ mod tests {
         let m = Arc::new(Mutex::new(NonCopy(10)));
         let m2 = m.clone();
         let _ = thread::spawn(move || {
-                let _lock = m2.lock().unwrap();
-                panic!("test panic in inner thread to poison mutex");
-            })
-            .join();
+            let _lock = m2.lock().unwrap();
+            panic!("test panic in inner thread to poison mutex");
+        }).join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -330,10 +362,9 @@ mod tests {
         let m = Arc::new(Mutex::new(NonCopy(10)));
         let m2 = m.clone();
         let _ = thread::spawn(move || {
-                let _lock = m2.lock().unwrap();
-                panic!("test panic in inner thread to poison mutex");
-            })
-            .join();
+            let _lock = m2.lock().unwrap();
+            panic!("test panic in inner thread to poison mutex");
+        }).join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
@@ -400,10 +431,9 @@ mod tests {
         assert!(!arc.is_poisoned());
         let arc2 = arc.clone();
         let _ = thread::spawn(move || {
-                let lock = arc2.lock().unwrap();
-                assert_eq!(*lock, 2);
-            })
-            .join();
+            let lock = arc2.lock().unwrap();
+            assert_eq!(*lock, 2);
+        }).join();
         assert!(arc.lock().is_err());
         assert!(arc.is_poisoned());
     }
@@ -429,18 +459,17 @@ mod tests {
         let arc = Arc::new(Mutex::new(1));
         let arc2 = arc.clone();
         let _ = thread::spawn(move || -> () {
-                struct Unwinder {
-                    i: Arc<Mutex<i32>>,
+            struct Unwinder {
+                i: Arc<Mutex<i32>>,
+            }
+            impl Drop for Unwinder {
+                fn drop(&mut self) {
+                    *self.i.lock().unwrap() += 1;
                 }
-                impl Drop for Unwinder {
-                    fn drop(&mut self) {
-                        *self.i.lock().unwrap() += 1;
-                    }
-                }
-                let _u = Unwinder { i: arc2 };
-                panic!();
-            })
-            .join();
+            }
+            let _u = Unwinder { i: arc2 };
+            panic!();
+        }).join();
         let lock = arc.lock().unwrap();
         assert_eq!(*lock, 2);
     }

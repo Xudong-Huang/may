@@ -167,7 +167,7 @@ impl Park {
         // println!("unparked gen={}, self={:p}", gen, self);
 
         // after return back, we should check if it's timeout or canceled
-        if self.is_canceled.swap(false, Ordering::Relaxed) {
+        if self.is_canceled.load(Ordering::Relaxed) {
             return Err(ParkError::Canceled);
         }
 
@@ -243,9 +243,7 @@ impl EventSource for Park {
         self.state.fetch_add(0x02, Ordering::Release);
 
         // should deal with cancel that happened just before the kernel
-        if cancel.is_canceled() {
-            self.is_canceled.store(true, Ordering::Relaxed);
-        }
+        self.is_canceled.store(cancel.is_canceled(), Ordering::Relaxed);
 
         if self.check_cancel {
             cancel.check_cancel();

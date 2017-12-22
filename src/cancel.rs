@@ -17,7 +17,7 @@ use coroutine_impl::{CoroutineImpl, current_cancel_data};
 #[inline]
 pub fn trigger_cancel_panic() -> ! {
     if thread::panicking() {
-        error!("trigger another panic while paniking");
+        eprintln!("trigger another panic while paniking");
     }
 
     // should we clear the cancel flag to let other API continue?
@@ -36,7 +36,8 @@ pub trait CancelIo {
 
 // each coroutine has it's own Cancel data
 pub struct CancelImpl<T: CancelIo> {
-    // true if need to cancel the coroutine
+    // first bit is used when need to cancel the coroutine
+    // higher bits are used to disable the cancel
     state: AtomicUsize,
     // the io data when the coroutine is suspended
     io: T,
@@ -58,19 +59,34 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // judge if the coroutine cancel flag is set
     pub fn is_canceled(&self) -> bool {
-        self.state.load(Ordering::Acquire) != 0
+        self.state.load(Ordering::Acquire) == 1
+    }
+
+    // return if the coroutine cancel is disabled
+    pub fn is_disabled(&self) -> bool {
+        self.state.load(Ordering::Acquire) >= 2
+    }
+
+    // disable the cancel bit
+    pub fn disable_cancel(&self) {
+        self.state.fetch_add(2, Ordering::Release);
+    }
+
+    // enable the cancel bit again
+    pub fn enable_cancel(&self) {
+        self.state.fetch_sub(2, Ordering::Release);
     }
 
     // panic if cancel was set
     pub fn check_cancel(&self) {
-        if self.state.load(Ordering::Acquire) != 0 {
+        if self.state.load(Ordering::Acquire) == 1 {
             trigger_cancel_panic();
         }
     }
 
     // async cancel for a coroutine
     pub unsafe fn cancel(&self) {
-        self.state.store(1, Ordering::Release);
+        self.state.fetch_add(1, Ordering::Release);
         match self.co.take(Ordering::Acquire) {
             Some(co) => {
                 co.take(Ordering::Acquire)

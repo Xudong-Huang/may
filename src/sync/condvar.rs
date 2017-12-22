@@ -43,18 +43,32 @@ impl Condvar {
                             lock: &'a Mutex<T>,
                             dur: Option<Duration>)
                             -> Result<(), ParkError> {
+        let cancel = if ::coroutine_impl::is_coroutine() {
+            Some(::coroutine_impl::current_cancel_data())
+        } else {
+            None
+        };
         // enqueue the blocker
         let cur = SyncBlocker::current();
-        self.to_wake.lock().unwrap().push(cur.clone());
 
+        // we can't cancel panic here!!
+        cancel.as_ref().map(|c| c.disable_cancel());
+        self.to_wake.lock().unwrap().push(cur.clone());
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
+        cancel.as_ref().map(|c| c.enable_cancel());
+
         // wait until coming back
         let ret = cur.park(dur);
+        // disable cancel panic
+        cancel.as_ref().map(|c| c.disable_cancel());
         // don't run the guard destructor
         ::std::mem::forget(lock.lock());
 
         if ret.is_err() {
+            // when in a cancel state, could cause problem for the lock
+            // make notify never panic by disable the cancel bit
+
             // check the unpark status
             if cur.is_unparked() {
                 self.notify_one();
@@ -69,6 +83,9 @@ impl Condvar {
                 }
             }
         }
+        // enable cancel panic
+        cancel.as_ref().map(|c| c.enable_cancel());
+        
         ret
     }
 
