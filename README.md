@@ -2,7 +2,6 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/7gv4kw3b0m0y1iy6/branch/master?svg=true)](https://ci.appveyor.com/project/Xudong-Huang/may/branch/master)
 [![Current Crates.io Version](https://img.shields.io/crates/v/may.svg)](https://crates.io/crates/may)
 [![Document](https://img.shields.io/badge/doc-may-green.svg)](https://docs.rs/may)
-[![License](https://img.shields.io/github/license/Xudong-Huang/may.svg)](https://github.com/Xudong-Huang/may/blob/master/LICENSE)
 
 
 # MAY
