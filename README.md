@@ -17,7 +17,7 @@ May is a high performance stackful coroutine library that can be thought of rust
 * Support coroutine version local storage([CLS][cls])
 * Support efficient network async IO
 * Support efficient timer management
-* Support standard sync primitives plus semphore, mpmc channel etc.
+* Support standard sync primitives plus semaphore, mpmc channel etc.
 * Support cancellation of coroutines
 * Support graceful panic handling that will not affect other coroutines
 * Support scoped coroutine creation
@@ -66,7 +66,7 @@ fn main() {
 
 ## Performance
 
-Just a simple comparation with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`
+Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`
 
 **Machine Specs:**
 

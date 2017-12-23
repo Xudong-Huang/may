@@ -1,3 +1,3 @@
 I/O event loop implementations
 
-currently only for linux and windows which tested on my notebook
+currently support Linux, MacOs and Windows
