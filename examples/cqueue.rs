@@ -38,7 +38,7 @@ fn main() {
 
     // the select body that monitor the rx event and recalc the new total
     cqueue::scope(|cqueue| {
-        // registe select coroutines
+        // register select coroutines
         for t in 0..10 {
             cqueue.add(t, |es| {
                 let mut last = 0;
