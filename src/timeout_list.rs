@@ -43,7 +43,7 @@ pub fn now() -> u64 {
 // timeout event data
 pub struct TimeoutData<T> {
     time: u64, // the wall clock in ns that the timer expires
-    pub data: T, // the data associate with the timeout event
+    pub data: T, // the data associated with the timeout event
 }
 
 // timeout handler which can be removed/cancelled
@@ -55,7 +55,7 @@ type IntervalList<T> = Arc<TimeoutList<TimeoutData<T>>>;
 // this is the data type that used by the binary heap to get the latest timer
 struct IntervalEntry<T> {
     time: u64, // the head timeout value in the list, should be latest
-    list: IntervalList<T>, // point to the inerval list
+    list: IntervalList<T>, // point to the interval list
     interval: u64,
 }
 

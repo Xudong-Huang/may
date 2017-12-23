@@ -189,7 +189,7 @@ impl<'a> Drop for Scope<'a> {
     }
 }
 
-/// macro used to join all socopped sub coroutines
+/// macro used to join all scoped sub coroutines
 #[macro_export]
 macro_rules! join {
     (

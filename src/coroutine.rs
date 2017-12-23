@@ -1,4 +1,4 @@
-// rexport coroutine interface
+// re-export coroutine interface
 pub use sleep::sleep;
 pub use scoped::scope;
 pub use park::ParkError;

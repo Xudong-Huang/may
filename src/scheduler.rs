@@ -22,7 +22,7 @@ fn likely(e: bool) -> bool {
     e
 }
 
-// here we use Arc<AtomicOption<>> for that in the select implementaion
+// here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
 type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
