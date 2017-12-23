@@ -6,18 +6,18 @@
 
 # MAY
 
-Rust Stackfull Coroutine Library.
+Rust Stackful Coroutine Library.
 
-May is a high performance stackfull coroutine library that can be thought of rust version [goroutine][go]. you can use it easily to design and develop massive concurrent programs in rust.
+May is a high performance stackful coroutine library that can be thought of rust version [goroutine][go]. You can use it easily to design and develop massive concurrent programs in Rust.
 
 ## Features
 
-* Stackfull coroutine implementation based on [generator][generator]
+* Stackful coroutine implementation based on [generator][generator]
 * Support schedule on configurable number of threads for multi-cores
 * Support coroutine version local storage([CLS][cls])
 * Support efficient network async IO
 * Support efficient timer management
-* Support standard snc primitives plus semphore, mpmc channel etc.
+* Support standard sync primitives plus semphore, mpmc channel etc.
 * Support cancellation of coroutines
 * Support graceful panic handling that will not affect other coroutines
 * Support scoped coroutine creation
@@ -66,7 +66,7 @@ fn main() {
 
 ## Performance
 
-just a simple comparation with the rust echo server implemented in [tokio][tokio] to get a sense about `May`
+Just a simple comparation with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`
 
 **Machine Specs:**
 
