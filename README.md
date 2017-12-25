@@ -120,6 +120,19 @@ Responses: 4190944
 target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s user 16.96s system 195% cpu 10.029 total
 ```
 
+## Caveat
+There is a detailed [blog][caveat] that describes MAY's main restrictions.
+
+There are four things you should avoid when writing coroutines:
+* Don't call thread blocking APIs.
+It will hurt the performance. 
+
+* Don't use Thread Local Storage.
+Access TLS in coroutine would trigger undefined behavior.
+
+* Don't run CPU bound tasks for long time
+* Don't exceed the stack. It will trigger undefined behavior.
+
 ## Notices
 * both stable and nightly rust compiler are supported
 * This crate supports below platforms, for more platform support, please ref [generator][generator]
@@ -144,3 +157,4 @@ May is licensed under either of the following, at your option:
 [cls]:https://blog.zhpass.com/2017/12/18/CLS/
 [go]:https://tour.golang.org/concurrency/1
 [tokio]:https://github.com/tokio-rs/tokio-core/blob/master/examples/echo-threads.rs
+[caveat]:https://blog.zhpass.com/2017/12/25/may-caveat/
