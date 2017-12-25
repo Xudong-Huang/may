@@ -4,7 +4,6 @@ extern crate bytes;
 
 use may::coroutine;
 use may::net::TcpListener;
-use httparse::Request;
 use httparse::Status;
 use bytes::BufMut;
 use std::io::{Read, Write};
@@ -40,21 +39,24 @@ fn main() {
                         _ => "Cannot find page\n"
                     };
                    
-                    write!(stream, "\
-                    HTTP/1.1 200 OK\r\n\
-                    Server: May\r\n\
-                    Content-Length: {}\r\n\
-                    Date: 1-1-2000\r\n\
-                    \r\n\
-                    {}", response.len(), response);
+                    let s = format!("\
+                        HTTP/1.1 200 OK\r\n\
+                        Server: May\r\n\
+                        Content-Length: {}\r\n\
+                        Date: 1-1-2000\r\n\
+                        \r\n\
+                        {}", response.len(), response);
+
+                    stream.write_all(s.as_bytes())
+                          .expect("Cannot write to socket");
                     
                     buf = buf.split_off(i);
                 } else {
-                    let mut tempBuf = vec![0; 512];
-                    match stream.read(&mut tempBuf) {
+                    let mut temp_buf = vec![0; 512];
+                    match stream.read(&mut temp_buf) {
                         Ok(0) => return, // connection was closed
                         Ok(n) => {
-                            buf.put(&tempBuf[0..n]);
+                            buf.put(&temp_buf[0..n]);
                         },
                         Err(err) => println!("err = {:?}", err),
                     }
