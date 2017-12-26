@@ -122,7 +122,7 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s 
 ```
 
 ## Caveat
-There is a detailed [blog][caveat] that describes MAY's main restrictions.
+There is a detailed [doc][caveat] that describes MAY's main restrictions.
 
 There are four things you should avoid when writing coroutines:
 * Don't call thread blocking APIs.
@@ -156,7 +156,7 @@ May is licensed under either of the following, at your option:
 [echo_server]:examples/echo.rs
 [echo_client]:examples/echo_client.rs
 [http_sever]:examples/http.rs
-[cls]:https://blog.zhpass.com/2017/12/18/CLS/
+[cls]:docs/CLS_instead_of_TLS.md
 [go]:https://tour.golang.org/concurrency/1
 [tokio]:https://github.com/tokio-rs/tokio-core/blob/master/examples/echo-threads.rs
-[caveat]:https://blog.zhpass.com/2017/12/25/may-caveat/
+[caveat]:docs/may_caveat.md
