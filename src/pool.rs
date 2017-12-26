@@ -4,7 +4,7 @@ use coroutine_impl::CoroutineImpl;
 use may_queue::mpmc_bounded::Queue;
 
 /// the raw coroutine pool, with stack and register prepared
-/// you need to tack care of the local storage
+/// you need to take care of the local storage
 pub struct CoroutinePool {
     // the pool must support mpmc operation!
     pool: Queue<CoroutineImpl>,
