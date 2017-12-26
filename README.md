@@ -62,6 +62,7 @@ fn main() {
 ### IO heavy Bound examples
 * [echo server][echo_server]
 * [echo client][echo_client]
+* [simple http][http_sever]
 
 
 ## Performance
@@ -154,6 +155,7 @@ May is licensed under either of the following, at your option:
 [prime]:https://github.com/Xudong-Huang/prime
 [echo_server]:examples/echo.rs
 [echo_client]:examples/echo_client.rs
+[http_sever]:examples/http.rs
 [cls]:https://blog.zhpass.com/2017/12/18/CLS/
 [go]:https://tour.golang.org/concurrency/1
 [tokio]:https://github.com/tokio-rs/tokio-core/blob/master/examples/echo-threads.rs
