@@ -10,8 +10,8 @@ use sync::AtomicOption;
 use local::CoroutineLocal;
 use scheduler::get_scheduler;
 use config::config;
-use join::{Join, JoinHandle, make_join_handle};
-use generator::{Gn, Generator, get_local_data};
+use join::{make_join_handle, Join, JoinHandle};
+use generator::{get_local_data, Generator, Gn};
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types
@@ -56,21 +56,20 @@ impl Done {
         // assert!(co.is_done(), "unfinished coroutine detected");
         // just consume the coroutine
         // destroy the local storage
-        unsafe {
-            Box::from_raw(co.get_local_data() as *mut CoroutineLocal);
-        }
+        let local = unsafe { Box::from_raw(co.get_local_data() as *mut CoroutineLocal) };
+        let name = local.get_co().name();
+
         // recycle the coroutine
         let (size, used) = co.stack_usage();
         if used == size {
-            println!("statck overflow detected, size={}", size);
+            eprintln!("statck overflow detected, size={}", size);
             ::std::process::exit(1);
         }
         // show the actual used stack size in debug log
         if size & 1 == 1 {
-            debug!(
-                "coroutine stack size = {},  used stack size = {}",
-                size,
-                used
+            println!(
+                "coroutine name = {:?}, stack size = {},  used size = {}",
+                name, size, used
             );
         }
 
@@ -86,7 +85,8 @@ impl EventSource for Done {
     }
 }
 
-/// coroutines are static generator, the para type is EventResult, the result type is EventSubscriber
+/// coroutines are static generator
+/// the para type is EventResult, the result type is EventSubscriber
 pub type CoroutineImpl = Generator<'static, EventResult, EventSubscriber>;
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -172,7 +172,7 @@ impl Builder {
         self
     }
 
-    /// Sets the size of the stack for the new thread.
+    /// Sets the size of the stack for the new coroutine.
     pub fn stack_size(mut self, size: usize) -> Builder {
         self.stack_size = Some(size);
         self
