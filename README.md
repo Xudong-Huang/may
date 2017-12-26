@@ -134,6 +134,9 @@ Access TLS in coroutine would trigger undefined behavior.
 * Don't run CPU bound tasks for long time
 * Don't exceed the stack. It will trigger undefined behavior.
 
+## How to tune stack size
+If you need to tune the coroutine stack size, please read [here][stack]
+
 ## Notices
 * both stable and nightly rust compiler are supported
 * This crate supports below platforms, for more platform support, please ref [generator][generator]
@@ -160,3 +163,4 @@ May is licensed under either of the following, at your option:
 [go]:https://tour.golang.org/concurrency/1
 [tokio]:https://github.com/tokio-rs/tokio-core/blob/master/examples/echo-threads.rs
 [caveat]:docs/may_caveat.md
+[stack]:docs/tune_stack_size.md
