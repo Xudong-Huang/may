@@ -19,10 +19,10 @@ exclude = [
 ]
 
 [dependencies]
-log = "0.3.6"
+log = "0.4"
 net2 = "0.2"
 time = "0.1"
-smallvec = "0.4"
+smallvec = "0.6"
 generator = "0.6"
 crossbeam = "0.3"
 may_queue = { version = "0.1.0", path = "may_queue" }
