@@ -55,8 +55,8 @@ impl<T: Boxed> BoxedOption<T> {
 
     #[inline]
     pub fn take_fast(&self, order: Ordering) -> Option<Box<T::Data>> {
-        // our special verion only apply with a grab contention
-        // for generic use case this is not ture
+        // our special version only apply with a grab contention
+        // for generic use case this is not true
         if self.is_none() {
             return None;
         }

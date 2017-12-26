@@ -38,7 +38,7 @@ impl CoroutinePool {
         }
     }
 
-    /// put a raw courinte inot the pool
+    /// put a raw coroutine into the pool
     #[inline]
     pub fn put(&self, co: CoroutineImpl) {
         // discard the co if push failed

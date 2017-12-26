@@ -55,7 +55,7 @@ type IntervalList<T> = Arc<TimeoutList<TimeoutData<T>>>;
 // this is the data type that used by the binary heap to get the latest timer
 struct IntervalEntry<T> {
     time: u64, // the head timeout value in the list, should be latest
-    list: IntervalList<T>, // point to the inerval list
+    list: IntervalList<T>, // point to the interval list
     interval: u64,
 }
 
@@ -125,7 +125,7 @@ impl<T> TimeOutList<T> {
 
     // add a timeout event to the list
     // this can be called in any thread
-    // return true if we need to recal next expire
+    // return true if we need to recall next expire
     pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
         let interval = dur_to_ns(dur);
         let time = now() + interval; // TODO: deal with overflow?
@@ -217,13 +217,13 @@ impl<T> TimeOutList<T> {
             match entry.pop_timeout(now, f) {
                 Some(time) => {
                     entry.time = time;
-                    // repush the entry
+                    // re-push the entry
                     let mut timer_bh = self.timer_bh.lock().unwrap();
                     (*timer_bh).push(entry);
                 }
 
                 None => {
-                    // if the inteval list is empty, need to delete it
+                    // if the interval list is empty, need to delete it
                     let mut interval_map_w = self.interval_map.write().unwrap();
                     // recheck if the interval list is empty, other thread may append data to it
                     if entry.list.is_empty() {
@@ -237,7 +237,7 @@ impl<T> TimeOutList<T> {
                         mem::drop(interval_map_w);
                         // the list is push some data by other thread
                         entry.time = entry.list.peek().unwrap().time;
-                        // repush the entry
+                        // re-push the entry
                         let mut timer_bh = self.timer_bh.lock().unwrap();
                         (*timer_bh).push(entry);
                     }

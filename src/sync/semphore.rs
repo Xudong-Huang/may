@@ -38,7 +38,7 @@ use cancel::trigger_cancel_panic;
 /// ```
 pub struct Semphore {
     // track how many resources available for the semphore
-    // if it's negtive means how many threads are waiting for
+    // if it's negative means how many threads are waiting for
     cnt: AtomicIsize,
     // the waiting blocker list, must be mpmc
     to_wake: SegQueue<Arc<SyncBlocker>>,
@@ -119,7 +119,7 @@ impl Semphore {
     }
 
     /// return false if would block
-    /// return true if succesfully acquire one semphore resource
+    /// return true if successfully acquire one semphore resource
     pub fn try_wait(&self) -> bool {
         // we not register ourself at all
         // just manipulate the cnt is enough
@@ -133,7 +133,7 @@ impl Semphore {
         false
     }
 
-    /// increament the semphore value
+    /// increment the semphore value
     /// and would wakeup a thread/coroutine that is calling `wait`
     pub fn post(&self) {
         let cnt = self.cnt.fetch_add(1, Ordering::SeqCst);

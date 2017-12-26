@@ -42,8 +42,8 @@ fn main() {
         for t in 0..10 {
             cqueue.add(t, |es| {
                 let mut last = 0;
-                let tocken = es.get_tocken();
-                while let Some(data) = gv[tocken].next() {
+                let token = es.get_token();
+                while let Some(data) = gv[token].next() {
                     // =====================================================
                     es.send(0);
                     // =====================================================
@@ -52,7 +52,7 @@ fn main() {
                     let total = unsafe { total.get() };
                     // bottom half that will run sequencially in the poller
                     println!("in selector: update from {}, delta={}, last_total={}",
-                             tocken, delta, total);
+                             token, delta, total);
 
                     *total += delta;
                     last = data;
@@ -68,7 +68,7 @@ fn main() {
         let total = unsafe { total.get() };
         // poll the event
         while let Ok(ev) = cqueue.poll(None) {
-            if ev.tocken == 9999 {
+            if ev.token == 9999 {
                 break;
             }
             // print the new total

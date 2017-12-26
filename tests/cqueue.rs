@@ -11,10 +11,10 @@ fn cqueue_drop() {
     may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
-        for tocken in 0..10 {
-            cqueue.add(tocken, |es| {
-                let tocken = es.get_tocken();
-                let j = v[tocken];
+        for token in 0..10 {
+            cqueue.add(token, |es| {
+                let token = es.get_token();
+                let j = v[token];
                 es.send(0);
                 println!("j={}", j)
             });
@@ -33,10 +33,10 @@ fn cqueue_in_coroutine() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     coroutine::spawn(move || {
             cqueue::scope(|cqueue| {
-                for tocken in 0..10 {
-                    cqueue.add(tocken, |es| {
-                        let tocken = es.get_tocken();
-                        let j = v[tocken];
+                for token in 0..10 {
+                    cqueue.add(token, |es| {
+                        let token = es.get_token();
+                        let j = v[token];
                         es.send(0);
                         println!("j={}", j)
                     });
@@ -62,10 +62,10 @@ fn cqueue_panic() {
     may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
-        for tocken in 0..10 {
-            cqueue.add(tocken, |es| {
-                let tocken = es.get_tocken();
-                let j = v[tocken];
+        for token in 0..10 {
+            cqueue.add(token, |es| {
+                let token = es.get_token();
+                let j = v[token];
                 es.send(0);
                 println!("j={}", j)
             });
@@ -95,11 +95,11 @@ fn cqueue_panic_in_select() {
 fn cqueue_poll() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
-        for tocken in 0..10 {
-            cqueue.add(tocken, |es| {
-                let tocken = es.get_tocken();
-                let j = v[tocken];
-                es.send(tocken + 100);
+        for token in 0..10 {
+            cqueue.add(token, |es| {
+                let token = es.get_token();
+                let j = v[token];
+                es.send(token + 100);
                 println!("j={}", j)
             });
         }
@@ -219,7 +219,7 @@ fn cqueue_loop() {
         loop {
             match cqueue.poll(None) {
                 Ok(ev) => {
-                    if ev.tocken == 100 {
+                    if ev.token == 100 {
                         println!("poll loop finished");
                         return;
                     }

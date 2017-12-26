@@ -119,7 +119,7 @@ impl Selector {
             });
 
             let overlapped = unsafe { &*overlapped };
-            // info!("select got overlapped, stuats = {}", overlapped.Internal);
+            // info!("select got overlapped, status = {}", overlapped.Internal);
 
             const STATUS_CANCELLED_U32: u32 = STATUS_CANCELLED as u32;
             // check the status
@@ -128,7 +128,7 @@ impl Selector {
                 STATUS_CANCELLED_U32 => {
                     info!("coroutine timeout");
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-                    // timer data is poped already
+                    // timer data is popped already
                 }
                 NO_ERROR => {
                     // do nothing here
@@ -139,7 +139,7 @@ impl Selector {
                 err => {
                     error!("iocp err=0x{:08x}", err);
                     unsafe {
-                        // conver the ntstatus to winerr
+                        // convert the ntstatus to winerr
                         let mut size: u32 = 0;
                         let o = overlapped as *const _ as *mut _;
                         kernel32::GetOverlappedResult(data.handle, o, &mut size, FALSE);
@@ -180,7 +180,7 @@ impl Selector {
             // info!("io timeout = {:?}", dur);
             let (h, b_new) = self.timer_list.add_timer(dur, io.timer_data());
             if b_new {
-                // wakeup the event loop threead to recal the next wait timeout
+                // wakeup the event loop thread to recall the next wait timeout
                 self.wakeup();
             }
             h
@@ -197,7 +197,7 @@ unsafe fn cancel_io(handle: HANDLE, overlapped: &mut OVERLAPPED) -> io::Result<(
     }
 }
 
-// when timeout happend we need to cancel the io operation
+// when timeout happened we need to cancel the io operation
 // this will trigger an event on the IOCP and processed in the selector
 pub fn timeout_handler(data: TimerData) {
     if data.event_data.is_null() {

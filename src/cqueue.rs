@@ -40,8 +40,8 @@ enum EventKind {
 /// has finished it's top half
 #[derive(Debug)]
 pub struct Event {
-    /// the tocket associated with the select coroutine
-    pub tocken: usize,
+    /// the token associated with the select coroutine
+    pub token: usize,
     /// the select coroutine can use it to pass extra data with the caller
     pub extra: usize,
     /// id of the select coroutine, used internally to locate the JoinHandle
@@ -79,8 +79,8 @@ impl Selector {
 pub struct EventSender<'a> {
     // index of the select coroutine
     id: usize,
-    // associated tocken, passed from `add`
-    tocken: usize,
+    // associated token, passed from `add`
+    token: usize,
     // the select coroutine can use it to pass extra data to the caller
     extra: usize,
     // the mpsc event queue to collect the events
@@ -88,9 +88,9 @@ pub struct EventSender<'a> {
 }
 
 impl<'a> EventSender<'a> {
-    /// get the tocken
-    pub fn get_tocken(&self) -> usize {
-        self.tocken
+    /// get the token
+    pub fn get_token(&self) -> usize {
+        self.token
     }
 
     /// send out the event
@@ -107,7 +107,7 @@ impl<'a> EventSource for EventSender<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         self.cqueue.ev_queue.push(Event {
             id: self.id,
-            tocken: self.tocken,
+            token: self.token,
             extra: self.extra,
             kind: EventKind::Normal,
             co: Some(co),
@@ -125,7 +125,7 @@ impl<'a> Drop for EventSender<'a> {
     fn drop(&mut self) {
         self.cqueue.ev_queue.push(Event {
             id: self.id,
-            tocken: self.tocken,
+            token: self.token,
             extra: self.extra,
             kind: EventKind::Done,
             co: None,
@@ -156,13 +156,13 @@ unsafe impl Sync for Cqueue {}
 impl Cqueue {
     /// register a select coroutine with the cqueue
     /// should use `cqueue_add` and `cqueue_add_oneshot` macros to
-    /// create select coroutines correclty
-    pub fn add<'a, F>(&self, tocken: usize, f: F) -> Selector
+    /// create select coroutines correctly
+    pub fn add<'a, F>(&self, token: usize, f: F) -> Selector
         where F: FnOnce(EventSender) + Send + 'a
     {
         let sender = EventSender {
             id: self.total,
-            tocken: tocken,
+            token: token,
             extra: 0,
             cqueue: self,
         };
@@ -177,7 +177,7 @@ impl Cqueue {
     }
 
     // when the select coroutine is done, check the panic status
-    // if it's paniced, re throw the panic data
+    // if it's panicked, re throw the panic data
     fn check_panic(&self, id: usize) {
         if self.is_panicking {
             return;
@@ -273,7 +273,7 @@ impl Drop for Cqueue {
                 _ => unreachable!("cqueue drop unreachable"),
             }
         }
-        // we are sure that all the coroutines are finised
+        // we are sure that all the coroutines are finished
     }
 }
 
@@ -301,12 +301,12 @@ pub fn scope<'a, F, R>(f: F) -> R
 #[macro_export]
 macro_rules! cqueue_add{
     (
-        $cqueue:ident, $tocken:expr, $name:pat = $top:expr => $bottom:expr
+        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
     ) => ({
-        $cqueue.add($tocken, |es| {
+        $cqueue.add($token, |es| {
             loop {
                 let $name = $top;
-                es.send(es.get_tocken());
+                es.send(es.get_token());
                 $bottom
             }
         })
@@ -319,11 +319,11 @@ macro_rules! cqueue_add{
 #[macro_export]
 macro_rules! cqueue_add_oneshot{
     (
-        $cqueue:ident, $tocken:expr, $name:pat = $top:expr => $bottom:expr
+        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
     ) => ({
-        $cqueue.add($tocken, |es| {
+        $cqueue.add($token, |es| {
             let $name = $top;
-            es.send(es.get_tocken());
+            es.send(es.get_token());
             $bottom
         })
     })
@@ -338,13 +338,13 @@ macro_rules! select {
     ) => ({
         use $crate::cqueue;
         cqueue::scope(|cqueue| {
-            let mut _tocken = 0;
+            let mut _token = 0;
             $(
-                cqueue_add_oneshot!(cqueue, _tocken, $name = $top => $bottom);
-                _tocken += 1;
+                cqueue_add_oneshot!(cqueue, _token, $name = $top => $bottom);
+                _token += 1;
             )+
             match cqueue.poll(None) {
-                Ok(ev) => return ev.tocken,
+                Ok(ev) => return ev.token,
                 _ => unreachable!("select error"),
             }
         })

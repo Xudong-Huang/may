@@ -137,10 +137,10 @@ impl Selector {
             };
             co.prefetch();
 
-            // it's safe to remove the timer since we are runing the timer_list in the same thread
+            // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {
                  unsafe {
-                     // tell the timer hanler not to cancel the io
+                     // tell the timer handler not to cancel the io
                      // it's not always true that you can really remove the timer entry
                      h.get_data().data.event_data = ptr::null_mut();
                  }
@@ -254,7 +254,7 @@ impl Selector {
             // info!("io timeout = {:?}", dur);
             let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
             if b_new {
-                // wakeup the event loop threead to recal the next wait timeout
+                // wakeup the event loop thread to recall the next wait timeout
                 self.wakeup(id);
             }
             h

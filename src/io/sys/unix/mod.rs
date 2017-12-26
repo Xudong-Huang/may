@@ -127,11 +127,11 @@ impl EventData {
     pub fn schedule(&self) {
         info!("event schedul");
         let co = match self.co.take(Ordering::Acquire) {
-            None => return, // it's alreay take by selector
+            None => return, // it's already take by selector
             Some(co) => co,
         };
 
-        // it's safe to remove the timer since we are runing the timer_list in the same thread
+        // it's safe to remove the timer since we are running the timer_list in the same thread
         self.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // tell the timer function not to cancel the io

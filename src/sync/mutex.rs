@@ -1,4 +1,4 @@
-//! compatable with std::sync::mutex except for both thread and coroutine
+//! compatible with std::sync::mutex except for both thread and coroutine
 //! please ref the doc from std::sync::mutex
 use std::fmt;
 use std::sync::Arc;

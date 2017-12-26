@@ -1,4 +1,4 @@
-//! compatable with std::sync::rwlock except for both thread and coroutine
+//! compatible with std::sync::rwlock except for both thread and coroutine
 //! please ref the doc from std::sync::rwlock
 use std::fmt;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use super::blocking::SyncBlocker;
 ///
 /// The priority policy of the lock is that readers have weak priority
 pub struct RwLock<T: ?Sized> {
-    // below two varialbles consist a global mutex
+    // below two variables consist a global mutex
     // we need to deal with the cancel logic differently
     // the waiting blocker list
     to_wake: mpsc_list::Queue<Arc<SyncBlocker>>,

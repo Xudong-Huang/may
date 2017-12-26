@@ -1,4 +1,4 @@
-//! compatable with std::sync::mpsc except for both thread and coroutine
+//! compatible with std::sync::mpsc except for both thread and coroutine
 //! please ref the doc from std::sync::mpsc
 use std::fmt;
 use std::sync::Arc;

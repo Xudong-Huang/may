@@ -22,7 +22,7 @@ fn likely(e: bool) -> bool {
     e
 }
 
-// here we use Arc<AtomicOption<>> for that in the select implementaion
+// here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
 type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
@@ -75,7 +75,7 @@ pub fn get_scheduler() -> &'static Scheduler {
             let s = unsafe { &*SCHED };
             // timer function
             let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
-                // just repush the co to the visit list
+                // just re-push the co to the visit list
                 co.take_fast(Ordering::Relaxed).map(|mut c| {
                     // set the timeout result for the coroutine
                     set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));

@@ -9,7 +9,7 @@ struct Yield {
 
 impl EventSource for Yield {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        // just repush the coroutine to the ready list
+        // just re-push the coroutine to the ready list
         get_scheduler().schedule(co);
         // println!("yield_out()");
     }

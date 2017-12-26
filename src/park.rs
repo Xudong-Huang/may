@@ -23,9 +23,9 @@ pub struct Park {
     // when odd means the Park no need to block
     // the low bit used as flag, and higher bits used as flag to check the kernel delay drop
     state: AtomicUsize,
-    // control how to deal with the cancelation
+    // control how to deal with the cancellation
     check_cancel: bool,
-    // if cancel happend
+    // if cancel happened
     is_canceled: AtomicBool,
     // timeout settings
     timeout: Option<Duration>,
@@ -48,7 +48,7 @@ impl Park {
         }
     }
 
-    // ignore cancel, if ture, caller have to do the check instead
+    // ignore cancel, if true, caller have to do the check instead
     pub fn ignore_cancel(&self, ignore: bool) {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.check_cancel = !ignore;
@@ -136,7 +136,7 @@ impl Park {
 
     /// park current coroutine with specified timeout
     /// if timeout happens, return Err(ParkError::Timeout)
-    /// if cancelation detected, return Err(ParkError::Canceled)
+    /// if cancellation detected, return Err(ParkError::Canceled)
     pub fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
         self.set_timeout(dur);
 
@@ -239,7 +239,7 @@ impl EventSource for Park {
 
     // when the cancel is true we check the panic or do nothing
     fn yield_back(&self, cancel: &'static Cancel) {
-        // we would inc the gernation by 2 to another generation
+        // we would inc the generation by 2 to another generation
         self.state.fetch_add(0x02, Ordering::Release);
 
         // should deal with cancel that happened just before the kernel

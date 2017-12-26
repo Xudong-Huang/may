@@ -62,7 +62,7 @@ impl Done {
         // recycle the coroutine
         let (size, used) = co.stack_usage();
         if used == size {
-            eprintln!("statck overflow detected, size={}", size);
+            eprintln!("stack overflow detected, size={}", size);
             ::std::process::exit(1);
         }
         // show the actual used stack size in debug log
@@ -130,7 +130,7 @@ impl Coroutine {
         self.inner.cancel.cancel();
     }
 
-    /// Gets the coroutine's name.
+    /// Gets the coroutine name.
     pub fn name(&self) -> Option<&str> {
         self.inner.name.as_ref().map(|s| &**s)
     }
@@ -204,9 +204,9 @@ impl Builder {
 
         let closure = move || {
             // trigger the JoinHandler
-            // we must declear the variable before calling f so that stack is prepared
+            // we must declare the variable before calling f so that stack is prepared
             // to unwind these local data. for the panic err we would set it in the
-            // couroutine local data so that can return from the packet variable
+            // coroutine local data so that can return from the packet variable
             let join = unsafe { &mut *their_join.get() };
 
             // set the return packet
@@ -265,7 +265,7 @@ pub fn is_coroutine() -> bool {
     !get_local_data().is_null()
 }
 
-/// get current coroutine cancel registeration
+/// get current coroutine cancel registration
 #[inline]
 pub fn current_cancel_data() -> &'static Cancel {
     let local = unsafe { &*(get_local_data() as *mut CoroutineLocal) };
