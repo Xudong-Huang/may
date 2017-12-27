@@ -30,16 +30,16 @@ May is a high performance stackful coroutine library that can be thought of rust
 
 ```rust
 /// a naive echo server
+#[macro_use]
 extern crate may;
 
-use may::coroutine;
 use may::net::TcpListener;
 use std::io::{Read, Write};
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
     while let Ok((mut stream, _)) = listener.accept() {
-        coroutine::spawn(move || {
+        go!(move || {
             let mut buf = vec![0; 1024 * 16]; // alloc in heap!
             while let Ok(n) = stream.read(&mut buf) {
                 if n == 0 {

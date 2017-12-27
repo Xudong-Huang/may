@@ -20,10 +20,8 @@ The following code would spawn a coroutine with 16k bytes stack
 
 ```rust
 // this coroutine would use 16K bytes stack
-may::coroutine::Builder::new()
-        .stack_size(0x800)
-        .spawn(...)
-        .unwrap();
+let builder = may::coroutine::Builder::new().stack_size(0x800);
+unsafe { builder.spawn(...) }.unwrap();
 ```
 
 ## Get the coroutine stack usage
@@ -35,13 +33,14 @@ extern crate may;
 use std::io::{self, Read};
 
 fn main() {
-    may::coroutine::Builder::new()
-        .name("test".to_owned())
-        .stack_size(0x1000 - 1)
-        .spawn(|| {
+    go!(
+        may::coroutine::Builder::new()
+            .name("test".to_owned())
+            .stack_size(0x1000 - 1),
+        || {
             println!("hello may");
-        })
-        .unwrap();
+        }
+    ).unwrap();
 
     println!("Press any key to continue...");
     let _ = io::stdin().read(&mut [0u8]).unwrap();
