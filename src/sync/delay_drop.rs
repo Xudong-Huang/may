@@ -19,6 +19,8 @@ impl DelayDrop {
         DropGuard(self)
     }
 
+    // windows platform doesn't use this method
+    #[allow(dead_code)]
     pub fn reset(&self) {
         // wait the kernel finished
         if !self.can_drop.1.load(Ordering::Acquire) {

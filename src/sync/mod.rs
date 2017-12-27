@@ -14,7 +14,7 @@ mod atomic_option;
 
 pub mod mpsc;
 pub mod mpmc;
-pub mod delay_drop;
+pub(crate) mod delay_drop;
 pub use self::blocking::Blocker;
 pub use self::semphore::Semphore;
 pub use self::mutex::{Mutex, MutexGuard};

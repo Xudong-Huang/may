@@ -142,12 +142,49 @@ impl fmt::Debug for Coroutine {
     }
 }
 
-/// /////////////////////////////////////////////////////////////////////////////
-/// Builder
-/// /////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Builder
+////////////////////////////////////////////////////////////////////////////////
 
-/// Coroutine configuration. Provides detailed control over the properties
-/// and behavior of new coroutines.
+/// Coroutine factory, which can be used in order to configure the properties of
+/// a new coroutine.
+///
+/// Methods can be chained on it in order to configure it.
+///
+/// The two configurations available are:
+///
+/// - [`name`]: specifies an [associated name for the coroutine][naming-coroutines]
+/// - [`stack_size`]: specifies the [desired stack size for the coroutine][stack-size]
+///
+/// The [`spawn`] method will take ownership of the builder and create an
+/// `io::Result` to the coroutine handle with the given configuration.
+///
+/// The [`coroutine::spawn`] free function uses a `Builder` with default
+/// configuration and `unwrap`s its return value.
+///
+/// You may want to use [`spawn`] instead of [`coroutine::spawn`], when you want
+/// to recover from a failure to launch a coroutine, indeed the free function will
+/// panics where the `Builder` method will return a `io::Result`.
+///
+/// # Examples
+///
+/// ```
+/// use may::coroutine;
+///
+/// let builder = coroutine::Builder::new();
+/// let code = || { /* coroutine code */ };
+///
+/// let handler = unsafe { builder.spawn(code).unwrap() };
+///
+/// handler.join().unwrap();
+/// ```
+///
+/// [`coroutine::spawn`]: ../../std/thread/fn.spawn.html
+/// [`stack_size`]: ../../std/thread/struct.Builder.html#method.stack_size
+/// [`name`]: ../../std/thread/struct.Builder.html#method.name
+/// [`spawn`]: ../../std/thread/struct.Builder.html#method.spawn
+/// [naming-threads]: ./index.html#naming-threads
+/// [stack-size]: ./index.html#stack-size
 pub struct Builder {
     // A name for the coroutine-to-be, for identification in panic messages
     name: Option<String>,
@@ -238,9 +275,56 @@ impl Builder {
     }
 }
 
-/// /////////////////////////////////////////////////////////////////////////////
-/// Free functions
-/// /////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Free functions
+////////////////////////////////////////////////////////////////////////////////
+
+/// Spawns a new coroutine, returning a [`JoinHandle`] for it.
+///
+/// The join handle will implicitly *detach* the child coroutine upon being
+/// dropped. In this case, the child coroutine may outlive the parent.
+/// Additionally, the join handle provides a [`join`] method that can be used
+/// to join the child coroutine. If the child coroutine panics, [`join`] will
+/// return an [`Err`] containing the argument given to [`panic`].
+///
+/// This will create a coroutine using default parameters of [`Builder`], if you
+/// want to specify the stack size or the name of the coroutine, use this API
+/// instead.
+///
+/// This API has the same semastic as the `std::thread::spawn` API, except that
+/// it is an unsafe method.
+///
+/// # Unsafety
+///
+///  - Access [`TLS`] in coroutine may trigger undefined behavior.
+///  - If the coroutine exceed the stack during execution, this would trigger
+///    undefined behavior
+///
+/// If you find it annoying to wrap every thing in the unsafe block, you can 
+/// use the [`go!`] macro instead.
+///
+/// # Examples
+///
+/// Creating a coroutine.
+///
+/// ```
+/// use may::coroutine;
+///
+/// let handler = unsafe {
+///     coroutine::spawn(|| {
+///         // coroutine code
+///     })
+/// };
+///
+/// handler.join().unwrap();
+/// ```
+///
+/// [`TLS`]: xx
+/// [`go!`]: yy
+/// [`JoinHandle`]: ../../std/thread/struct.JoinHandle.html
+/// [`join`]: ../../std/thread/struct.JoinHandle.html#method.join
+/// [`Builder::spawn`]: ../../std/thread/struct.Builder.html#method.spawn
+/// [`Builder`]: ../../std/thread/struct.Builder.html
 pub fn spawn<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
