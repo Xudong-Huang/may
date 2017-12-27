@@ -1,12 +1,12 @@
+extern crate docopt;
+#[macro_use]
 extern crate may;
 #[macro_use]
 extern crate serde_derive;
-extern crate docopt;
 
 // use std::time::Duration;
 use std::io::{Read, Write};
 use docopt::Docopt;
-use may::coroutine;
 use may::net::{TcpListener, TcpStream};
 
 const VERSION: &'static str = "0.1.0";
@@ -67,7 +67,7 @@ fn main() {
     let threads = args.flag_t;
     may::config().set_io_workers(threads);
 
-    coroutine::spawn(move || {
+    go!(move || {
         // let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
         let listener = TcpListener::bind(("0.0.0.0", port)).unwrap();
         println!(
@@ -79,7 +79,7 @@ fn main() {
         for stream in listener.incoming() {
             match stream {
                 Ok(s) => {
-                    coroutine::spawn(move || handle_client(s));
+                    go!(move || handle_client(s));
                 }
                 Err(e) => println!("err = {:?}", e),
             }

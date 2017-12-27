@@ -45,6 +45,8 @@ mod park;
 mod pool;
 mod local;
 mod sleep;
+#[macro_use]
+mod macros;
 mod scoped;
 mod cancel;
 mod config;

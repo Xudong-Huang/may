@@ -1,8 +1,8 @@
 use std::thread;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
+extern crate generator;
 #[macro_use]
 extern crate may;
-extern crate generator;
 
 use may::coroutine;
 use coroutine::yield_now;
@@ -10,23 +10,21 @@ use generator::Gn;
 
 #[test]
 fn panic_coroutine() {
-    let j: coroutine::JoinHandle<()> = coroutine::spawn(move || {
+    let j: coroutine::JoinHandle<()> = go!(move || {
         panic!("panic inside coroutine");
     });
     match j.join() {
         Ok(_) => panic!("test should return panic"),
-        Err(panic) => {
-            match panic.downcast_ref::<&str>() {
-                Some(e) => return println!("Panicked inside: {:?}", e),
-                None => panic!("panic type wrong"),
-            }
-        }
+        Err(panic) => match panic.downcast_ref::<&str>() {
+            Some(e) => return println!("Panicked inside: {:?}", e),
+            None => panic!("panic type wrong"),
+        },
     }
 }
 
 #[test]
 fn cancel_coroutine() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         // suspend the coroutine to simulate an endless loop
         println!("before cancel");
         coroutine::park();
@@ -54,7 +52,7 @@ fn cancel_coroutine() {
 
 #[test]
 fn cancel_io_coroutine() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         let listener = may::net::TcpListener::bind(("0.0.0.0", 1234)).unwrap();
         println!("listening on {:?}", listener.local_addr().unwrap());
 
@@ -85,7 +83,7 @@ fn cancel_io_coroutine() {
 
 #[test]
 fn one_coroutine() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         println!("hello, coroutine");
     });
     j.join().unwrap();
@@ -93,7 +91,7 @@ fn one_coroutine() {
 
 #[test]
 fn coroutine_result() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         println!("hello, coroutine");
         100
     });
@@ -104,7 +102,7 @@ fn coroutine_result() {
 #[test]
 fn multi_coroutine() {
     for i in 0..10 {
-        coroutine::spawn(move || {
+        go!(move || {
             println!("hi, coroutine{}", i);
         });
     }
@@ -113,7 +111,7 @@ fn multi_coroutine() {
 
 #[test]
 fn test_yield() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         println!("hello, coroutine");
         yield_now();
         println!("goodbye, coroutine");
@@ -124,7 +122,7 @@ fn test_yield() {
 #[test]
 fn multi_yield() {
     for i in 0..10 {
-        coroutine::spawn(move || {
+        go!(move || {
             println!("hi, coroutine{}", i);
             yield_now();
             println!("bye, coroutine{}", i);
@@ -135,34 +133,32 @@ fn multi_yield() {
 
 #[test]
 fn spawn_inside() {
-    coroutine::Builder::new()
-        .name("parent".to_owned())
-        .spawn(move || {
-            let me = coroutine::current();
-            println!("hi, I'm parent: {:?}", me);
-            for i in 0..10 {
-                coroutine::spawn(move || {
-                    println!("hi, I'm child{:?}", i);
-                    yield_now();
-                    println!("bye from child{:?}", i);
-                });
-            }
-            yield_now();
-            println!("bye from parent: {:?}", me);
-        })
-        .unwrap()
+    go!(coroutine::Builder::new().name("parent".to_owned()), || {
+        let me = coroutine::current();
+        println!("hi, I'm parent: {:?}", me);
+        for i in 0..10 {
+            go!(move || {
+                println!("hi, I'm child{:?}", i);
+                yield_now();
+                println!("bye from child{:?}", i);
+            });
+        }
+        yield_now();
+        println!("bye from parent: {:?}", me);
+    }).unwrap()
         .join()
         .unwrap();
+
     thread::sleep(Duration::from_millis(200));
 }
 
 #[test]
 fn wait_join() {
-    let j = coroutine::spawn(move || {
+    let j = go!(move || {
         println!("hi, I'm parent");
         let join = (0..10)
             .map(|i| {
-                coroutine::spawn(move || {
+                go!(move || {
                     println!("hi, I'm child{:?}", i);
                     yield_now();
                     println!("bye from child{:?}", i);
@@ -181,8 +177,12 @@ fn wait_join() {
 #[test]
 fn scoped_coroutine() {
     let mut array = [1, 2, 3];
-    coroutine::scope(|scope| for i in &mut array {
-        scope.spawn(move || { *i += 1; });
+    coroutine::scope(|scope| {
+        for i in &mut array {
+            scope.spawn(move || {
+                *i += 1;
+            });
+        }
     });
 
     assert_eq!(array[0], 2);
@@ -269,12 +269,14 @@ fn test_sleep() {
     coroutine::sleep(Duration::from_millis(500));
     assert!(now.elapsed() >= Duration::from_millis(500));
 
-    coroutine::scope(|scope| for _ in 0..1000 {
-        scope.spawn(|| {
-            let now = Instant::now();
-            coroutine::sleep(Duration::from_millis(100));
-            assert!(now.elapsed() >= Duration::from_millis(100));
-        });
+    coroutine::scope(|scope| {
+        for _ in 0..1000 {
+            scope.spawn(|| {
+                let now = Instant::now();
+                coroutine::sleep(Duration::from_millis(100));
+                assert!(now.elapsed() >= Duration::from_millis(100));
+            });
+        }
     });
 }
 
@@ -285,7 +287,7 @@ fn join_macro() {
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();
 
-    coroutine::spawn(move || {
+    go!(move || {
         tx2.send("hello").unwrap();
         coroutine::sleep(Duration::from_millis(100));
         tx1.send(42).unwrap();
@@ -298,7 +300,6 @@ fn join_macro() {
             assert_eq!(x, 42)
         },
         {
-
             let a = rx2.recv().unwrap();
             assert_eq!(a, "hello")
         }

@@ -2,10 +2,10 @@
 //! please ref the doc from std::sync::mpsc
 use std::fmt;
 use std::sync::Arc;
-use std::time::{Instant, Duration};
-use std::panic::{UnwindSafe, RefUnwindSafe};
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
-use std::sync::mpsc::{RecvError, RecvTimeoutError, TryRecvError, SendError};
+use std::time::{Duration, Instant};
+use std::panic::{RefUnwindSafe, UnwindSafe};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use super::mpsc_list;
 use super::{AtomicOption, Blocker};
 
@@ -38,7 +38,9 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        self.to_wake.take_fast(Ordering::Acquire).map(|w| w.unpark());
+        self.to_wake
+            .take_fast(Ordering::Acquire)
+            .map(|w| w.unpark());
         Ok(())
     }
 
@@ -58,7 +60,9 @@ impl<T> InnerQueue<T> {
             }
             data => {
                 // no need to park, contention with send
-                self.to_wake.take_fast(Ordering::Relaxed).map(|w| w.unpark());
+                self.to_wake
+                    .take_fast(Ordering::Relaxed)
+                    .map(|w| w.unpark());
                 cur.park(dur).ok();
                 return data;
             }
@@ -87,7 +91,10 @@ impl<T> InnerQueue<T> {
 
     pub fn drop_chan(&self) {
         match self.channels.fetch_sub(1, Ordering::SeqCst) {
-            1 => self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark()).unwrap_or(()),
+            1 => self.to_wake
+                .take(Ordering::Relaxed)
+                .map(|w| w.unpark())
+                .unwrap_or(()),
             n if n > 1 => return,
             n => panic!("bad number of channels left {}", n),
         }
@@ -290,7 +297,6 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant};
     use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
-    use coroutine;
     use super::*;
 
     pub fn stress_factor() -> usize {
@@ -343,7 +349,7 @@ mod tests {
     #[test]
     fn smoke_coroutine() {
         let (tx, rx) = channel::<i32>();
-        let _t = coroutine::spawn(move || {
+        let _t = go!(move || {
             tx.send(1).unwrap();
         });
         assert_eq!(rx.recv().unwrap(), 1);
@@ -377,7 +383,7 @@ mod tests {
     #[test]
     fn port_gone_concurrent1() {
         let (tx, rx) = channel::<i32>();
-        let _t = coroutine::spawn(move || {
+        let _t = go!(move || {
             rx.recv().unwrap();
         });
         while tx.send(1).is_ok() {}
@@ -412,7 +418,7 @@ mod tests {
     #[test]
     fn chan_gone_concurrent() {
         let (tx, rx) = channel::<i32>();
-        let _t = coroutine::spawn(move || {
+        let _t = go!(move || {
             tx.send(1).unwrap();
             tx.send(1).unwrap();
         });
@@ -451,10 +457,8 @@ mod tests {
 
         for _ in 0..NTHREADS {
             let tx = tx.clone();
-            coroutine::spawn(move || {
-                for _ in 0..AMT {
-                    tx.send(1).unwrap();
-                }
+            go!(move || for _ in 0..AMT {
+                tx.send(1).unwrap();
             });
         }
         drop(tx);
@@ -465,17 +469,15 @@ mod tests {
     fn send_from_outside_runtime() {
         let (tx1, rx1) = channel::<()>();
         let (tx2, rx2) = channel::<i32>();
-        let t1 = coroutine::spawn(move || {
+        let t1 = go!(move || {
             tx1.send(()).unwrap();
             for _ in 0..40 {
                 assert_eq!(rx2.recv().unwrap(), 1);
             }
         });
         rx1.recv().unwrap();
-        let t2 = coroutine::spawn(move || {
-            for _ in 0..40 {
-                tx2.send(1).unwrap();
-            }
+        let t2 = go!(move || for _ in 0..40 {
+            tx2.send(1).unwrap();
         });
         t1.join().ok().unwrap();
         t2.join().ok().unwrap();
@@ -503,7 +505,7 @@ mod tests {
             assert_eq!(rx1.recv().unwrap(), 1);
             tx2.send(2).unwrap();
         });
-        let t2 = coroutine::spawn(move || {
+        let t2 = go!(move || {
             tx1.send(1).unwrap();
             assert_eq!(rx2.recv().unwrap(), 2);
         });
@@ -536,12 +538,11 @@ mod tests {
     #[test]
     fn oneshot_single_thread_recv_chan_close() {
         // Receiving on a closed chan will panic
-        let res = coroutine::spawn(move || {
-                let (tx, rx) = channel::<i32>();
-                drop(tx);
-                rx.recv().unwrap();
-            })
-            .join();
+        let res = go!(move || {
+            let (tx, rx) = channel::<i32>();
+            drop(tx);
+            rx.recv().unwrap();
+        }).join();
         // What is our res?
         assert!(res.is_err());
     }
@@ -620,9 +621,8 @@ mod tests {
             drop(tx);
         });
         let res = thread::spawn(move || {
-                assert!(*rx.recv().unwrap() == 10);
-            })
-            .join();
+            assert!(*rx.recv().unwrap() == 10);
+        }).join();
         assert!(res.is_err());
     }
 
@@ -645,9 +645,8 @@ mod tests {
                 drop(rx);
             });
             let _ = thread::spawn(move || {
-                    tx.send(1).unwrap();
-                })
-                .join();
+                tx.send(1).unwrap();
+            }).join();
         }
     }
 
@@ -657,9 +656,8 @@ mod tests {
             let (tx, rx) = channel::<i32>();
             thread::spawn(move || {
                 let res = thread::spawn(move || {
-                        rx.recv().unwrap();
-                    })
-                    .join();
+                    rx.recv().unwrap();
+                }).join();
                 assert!(res.is_err());
             });
             let _t = thread::spawn(move || {
@@ -718,8 +716,10 @@ mod tests {
         let (tx, rx) = channel();
         tx.send(()).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
-        assert_eq!(rx.recv_timeout(Duration::from_millis(1)),
-                   Err(RecvTimeoutError::Timeout));
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(1)),
+            Err(RecvTimeoutError::Timeout)
+        );
         tx.send(()).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
     }
@@ -822,8 +822,10 @@ mod tests {
             rx.recv().unwrap();
         }
 
-        assert_eq!(rx.recv_timeout(Duration::from_millis(1)),
-                   Err(RecvTimeoutError::Timeout));
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(1)),
+            Err(RecvTimeoutError::Timeout)
+        );
         tx.send(()).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
     }
@@ -975,7 +977,7 @@ mod tests {
         let (tx2, rx2) = channel();
         let _t = thread::spawn(move || {
             rx.recv().unwrap(); // wait on a oneshot
-            drop(rx);  // destroy a shared
+            drop(rx); // destroy a shared
             tx2.send(()).unwrap();
         });
         // make sure the other thread has gone to sleep
@@ -990,7 +992,7 @@ mod tests {
 
         // wait for the child thread to exit before we exit
         rx2.recv().unwrap();
-    }/*
+    } /*
 }
 
 #[cfg(test)]

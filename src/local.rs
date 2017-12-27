@@ -10,7 +10,6 @@ use generator::get_local_data;
 // thread local map storage
 thread_local!{static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
 
-
 /// coroutine local storage
 pub struct CoroutineLocal {
     // current coroutine handle
@@ -53,30 +52,6 @@ fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     }
 }
 
-/// A macro to create a `static` of type `LocalKey`
-///
-/// This macro is intentionally similar to the `thread_local!`, and creates a
-/// `static` which has a `with` method to access the data on a coroutine.
-///
-/// The data associated with each coroutine local is per-coroutine,
-/// so different coroutines will contain different values.
-#[macro_export]
-macro_rules! coroutine_local {
-    (static $NAME:ident: $t:ty = $e:expr) => (
-        static $NAME: $crate::LocalKey<$t> = {
-            fn __init() -> $t { $e }
-            fn __key() -> ::std::any::TypeId {
-                struct __A;
-                ::std::any::TypeId::of::<__A>()
-            }
-            $crate::LocalKey {
-                __init: __init,
-                __key: __key,
-            }
-        };
-    )
-}
-
 pub type LocalMap = RefCell<HashMap<TypeId, Box<Opaque>, BuildHasherDefault<IdHasher>>>;
 
 pub trait Opaque {}
@@ -95,10 +70,8 @@ impl<T> Opaque for T {}
 pub struct LocalKey<T> {
     // "private" fields which have to be public to get around macro hygiene, not
     // included in the stability story for this type. Can change at any time.
-    #[doc(hidden)]
-    pub __key: fn() -> TypeId,
-    #[doc(hidden)]
-    pub __init: fn() -> T,
+    #[doc(hidden)] pub __key: fn() -> TypeId,
+    #[doc(hidden)] pub __init: fn() -> T,
 }
 
 pub struct IdHasher {
@@ -150,7 +123,8 @@ impl<T: 'static> LocalKey<T> {
     /// * If the initialization expression is run and it panics
     /// * If the closure provided panics
     pub fn with<F, R>(&'static self, f: F) -> R
-        where F: FnOnce(&T) -> R
+    where
+        F: FnOnce(&T) -> R,
     {
         let key = (self.__key)();
         with(|data| {

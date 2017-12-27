@@ -4,9 +4,9 @@ use std::fmt;
 use std::sync::Arc;
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use std::panic::{UnwindSafe, RefUnwindSafe};
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{TryLockError, TryLockResult, LockResult, PoisonError};
+use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
 use park::ParkError;
 use may_queue::mpsc_list;
@@ -81,7 +81,9 @@ impl<T: ?Sized> RwLock<T> {
         self.to_wake.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
-            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+            self.to_wake
+                .pop()
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
         }
         match cur.park(None) {
             Ok(_) => Ok(()),
@@ -107,7 +109,9 @@ impl<T: ?Sized> RwLock<T> {
 
     fn try_lock(&self) -> TryLockResult<()> {
         if self.cnt.load(Ordering::Acquire) == 0 {
-            match self.cnt.compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed) {
+            match self.cnt
+                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed)
+            {
                 Ok(_) => Ok(()),
                 Err(_) => {
                     if self.poison.get() {
@@ -124,7 +128,9 @@ impl<T: ?Sized> RwLock<T> {
 
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
-            self.to_wake.pop().map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+            self.to_wake
+                .pop()
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
         }
     }
 
@@ -215,7 +221,8 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     pub fn into_inner(self) -> LockResult<T>
-        where T: Sized
+    where
+        T: Sized,
     {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock the inner lock.
@@ -258,11 +265,9 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
 
 impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     fn new(lock: &'rwlock RwLock<T>) -> LockResult<RwLockWriteGuard<'rwlock, T>> {
-        poison::map_result(lock.poison.borrow(), |guard| {
-            RwLockWriteGuard {
-                __lock: lock,
-                __poison: guard,
-            }
+        poison::map_result(lock.poison.borrow(), |guard| RwLockWriteGuard {
+            __lock: lock,
+            __poison: guard,
         })
     }
 }
@@ -323,9 +328,8 @@ mod tests {
     use std::thread;
     use std::sync::{Arc, TryLockError};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use coroutine;
     use sync::mpsc::channel;
-    use sync::{Mutex, Condvar, RwLock};
+    use sync::{Condvar, Mutex, RwLock};
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);
@@ -361,7 +365,7 @@ mod tests {
                 drop(tx);
             };
             if i % 2 == 0 {
-                coroutine::spawn(f);
+                go!(f);
             } else {
                 thread::spawn(f);
             }
@@ -375,10 +379,9 @@ mod tests {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
         let _: Result<(), _> = thread::spawn(move || {
-                let _lock = arc2.write().unwrap();
-                panic!();
-            })
-            .join();
+            let _lock = arc2.write().unwrap();
+            panic!();
+        }).join();
         assert!(arc.read().is_err());
     }
 
@@ -388,10 +391,9 @@ mod tests {
         assert!(!arc.is_poisoned());
         let arc2 = arc.clone();
         let _: Result<(), _> = thread::spawn(move || {
-                let _lock = arc2.write().unwrap();
-                panic!();
-            })
-            .join();
+            let _lock = arc2.write().unwrap();
+            panic!();
+        }).join();
         assert!(arc.write().is_err());
         assert!(arc.is_poisoned());
     }
@@ -401,10 +403,9 @@ mod tests {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
         let _: Result<(), _> = thread::spawn(move || {
-                let _lock = arc2.read().unwrap();
-                panic!();
-            })
-            .join();
+            let _lock = arc2.read().unwrap();
+            panic!();
+        }).join();
         let lock = arc.read().unwrap();
         assert_eq!(*lock, 1);
     }
@@ -413,10 +414,9 @@ mod tests {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
         let _: Result<(), _> = thread::spawn(move || {
-                let _lock = arc2.read().unwrap();
-                panic!()
-            })
-            .join();
+            let _lock = arc2.read().unwrap();
+            panic!()
+        }).join();
         let lock = arc.write().unwrap();
         assert_eq!(*lock, 1);
     }
@@ -464,19 +464,18 @@ mod tests {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
         let _ = thread::spawn(move || -> () {
-                struct Unwinder {
-                    i: Arc<RwLock<isize>>,
+            struct Unwinder {
+                i: Arc<RwLock<isize>>,
+            }
+            impl Drop for Unwinder {
+                fn drop(&mut self) {
+                    let mut lock = self.i.write().unwrap();
+                    *lock += 1;
                 }
-                impl Drop for Unwinder {
-                    fn drop(&mut self) {
-                        let mut lock = self.i.write().unwrap();
-                        *lock += 1;
-                    }
-                }
-                let _u = Unwinder { i: arc2 };
-                panic!();
-            })
-            .join();
+            }
+            let _u = Unwinder { i: arc2 };
+            panic!();
+        }).join();
         let lock = arc.read().unwrap();
         assert_eq!(*lock, 2);
     }
@@ -501,10 +500,10 @@ mod tests {
         let write_result = lock.try_write();
         match write_result {
             Err(TryLockError::WouldBlock) => (),
-            Ok(_) => {
-                assert!(false,
-                        "try_write should not succeed while read_guard is in scope")
-            }
+            Ok(_) => assert!(
+                false,
+                "try_write should not succeed while read_guard is in scope"
+            ),
             Err(_) => assert!(false, "unexpected error"),
         }
 
@@ -540,10 +539,9 @@ mod tests {
         let m = Arc::new(RwLock::new(NonCopy(10)));
         let m2 = m.clone();
         let _ = thread::spawn(move || {
-                let _lock = m2.write().unwrap();
-                panic!("test panic in inner thread to poison RwLock");
-            })
-            .join();
+            let _lock = m2.write().unwrap();
+            panic!("test panic in inner thread to poison RwLock");
+        }).join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -564,10 +562,9 @@ mod tests {
         let m = Arc::new(RwLock::new(NonCopy(10)));
         let m2 = m.clone();
         let _ = thread::spawn(move || {
-                let _lock = m2.write().unwrap();
-                panic!("test panic in inner thread to poison RwLock");
-            })
-            .join();
+            let _lock = m2.write().unwrap();
+            panic!("test panic in inner thread to poison RwLock");
+        }).join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
@@ -589,7 +586,7 @@ mod tests {
             let sync = sync.clone();
             let tx = tx.clone();
             let rwlock = rwlock.clone();
-            let h = coroutine::spawn(move || {
+            let h = go!(move || {
                 // tell master that we started
                 tx.send(0).unwrap();
                 // first get the wlock
@@ -654,7 +651,7 @@ mod tests {
         let h = {
             let tx = tx.clone();
             let rwlock = rwlock.clone();
-            coroutine::spawn(move || {
+            go!(move || {
                 // tell master that we started
                 tx.send(0).unwrap();
                 // first get the rlock

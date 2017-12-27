@@ -31,27 +31,26 @@ fn cqueue_drop() {
 fn cqueue_in_coroutine() {
     may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
-    coroutine::spawn(move || {
-            cqueue::scope(|cqueue| {
-                for token in 0..10 {
-                    cqueue.add(token, |es| {
-                        let token = es.get_token();
-                        let j = v[token];
-                        es.send(0);
-                        println!("j={}", j)
-                    });
-                }
+    go!(move || {
+        cqueue::scope(|cqueue| {
+            for token in 0..10 {
+                cqueue.add(token, |es| {
+                    let token = es.get_token();
+                    let j = v[token];
+                    es.send(0);
+                    println!("j={}", j)
+                });
+            }
 
-                loop {
-                    match cqueue.poll(None) {
-                        Ok(ev) => println!("ev = {:?}", ev),
-                        Err(Finished) => break,
-                        Err(Timeout) => unreachable!(),
-                    }
+            loop {
+                match cqueue.poll(None) {
+                    Ok(ev) => println!("ev = {:?}", ev),
+                    Err(Finished) => break,
+                    Err(Timeout) => unreachable!(),
                 }
-            });
-        })
-        .join()
+            }
+        });
+    }).join()
         .unwrap();
     println!("cqueue finished");
 }
@@ -139,7 +138,7 @@ fn cqueue_oneshot() {
         }
 
         match cqueue.poll(None) {
-            Err(x) => assert_eq!(x,Finished ),
+            Err(x) => assert_eq!(x, Finished),
             _ => unreachable!(),
         }
     });
@@ -152,12 +151,11 @@ fn cqueue_select() {
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();
 
-    coroutine::spawn(move || {
+    go!(move || {
         tx2.send("hello").unwrap();
         coroutine::sleep(Duration::from_millis(100));
         tx1.send(42).unwrap();
     });
-
 
     let id = select!(
         _ = coroutine::sleep(Duration::from_millis(1000)) => {},
@@ -188,7 +186,7 @@ fn cqueue_loop() {
     let (tx2, rx2) = channel();
     let mut result = 0;
 
-    coroutine::spawn(move || {
+    go!(move || {
         tx1.send(10).unwrap();
         tx1.send(20).unwrap();
         tx1.send(30).unwrap();

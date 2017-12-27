@@ -3,7 +3,6 @@ extern crate may;
 
 use may::coroutine;
 
-
 #[test]
 fn local_in_thread() {
     coroutine_local!(static FOO: i32 = 3);
@@ -21,12 +20,11 @@ fn coroutine_local() {
     }
     coroutine_local!(static FOO: i32 = square(3));
 
-    coroutine::spawn(|| {
-            FOO.with(|f| {
-                assert_eq!(*f, 9);
-            });
-        })
-        .join()
+    go!(|| {
+        FOO.with(|f| {
+            assert_eq!(*f, 9);
+        });
+    }).join()
         .unwrap();
 }
 

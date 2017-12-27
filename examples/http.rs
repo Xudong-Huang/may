@@ -1,8 +1,8 @@
-extern crate may;
-extern crate httparse;
 extern crate bytes;
+extern crate httparse;
+#[macro_use]
+extern crate may;
 
-use may::coroutine;
 use may::net::TcpListener;
 use httparse::Status;
 use bytes::BufMut;
@@ -26,7 +26,7 @@ fn main() {
 
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
     while let Ok((mut stream, _)) = listener.accept() {
-        coroutine::spawn(move || {
+        go!(move || {
             let mut buf = Vec::new();
             let mut path = String::new();
 
@@ -36,28 +36,31 @@ fn main() {
                         "/" => "Welcome to May http demo\n",
                         "/hello" => "Hello, World!\n",
                         "/quit" => std::process::exit(1),
-                        _ => "Cannot find page\n"
+                        _ => "Cannot find page\n",
                     };
-                   
-                    let s = format!("\
-                        HTTP/1.1 200 OK\r\n\
-                        Server: May\r\n\
-                        Content-Length: {}\r\n\
-                        Date: 1-1-2000\r\n\
-                        \r\n\
-                        {}", response.len(), response);
 
-                    stream.write_all(s.as_bytes())
-                          .expect("Cannot write to socket");
-                    
+                    let s = format!(
+                        "\
+                         HTTP/1.1 200 OK\r\n\
+                         Server: May\r\n\
+                         Content-Length: {}\r\n\
+                         Date: 1-1-2000\r\n\
+                         \r\n\
+                         {}",
+                        response.len(),
+                        response
+                    );
+
+                    stream
+                        .write_all(s.as_bytes())
+                        .expect("Cannot write to socket");
+
                     buf = buf.split_off(i);
                 } else {
                     let mut temp_buf = vec![0; 512];
                     match stream.read(&mut temp_buf) {
                         Ok(0) => return, // connection was closed
-                        Ok(n) => {
-                            buf.put(&temp_buf[0..n]);
-                        },
+                        Ok(n) => buf.put(&temp_buf[0..n]),
                         Err(err) => println!("err = {:?}", err),
                     }
                 }

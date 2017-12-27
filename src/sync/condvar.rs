@@ -1,4 +1,4 @@
-//! compatable with std::sync::condvar except for both thread and coroutine
+//! compatible with std::sync::condvar except for both thread and coroutine
 //! please ref the doc from std::sync::condvar
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,10 +39,11 @@ impl Condvar {
     }
 
     // return false if timeout happened
-    pub fn wait_impl<'a, T>(&self,
-                            lock: &'a Mutex<T>,
-                            dur: Option<Duration>)
-                            -> Result<(), ParkError> {
+    pub fn wait_impl<'a, T>(
+        &self,
+        lock: &'a Mutex<T>,
+        dur: Option<Duration>,
+    ) -> Result<(), ParkError> {
         let cancel = if ::coroutine_impl::is_coroutine() {
             Some(::coroutine_impl::current_cancel_data())
         } else {
@@ -85,7 +86,7 @@ impl Condvar {
         }
         // enable cancel panic
         cancel.as_ref().map(|c| c.enable_cancel());
-        
+
         ret
     }
 
@@ -111,10 +112,11 @@ impl Condvar {
         }
     }
 
-    pub fn wait_timeout<'a, T>(&self,
-                               guard: MutexGuard<'a, T>,
-                               dur: Duration)
-                               -> LockResult<(MutexGuard<'a, T>, WaitTimeoutResult)> {
+    pub fn wait_timeout<'a, T>(
+        &self,
+        guard: MutexGuard<'a, T>,
+        dur: Duration,
+    ) -> LockResult<(MutexGuard<'a, T>, WaitTimeoutResult)> {
         let (poisoned, result) = {
             let lock = mutex::guard_lock(&guard);
             self.verify(lock as *const _ as usize);
@@ -127,7 +129,10 @@ impl Condvar {
                 // now we can safely go with the cancel panic
                 trigger_cancel_panic();
             }
-            (mutex::guard_poison(&guard).get(), WaitTimeoutResult(ret.is_err()))
+            (
+                mutex::guard_poison(&guard).get(),
+                WaitTimeoutResult(ret.is_err()),
+            )
         };
         if poisoned {
             Err(PoisonError::new((guard, result)))
@@ -165,7 +170,7 @@ impl Condvar {
 
             // Anything else and we're using more than one mutex on this condvar,
             // which is currently disallowed.
-            _ => panic!("attempted to use a condition variable with two mutexes"),
+            _ => panic!("attempted to use a condition variable with two mutex"),
         }
     }
 }
@@ -259,7 +264,8 @@ mod tests {
             let _g = m2.lock().unwrap();
             c2.notify_one();
         });
-        let (g, timeout_res) = c.wait_timeout(g, Duration::from_millis(u32::MAX as u64)).unwrap();
+        let (g, timeout_res) = c.wait_timeout(g, Duration::from_millis(u32::MAX as u64))
+            .unwrap();
         assert!(!timeout_res.timed_out());
         drop(g);
     }
@@ -286,7 +292,6 @@ mod tests {
 
     #[test]
     fn test_condvar_canceled() {
-        use coroutine;
         use std::sync::mpsc::TryRecvError;
         const N: usize = 10;
 
@@ -296,7 +301,7 @@ mod tests {
         for _ in 0..N {
             let data = data.clone();
             let tx = tx.clone();
-            let h = coroutine::spawn(move || {
+            let h = go!(move || {
                 let &(ref lock, ref cond) = &*data;
                 let mut cnt = lock.lock().unwrap();
                 *cnt += 1;

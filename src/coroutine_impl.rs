@@ -179,12 +179,12 @@ impl fmt::Debug for Coroutine {
 /// handler.join().unwrap();
 /// ```
 ///
-/// [`coroutine::spawn`]: ../../std/thread/fn.spawn.html
-/// [`stack_size`]: ../../std/thread/struct.Builder.html#method.stack_size
-/// [`name`]: ../../std/thread/struct.Builder.html#method.name
-/// [`spawn`]: ../../std/thread/struct.Builder.html#method.spawn
-/// [naming-threads]: ./index.html#naming-threads
-/// [stack-size]: ./index.html#stack-size
+/// [`coroutine::spawn`]: ./fn.spawn.html
+/// [`stack_size`]: ./struct.Builder.html#method.stack_size
+/// [`name`]: ./struct.Builder.html#method.name
+/// [`spawn`]: ./struct.Builder.html#method.spawn
+/// [naming-coroutines]: ./index.html#naming-coroutine
+/// [stack-size]: ./index.html#stack-siz
 pub struct Builder {
     // A name for the coroutine-to-be, for identification in panic messages
     name: Option<String>,
@@ -218,7 +218,7 @@ impl Builder {
     /// Spawns a new coroutine, and returns a join handle for it.
     /// The join handle can be used to block on
     /// termination of the child coroutine, including recovering its panics.
-    pub fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    fn spawn_impl<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
         F: Send + 'static,
@@ -273,6 +273,56 @@ impl Builder {
         sched.schedule(co);
         Ok(make_join_handle(handle, join, packet, panic))
     }
+
+    /// Spawns a new coroutine by taking ownership of the `Builder`, and returns an
+    /// `io::Result` to its `JoinHandle`.
+    ///
+    /// The spawned coroutine may outlive the caller. The join handle can be used
+    /// to block on termination of the child thread, including recovering its panics.
+    ///
+    /// # Errors
+    ///
+    /// Unlike the [`spawn`] free function, this method yields an
+    /// `io::Result` to capture any failure to create the thread at
+    /// the OS level.
+    ///
+    /// # Unsafety
+    ///
+    ///  - Access [`TLS`] in coroutine may trigger undefined behavior.
+    ///  - If the coroutine exceed the stack during execution, this would trigger
+    ///    undefined behavior
+    ///
+    /// If you find it annoying to wrap every thing in the unsafe block, you can
+    /// use the [`go!`] macro instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use may::coroutine;
+    ///
+    /// let builder = coroutine::Builder::new();
+    ///
+    /// let handler = unsafe {
+    ///     builder.spawn(|| {
+    ///         // thread code
+    ///     }).unwrap()
+    /// };
+    ///
+    /// handler.join().unwrap();
+    /// ```
+    ///
+    /// [`TLS`]: ./index.html#TLS
+    /// [`go!`]: ../macro.go.html
+    /// [`spawn`]: ./fn.spawn.html
+    pub unsafe fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        // we will still get optimizations in spawn_impl
+        self.spawn_impl(f)
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -285,13 +335,13 @@ impl Builder {
 /// dropped. In this case, the child coroutine may outlive the parent.
 /// Additionally, the join handle provides a [`join`] method that can be used
 /// to join the child coroutine. If the child coroutine panics, [`join`] will
-/// return an [`Err`] containing the argument given to [`panic`].
+/// return an `Err` containing the argument given to `panic`.
 ///
 /// This will create a coroutine using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the coroutine, use this API
 /// instead.
 ///
-/// This API has the same semastic as the `std::thread::spawn` API, except that
+/// This API has the same semantic as the `std::thread::spawn` API, except that
 /// it is an unsafe method.
 ///
 /// # Unsafety
@@ -300,7 +350,7 @@ impl Builder {
 ///  - If the coroutine exceed the stack during execution, this would trigger
 ///    undefined behavior
 ///
-/// If you find it annoying to wrap every thing in the unsafe block, you can 
+/// If you find it annoying to wrap every thing in the unsafe block, you can
 /// use the [`go!`] macro instead.
 ///
 /// # Examples
@@ -319,13 +369,13 @@ impl Builder {
 /// handler.join().unwrap();
 /// ```
 ///
-/// [`TLS`]: xx
-/// [`go!`]: yy
-/// [`JoinHandle`]: ../../std/thread/struct.JoinHandle.html
-/// [`join`]: ../../std/thread/struct.JoinHandle.html#method.join
-/// [`Builder::spawn`]: ../../std/thread/struct.Builder.html#method.spawn
-/// [`Builder`]: ../../std/thread/struct.Builder.html
-pub fn spawn<F, T>(f: F) -> JoinHandle<T>
+/// [`TLS`]: ./index.html#TLS
+/// [`go!`]: ../macro.go.html
+/// [`JoinHandle`]: struct.JoinHandle.html
+/// [`join`]: struct.JoinHandle.html#method.join
+/// [`Builder::spawn`]: struct.Builder.html#method.spawn
+/// [`Builder`]: struct.Builder.html
+pub unsafe fn spawn<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,

@@ -1,14 +1,15 @@
+#[macro_use]
 extern crate may;
 
 use may::coroutine;
 use coroutine::yield_now;
 
 fn main() {
-    let h = coroutine::spawn(move || {
+    let h = go!(move || {
         println!("hi, I'm parent");
         let v = (0..100)
             .map(|i| {
-                coroutine::spawn(move || {
+                go!(move || {
                     println!("hi, I'm child{:?}", i);
                     yield_now();
                     println!("bye from child{:?}", i);

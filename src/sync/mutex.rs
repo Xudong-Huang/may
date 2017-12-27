@@ -4,9 +4,9 @@ use std::fmt;
 use std::sync::Arc;
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use std::panic::{UnwindSafe, RefUnwindSafe};
-use std::sync::atomic::{AtomicUsize, Ordering, fence};
-use std::sync::{TryLockError, TryLockResult, LockResult};
+use std::panic::{RefUnwindSafe, UnwindSafe};
+use std::sync::atomic::{fence, AtomicUsize, Ordering};
+use std::sync::{LockResult, TryLockError, TryLockResult};
 use park::ParkError;
 use cancel::trigger_cancel_panic;
 use super::poison;
@@ -62,10 +62,9 @@ impl<T: ?Sized> Mutex<T> {
         self.to_wake.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
-            self.to_wake.pop().map_or_else(
-                || panic!("got null blocker!"),
-                |w| self.unpark_one(w),
-            );
+            self.to_wake
+                .pop()
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
         }
         loop {
             match cur.park(None) {
@@ -115,12 +114,9 @@ impl<T: ?Sized> Mutex<T> {
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
         if self.cnt.load(Ordering::Relaxed) == 0 {
-            match self.cnt.compare_exchange(
-                0,
-                1,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
+            match self.cnt
+                .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+            {
                 Ok(_) => Ok(try!(MutexGuard::new(self))),
                 Err(_) => Err(TryLockError::WouldBlock),
             }
@@ -138,10 +134,9 @@ impl<T: ?Sized> Mutex<T> {
 
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
-            self.to_wake.pop().map_or_else(
-                || panic!("got null blocker!"),
-                |w| self.unpark_one(w),
-            );
+            self.to_wake
+                .pop()
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
         }
     }
 
@@ -189,11 +184,9 @@ impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
         // after get the lock we should sync the mem
         fence(Ordering::SeqCst);
 
-        poison::map_result(lock.poison.borrow(), |guard| {
-            MutexGuard {
-                __lock: lock,
-                __poison: guard,
-            }
+        poison::map_result(lock.poison.borrow(), |guard| MutexGuard {
+            __lock: lock,
+            __poison: guard,
         })
     }
 }
@@ -230,7 +223,6 @@ impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'a, T> {
     }
 }
 
-
 // below functions are used by condvar but not exported to user
 pub fn unlock_mutex<T: ?Sized>(lock: &Mutex<T>) {
     lock.unlock();
@@ -249,7 +241,6 @@ mod tests {
     use std::thread;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use coroutine;
     use sync::Condvar;
     use sync::mpsc::channel;
     use super::*;
@@ -291,7 +282,7 @@ mod tests {
             });
             let tx2 = tx.clone();
             let m2 = m.clone();
-            coroutine::spawn(move || {
+            go!(move || {
                 inc(&m2);
                 tx2.send(()).unwrap();
             });
@@ -497,12 +488,12 @@ mod tests {
         let mutex3 = mutex1.clone();
         let g = mutex1.lock().unwrap();
 
-        let h1 = coroutine::spawn(move || {
+        let h1 = go!(move || {
             let mut g = mutex2.lock().unwrap();
             *g += 1;
         });
 
-        let h2 = coroutine::spawn(move || {
+        let h2 = go!(move || {
             // let h1 enqueue
             sleep(Duration::from_millis(50));
             let mut g = mutex3.lock().unwrap();

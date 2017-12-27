@@ -1,7 +1,8 @@
+extern crate docopt;
+#[macro_use]
 extern crate may;
 #[macro_use]
 extern crate serde_derive;
-extern crate docopt;
 
 use may::coroutine;
 use may::net::UdpSocket;
@@ -68,7 +69,7 @@ fn main() {
     let mut handlers = Vec::new();
     for _ in 0..threads {
         let sock = t!(sock.try_clone());
-        let h: coroutine::JoinHandle<()> = coroutine::spawn(move || {
+        let h: coroutine::JoinHandle<()> = go!(move || {
             let mut buf = vec![0u8; 1024 * 16];
             loop {
                 let (len, addr) = t!(sock.recv_from(&mut buf));

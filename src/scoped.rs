@@ -9,10 +9,9 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::sync::atomic::Ordering;
 
-use coroutine_impl::{Coroutine, spawn};
+use coroutine_impl::{spawn, Coroutine};
 use join::JoinHandle;
 use sync::AtomicOption;
-
 
 #[doc(hidden)]
 trait FnBox {
@@ -79,7 +78,9 @@ pub fn scope<'a, F, R>(f: F) -> R
 where
     F: FnOnce(&Scope<'a>) -> R,
 {
-    let mut scope = Scope { dtors: RefCell::new(None) };
+    let mut scope = Scope {
+        dtors: RefCell::new(None),
+    };
     let ret = f(&scope);
     scope.drop_all();
     ret
@@ -150,8 +151,11 @@ impl<'a> Scope<'a> {
         let their_packet = Arc::new(AtomicOption::none());
         let my_packet = their_packet.clone();
 
-        let join_handle =
-            unsafe { spawn_unsafe(move || { their_packet.swap(f(), Ordering::Relaxed); }) };
+        let join_handle = unsafe {
+            spawn_unsafe(move || {
+                their_packet.swap(f(), Ordering::Relaxed);
+            })
+        };
 
         let co = join_handle.coroutine().clone();
         let deferred_handle = Rc::new(RefCell::new(JoinState::Running(join_handle)));
@@ -187,19 +191,4 @@ impl<'a> Drop for Scope<'a> {
     fn drop(&mut self) {
         self.drop_all()
     }
-}
-
-/// macro used to join all scoped sub coroutines
-#[macro_export]
-macro_rules! join {
-    (
-        $($body:expr),+
-    ) => ({
-        use $crate::coroutine;
-        coroutine::scope(|s| {
-            $(
-                s.spawn(|| $body);
-            )+
-        })
-    })
 }

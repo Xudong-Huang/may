@@ -22,16 +22,18 @@ use cancel::trigger_cancel_panic;
 ///
 /// ```rust
 /// use std::sync::Arc;
-/// use may::sync::Semphore;
 /// use may::coroutine;
+/// use may::sync::Semphore;
 ///
 /// let sem = Arc::new(Semphore::new(0));
 /// let sem2 = sem.clone();
 ///
 /// // spawn a coroutine, and then wait for it to start
-/// coroutine::spawn(move || {
-///     sem2.post();
-/// });
+/// unsafe {
+///     coroutine::spawn(move || {
+///         sem2.post();
+///     });
+/// }
 ///
 /// // wait for the coroutine to start up
 /// sem.wait();
@@ -56,12 +58,15 @@ impl Semphore {
 
     #[inline]
     fn wakeup_one(&self) {
-        self.to_wake.try_pop().map_or_else(|| panic!("got null blocker!"), |w| {
-            w.unpark();
-            if w.take_release() {
-                self.post();
-            }
-        });
+        self.to_wake.try_pop().map_or_else(
+            || panic!("got null blocker!"),
+            |w| {
+                w.unpark();
+                if w.take_release() {
+                    self.post();
+                }
+            },
+        );
     }
 
     // return false if timeout
@@ -125,7 +130,9 @@ impl Semphore {
         // just manipulate the cnt is enough
         let mut cnt = self.cnt.load(Ordering::Acquire);
         while cnt > 0 {
-            match self.cnt.compare_exchange(cnt, cnt - 1, Ordering::SeqCst, Ordering::Relaxed) {
+            match self.cnt
+                .compare_exchange(cnt, cnt - 1, Ordering::SeqCst, Ordering::Relaxed)
+            {
                 Ok(_) => return true,
                 Err(x) => cnt = x,
             }
@@ -167,7 +174,6 @@ mod tests {
     use std::thread;
     use std::sync::Arc;
     use std::time::Duration;
-    use coroutine;
     use sync::mpsc::channel;
     use super::*;
 
@@ -197,7 +203,7 @@ mod tests {
         for i in 0..total {
             let sem2 = sem.clone();
             let tx2 = tx.clone();
-            coroutine::spawn(move || {
+            go!(move || {
                 sem2.wait();
                 tx2.send(i).unwrap();
             });
@@ -235,11 +241,11 @@ mod tests {
         let sem2 = sem1.clone();
         let sem3 = sem1.clone();
 
-        let h1 = coroutine::spawn(move || {
+        let h1 = go!(move || {
             sem2.wait();
         });
 
-        let h2 = coroutine::spawn(move || {
+        let h2 = go!(move || {
             // let h1 enqueue
             sleep(Duration::from_millis(50));
             sem3.wait();
@@ -264,12 +270,12 @@ mod tests {
         let sem2 = sem1.clone();
         let sem3 = sem1.clone();
 
-        let h1 = coroutine::spawn(move || {
+        let h1 = go!(move || {
             let r = sem2.wait_timeout(Duration::from_millis(10));
             assert_eq!(r, false);
         });
 
-        let h2 = coroutine::spawn(move || {
+        let h2 = go!(move || {
             // let h1 enqueue
             sleep(Duration::from_millis(50));
             sem3.wait();

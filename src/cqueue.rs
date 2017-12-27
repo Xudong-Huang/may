@@ -1,6 +1,6 @@
 use std::panic;
 use std::sync::Arc;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use cancel::Cancel;
 use join::JoinHandle;
@@ -8,7 +8,7 @@ use may_queue::mpsc_list;
 use scoped::spawn_unsafe;
 use yield_now::yield_with;
 use sync::{AtomicOption, Blocker};
-use coroutine_impl::{Coroutine, CoroutineImpl, EventSource, run_coroutine, current_cancel_data};
+use coroutine_impl::{current_cancel_data, run_coroutine, Coroutine, CoroutineImpl, EventSource};
 
 /// This enumeration is the list of the possible reasons that `poll`
 /// could not return Event when called.
@@ -112,7 +112,10 @@ impl<'a> EventSource for EventSender<'a> {
             kind: EventKind::Normal,
             co: Some(co),
         });
-        self.cqueue.to_wake.take(Ordering::Acquire).map(|w| w.unpark());
+        self.cqueue
+            .to_wake
+            .take(Ordering::Acquire)
+            .map(|w| w.unpark());
     }
 
     fn yield_back(&self, _cancel: &'static Cancel) {
@@ -131,7 +134,10 @@ impl<'a> Drop for EventSender<'a> {
             co: None,
         });
         self.cqueue.cnt.fetch_sub(1, Ordering::Relaxed);
-        self.cqueue.to_wake.take(Ordering::Acquire).map(|w| w.unpark());
+        self.cqueue
+            .to_wake
+            .take(Ordering::Acquire)
+            .map(|w| w.unpark());
     }
 }
 
@@ -158,7 +164,8 @@ impl Cqueue {
     /// should use `cqueue_add` and `cqueue_add_oneshot` macros to
     /// create select coroutines correctly
     pub fn add<'a, F>(&self, token: usize, f: F) -> Selector
-        where F: FnOnce(EventSender) + Send + 'a
+    where
+        F: FnOnce(EventSender) + Send + 'a,
     {
         let sender = EventSender {
             id: self.total,
@@ -185,7 +192,11 @@ impl Cqueue {
 
         use generator::Error;
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        match me.selectors[id].take().expect("join handler not set").join() {
+        match me.selectors[id]
+            .take()
+            .expect("join handler not set")
+            .join()
+        {
             Ok(_) => {}
             Err(panic) => {
                 if let Some(err) = panic.downcast_ref::<Error>() {
@@ -254,12 +265,13 @@ impl Drop for Cqueue {
     // and wait until all of them return back
     fn drop(&mut self) {
         // first cancel all the select coroutines if they are running
-        self.selectors.iter().map(|j| j.as_ref()).fold((), |_, join| {
-            match join {
+        self.selectors
+            .iter()
+            .map(|j| j.as_ref())
+            .fold((), |_, join| match join {
                 Some(j) if !j.is_done() => unsafe { j.coroutine().cancel() },
                 _ => {}
-            }
-        });
+            });
 
         // if self.is_panicking {
         //     return;
@@ -282,7 +294,8 @@ impl Drop for Cqueue {
 /// Scopes, in particular, support scoped select coroutine spawning.
 ///
 pub fn scope<'a, F, R>(f: F) -> R
-    where F: FnOnce(&Cqueue) -> R + 'a
+where
+    F: FnOnce(&Cqueue) -> R + 'a,
 {
     let cqueue = Cqueue {
         ev_queue: mpsc_list::Queue::new(),
@@ -293,60 +306,4 @@ pub fn scope<'a, F, R>(f: F) -> R
         is_panicking: false,
     };
     f(&cqueue)
-}
-
-/// macro used to create the select coroutine
-/// that will run in a infinite loop, and generate
-/// as many events as possible
-#[macro_export]
-macro_rules! cqueue_add{
-    (
-        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
-    ) => ({
-        $cqueue.add($token, |es| {
-            loop {
-                let $name = $top;
-                es.send(es.get_token());
-                $bottom
-            }
-        })
-    })
-}
-
-
-/// macro used to create the select coroutine
-/// that will run only once, thus generate only one event
-#[macro_export]
-macro_rules! cqueue_add_oneshot{
-    (
-        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
-    ) => ({
-        $cqueue.add($token, |es| {
-            let $name = $top;
-            es.send(es.get_token());
-            $bottom
-        })
-    })
-}
-
-/// macro used to select for only one event
-/// it will return the index of which event happens first
-#[macro_export]
-macro_rules! select {
-    (
-        $($name:pat = $top:expr => $bottom:expr),+
-    ) => ({
-        use $crate::cqueue;
-        cqueue::scope(|cqueue| {
-            let mut _token = 0;
-            $(
-                cqueue_add_oneshot!(cqueue, _token, $name = $top => $bottom);
-                _token += 1;
-            )+
-            match cqueue.poll(None) {
-                Ok(ev) => return ev.token,
-                _ => unreachable!("select error"),
-            }
-        })
-    })
 }

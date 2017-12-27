@@ -6,14 +6,13 @@ use may::coroutine;
 use may::sync::mpsc::channel;
 use may::net::TcpListener;
 
-
 // general select example that use cqueue
 fn main() {
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();
     let listener = TcpListener::bind(("0.0.0.0", 1234)).unwrap();
 
-    coroutine::spawn(move || {
+    go!(move || {
         tx2.send("hello").unwrap();
         coroutine::sleep(Duration::from_millis(100));
         tx1.send(42).unwrap();
