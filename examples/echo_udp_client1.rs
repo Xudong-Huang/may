@@ -1,7 +1,8 @@
+extern crate docopt;
+#[macro_use]
 extern crate may;
 #[macro_use]
 extern crate serde_derive;
-extern crate docopt;
 
 use std::time::Duration;
 use std::io::{self, Write};
@@ -84,13 +85,13 @@ fn main() {
     let msg = vec![0; test_msg_len];
 
     coroutine::scope(|scope| {
-        scope.spawn(|| {
+        go!(scope, || {
             coroutine::sleep(Duration::from_secs(test_seconds as u64));
             stop.store(true, Ordering::Release);
         });
 
         // print the result every one second
-        scope.spawn(|| {
+        go!(scope, || {
             let mut time = 0;
             let mut last_num = 0;
             while !stop.load(Ordering::Relaxed) {
@@ -112,7 +113,7 @@ fn main() {
         });
 
         for _ in 0..test_conn_num {
-            scope.spawn(|| {
+            go!(scope, || {
                 let local_port = base_port.fetch_add(1, Ordering::Relaxed);
                 let s = t!(UdpSocket::bind(("0.0.0.0", local_port as u16)));
                 // t!(s.set_write_timeout(Some(Duration::from_secs(io_timeout))));
@@ -160,9 +161,7 @@ fn main() {
     );
     println!(
         "{} clients, running {} bytes, {} sec.\n",
-        test_conn_num,
-        test_msg_len,
-        test_seconds
+        test_conn_num, test_msg_len, test_seconds
     );
     println!(
         "Speed: {} request/sec,  {} response/sec, {} kb/sec",

@@ -143,7 +143,7 @@ impl<'a> Scope<'a> {
     /// before the current stack frame goes away, allowing you to reference the parent stack frame
     /// directly. This is ensured by having the parent join on the child coroutine before the
     /// scope exits.
-    pub fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
+    fn spawn_impl<F, T>(&self, f: F) -> ScopedJoinHandle<T>
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
@@ -171,6 +171,21 @@ impl<'a> Scope<'a> {
             packet: my_packet,
             co: co,
         }
+    }
+
+    /// Create a scoped coroutine.
+    ///
+    /// `spawn` is similar to the `spawn` function in this library. The
+    /// difference is that this coroutine is scoped, meaning that it's guaranteed to terminate
+    /// before the current stack frame goes away, allowing you to reference the parent stack frame
+    /// directly. This is ensured by having the parent join on the child coroutine before the
+    /// scope exits.
+    pub unsafe fn spawn<F, T>(&self, f: F) -> ScopedJoinHandle<T>
+    where
+        F: FnOnce() -> T + Send + 'a,
+        T: Send + 'a,
+    {
+        self.spawn_impl(f)
     }
 }
 

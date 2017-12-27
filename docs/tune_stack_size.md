@@ -10,7 +10,7 @@ The unit is by `word`. the flowing code would set the default stack size as 8k b
 ```rust
 may::config().set_stack_size(0x400);
 // this coroutine would use 8K bytes stack
-may::coroutine::spawn(...);
+go!(...);
 ```
 
 ## Set stack size for a single coroutine

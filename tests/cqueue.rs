@@ -12,7 +12,7 @@ fn cqueue_drop() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
         for token in 0..10 {
-            cqueue.add(token, |es| {
+            go!(cqueue, token, |es| {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(0);
@@ -34,7 +34,7 @@ fn cqueue_in_coroutine() {
     go!(move || {
         cqueue::scope(|cqueue| {
             for token in 0..10 {
-                cqueue.add(token, |es| {
+                go!(cqueue, token, |es| {
                     let token = es.get_token();
                     let j = v[token];
                     es.send(0);
@@ -62,7 +62,7 @@ fn cqueue_panic() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
         for token in 0..10 {
-            cqueue.add(token, |es| {
+            go!(cqueue, token, |es| {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(0);
@@ -82,7 +82,7 @@ fn cqueue_panic() {
 #[should_panic]
 fn cqueue_panic_in_select() {
     cqueue::scope(|cqueue| {
-        cqueue.add(0, |_es| {
+        go!(cqueue, 0, |_es| {
             panic!("painc in selector");
         });
     });
@@ -95,7 +95,7 @@ fn cqueue_poll() {
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
         for token in 0..10 {
-            cqueue.add(token, |es| {
+            go!(cqueue, token, |es| {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(token + 100);

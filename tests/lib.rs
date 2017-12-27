@@ -179,7 +179,7 @@ fn scoped_coroutine() {
     let mut array = [1, 2, 3];
     coroutine::scope(|scope| {
         for i in &mut array {
-            scope.spawn(move || {
+            go!(scope, move || {
                 *i += 1;
             });
         }
@@ -194,7 +194,7 @@ fn scoped_coroutine() {
 fn yield_from_gen() {
     let mut a = 0;
     coroutine::scope(|scope| {
-        scope.spawn(|| {
+        go!(scope, || {
             let g = Gn::<()>::new_scoped(|mut scope| {
                 while a < 10 {
                     scope.yield_(a);
@@ -217,7 +217,7 @@ fn yield_from_gen() {
 fn unpark() {
     let mut a = 0;
     coroutine::scope(|scope| {
-        let h = scope.spawn(|| {
+        let h = go!(scope, || {
             let co = coroutine::current();
             println!("child coroutine name:{:?}", co);
             co.unpark();
@@ -242,7 +242,7 @@ fn unpark() {
 fn park_timeout() {
     let mut a = 0;
     coroutine::scope(|scope| {
-        let h = scope.spawn(|| {
+        let h = go!(scope, || {
             let co = coroutine::current();
             co.unpark();
             a = 5;
@@ -271,7 +271,7 @@ fn test_sleep() {
 
     coroutine::scope(|scope| {
         for _ in 0..1000 {
-            scope.spawn(|| {
+            go!(scope, || {
                 let now = Instant::now();
                 coroutine::sleep(Duration::from_millis(100));
                 assert!(now.elapsed() >= Duration::from_millis(100));

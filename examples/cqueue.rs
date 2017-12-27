@@ -1,6 +1,6 @@
+extern crate generator;
 #[macro_use]
 extern crate may;
-extern crate generator;
 
 use std::time::Duration;
 use may::{coroutine, cqueue};
@@ -35,12 +35,11 @@ fn main() {
         gv.push(g);
     }
 
-
     // the select body that monitor the rx event and recalc the new total
     cqueue::scope(|cqueue| {
         // registe select coroutines
         for t in 0..10 {
-            cqueue.add(t, |es| {
+            go!(cqueue, t, |es| {
                 let mut last = 0;
                 let token = es.get_token();
                 while let Some(data) = gv[token].next() {
@@ -51,8 +50,10 @@ fn main() {
                     let delta = data - last;
                     let total = unsafe { total.get() };
                     // bottom half that will run sequencially in the poller
-                    println!("in selector: update from {}, delta={}, last_total={}",
-                             token, delta, total);
+                    println!(
+                        "in selector: update from {}, delta={}, last_total={}",
+                        token, delta, total
+                    );
 
                     *total += delta;
                     last = data;

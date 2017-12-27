@@ -6,6 +6,7 @@
 /// [`spawn`]: coroutine/fn.spawn.html
 #[macro_export]
 macro_rules! go {
+    // for free spawn
     ($func: expr) => ({
         fn _go_check<F, T>(f: F) -> F
         where
@@ -18,16 +19,30 @@ macro_rules! go {
         unsafe { $crate::coroutine::spawn(f) }
     });
 
+    // for builder/scope spawn
     ($builder: expr, $func: expr) => ({
         fn _go_check<F, T>(f: F) -> F
         where
-            F: FnOnce() -> T + Send + 'static,
-            T: Send + 'static,
+            F: FnOnce() -> T + Send,
+            T: Send,
         {
             f
         }
         let f = _go_check($func);
         unsafe { $builder.spawn(f) }
+    });
+
+    // for cqueue add spawn
+    ($cqueue: expr, $token: expr, $func: expr) => ({
+        fn _go_check<F, T>(f: F) -> F
+        where
+            F: FnOnce($crate::cqueue::EventSender) -> T + Send,
+            T: Send,
+        {
+            f
+        }
+        let f = _go_check($func);
+        unsafe { $cqueue.add($token, f) }
     })
 }
 
@@ -39,7 +54,7 @@ macro_rules! cqueue_add{
     (
         $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
     ) => ({
-        $cqueue.add($token, |es| {
+        go!($cqueue, $token, |es| {
             loop {
                 let $name = $top;
                 es.send(es.get_token());
@@ -56,7 +71,7 @@ macro_rules! cqueue_add_oneshot{
     (
         $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
     ) => ({
-        $cqueue.add($token, |es| {
+        go!($cqueue, $token, |es| {
             let $name = $top;
             es.send(es.get_token());
             $bottom
@@ -95,7 +110,7 @@ macro_rules! join {
         use $crate::coroutine;
         coroutine::scope(|s| {
             $(
-                s.spawn(|| $body);
+                go!(s, || $body);
             )+
         })
     })

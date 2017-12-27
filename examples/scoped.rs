@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate may;
 
 use may::coroutine;
@@ -8,9 +9,9 @@ fn main() {
     println!("old array: {:?}", array);
     coroutine::scope(|scope| {
         for i in &mut array {
-            scope.spawn(move || {
+            go!(scope, move || {
                 coroutine::scope(|scope| {
-                    scope.spawn(|| {
+                    go!(scope, || {
                         println!("another scope get as {:?}", *i);
                         yield_now();
                         *i += 1;

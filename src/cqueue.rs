@@ -163,7 +163,7 @@ impl Cqueue {
     /// register a select coroutine with the cqueue
     /// should use `cqueue_add` and `cqueue_add_oneshot` macros to
     /// create select coroutines correctly
-    pub fn add<'a, F>(&self, token: usize, f: F) -> Selector
+    fn add_impl<'a, F>(&self, token: usize, f: F) -> Selector
     where
         F: FnOnce(EventSender) + Send + 'a,
     {
@@ -181,6 +181,16 @@ impl Cqueue {
         me.total += 1;
         me.selectors.push(Some(h));
         Selector { co: co }
+    }
+
+    /// register a select coroutine with the cqueue
+    /// should use `cqueue_add` and `cqueue_add_oneshot` macros to
+    /// create select coroutines correctly
+    pub unsafe fn add<'a, F>(&self, token: usize, f: F) -> Selector
+    where
+        F: FnOnce(EventSender) + Send + 'a,
+    {
+        self.add_impl(token, f)
     }
 
     // when the select coroutine is done, check the panic status

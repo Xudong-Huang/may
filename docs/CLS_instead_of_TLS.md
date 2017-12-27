@@ -13,7 +13,7 @@ fn coroutine_local_many() {
 
     coroutine::scope(|scope| {
         for i in 0..10 {
-            scope.spawn(move || {
+            go!(scope, move || {
                 FOO.with(|f| {
                     assert_eq!(f.load(Ordering::Relaxed), 0);
                     f.store(i, Ordering::Relaxed);
