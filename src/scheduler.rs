@@ -12,7 +12,7 @@ use yield_now::set_co_para;
 use io::{EventLoop, Selector};
 use crossbeam::sync::SegQueue as mpmc;
 use may_queue::mpmc_bounded::Queue as WaitList;
-use coroutine_impl::{CoroutineImpl, run_coroutine};
+use coroutine_impl::{run_coroutine, CoroutineImpl};
 
 #[cfg(nightly)]
 use std::intrinsics::likely;

@@ -7,7 +7,7 @@ use sync::AtomicOption;
 use yield_now::set_co_para;
 use io::cancel::CancelIoImpl;
 use scheduler::get_scheduler;
-use coroutine_impl::{CoroutineImpl, current_cancel_data};
+use coroutine_impl::{current_cancel_data, CoroutineImpl};
 
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe

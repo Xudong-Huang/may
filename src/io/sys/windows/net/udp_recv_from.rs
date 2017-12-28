@@ -4,13 +4,13 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
 use super::super::winapi::*;
-use super::super::miow::net::{UdpSocketExt, SocketAddrBuf};
-use super::super::{EventData, co_io_result};
+use super::super::miow::net::{SocketAddrBuf, UdpSocketExt};
+use super::super::{co_io_result, EventData};
 use net::UdpSocket;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct UdpRecvFrom<'a> {
     io_data: EventData,
@@ -36,11 +36,10 @@ impl<'a> UdpRecvFrom<'a> {
     #[inline]
     pub fn done(self) -> io::Result<(usize, SocketAddr)> {
         let size = try!(co_io_result(&self.io_data));
-        let addr = try!(self.addr
-            .to_socket_addr()
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
-            }));
+        let addr = try!(self.addr.to_socket_addr().ok_or_else(|| io::Error::new(
+            io::ErrorKind::Other,
+            "could not obtain remote address"
+        )));
         Ok((size, addr))
     }
 }
@@ -50,13 +49,17 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();
         let cancel = co_cancel_data(&co);
-        s.get_selector().add_io_timer(&mut self.io_data, self.timeout);
+        s.get_selector()
+            .add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket
-                .recv_from_overlapped(self.buf, &mut self.addr, self.io_data.get_overlapped())
+            self.socket.recv_from_overlapped(
+                self.buf,
+                &mut self.addr,
+                self.io_data.get_overlapped(),
+            )
         });
 
         // register the cancel io data

@@ -11,12 +11,16 @@ pub struct Flag {
 
 impl Flag {
     pub fn new() -> Flag {
-        Flag { failed: AtomicUsize::new(0) }
+        Flag {
+            failed: AtomicUsize::new(0),
+        }
     }
 
     #[inline]
     pub fn borrow(&self) -> LockResult<Guard> {
-        let ret = Guard { panicking: thread::panicking() };
+        let ret = Guard {
+            panicking: thread::panicking(),
+        };
         if self.get() {
             Err(PoisonError::new(ret))
         } else {

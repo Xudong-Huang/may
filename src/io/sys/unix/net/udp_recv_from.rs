@@ -3,13 +3,13 @@ use std::ops::Deref;
 use std::time::Duration;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use super::super::{IoData, co_io_result};
+use super::super::{co_io_result, IoData};
 use io::AsIoData;
 use net::UdpSocket;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct UdpRecvFrom<'a> {
     io_data: &'a IoData,
@@ -58,7 +58,9 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
         let cancel = co_cancel_data(&co);
-        get_scheduler().get_selector().add_io_timer(self.io_data, self.timeout);
+        get_scheduler()
+            .get_selector()
+            .add_io_timer(self.io_data, self.timeout);
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

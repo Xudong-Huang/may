@@ -3,8 +3,8 @@ use std::cell::UnsafeCell;
 use std::{io, ptr};
 use std::os::windows::io::AsRawSocket;
 use yield_now::set_co_para;
-use coroutine_impl::{CoroutineImpl, run_coroutine};
-use timeout_list::{TimeoutHandle, TimeOutList, now, ns_to_dur};
+use coroutine_impl::{run_coroutine, CoroutineImpl};
+use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use super::kernel32;
 use super::winapi::*;
 use super::miow::iocp::{CompletionPort, CompletionStatus};
@@ -45,7 +45,9 @@ impl EventData {
     }
 
     pub fn timer_data(&self) -> TimerData {
-        TimerData { event_data: self as *const _ as *mut _ }
+        TimerData {
+            event_data: self as *const _ as *mut _,
+        }
     }
 
     pub fn get_io_size(&self) -> usize {
@@ -66,11 +68,9 @@ pub struct Selector {
 impl Selector {
     pub fn new(_io_workers: usize) -> io::Result<Selector> {
         // only let one thread working, other threads blocking, this is more efficient
-        CompletionPort::new(1).map(|cp| {
-            Selector {
-                port: cp,
-                timer_list: TimerList::new(),
-            }
+        CompletionPort::new(1).map(|cp| Selector {
+            port: cp,
+            timer_list: TimerList::new(),
         })
     }
 
@@ -124,8 +124,7 @@ impl Selector {
             const STATUS_CANCELLED_U32: u32 = STATUS_CANCELLED as u32;
             // check the status
             match overlapped.Internal as u32 {
-                ERROR_OPERATION_ABORTED |
-                STATUS_CANCELLED_U32 => {
+                ERROR_OPERATION_ABORTED | STATUS_CANCELLED_U32 => {
                     info!("coroutine timeout");
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     // timer data is popped already

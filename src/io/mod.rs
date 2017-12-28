@@ -13,7 +13,7 @@ use coroutine_impl::is_coroutine;
 
 pub use self::sys::cancel;
 pub use self::event_loop::EventLoop;
-pub use self::sys::{IoData, Selector, add_socket, del_socket, net};
+pub use self::sys::{add_socket, del_socket, net, IoData, Selector};
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;
@@ -35,7 +35,8 @@ impl IoContext {
 
     #[inline]
     pub fn check<F>(&self, f: F) -> io::Result<bool>
-        where F: FnOnce() -> io::Result<()>
+    where
+        F: FnOnce() -> io::Result<()>,
     {
         if !self.b_init {
             let me = unsafe { &mut *(self as *const _ as *mut Self) };

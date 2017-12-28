@@ -2,10 +2,10 @@ extern crate time;
 use std::mem;
 use std::cmp;
 use std::thread;
-use std::sync::{Mutex, RwLock, Arc};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use std::collections::{HashMap, BinaryHeap};
+use std::collections::{BinaryHeap, HashMap};
 
 use sync::AtomicOption;
 use may_queue::mpsc_list::Queue as mpsc;
@@ -20,7 +20,9 @@ const HASH_CAP: usize = 1024;
 #[inline]
 fn dur_to_ns(dur: Duration) -> u64 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
-    dur.as_secs().saturating_mul(NANOS_PER_SEC).saturating_add(dur.subsec_nanos() as u64)
+    dur.as_secs()
+        .saturating_mul(NANOS_PER_SEC)
+        .saturating_add(dur.subsec_nanos() as u64)
 }
 
 #[inline]
@@ -42,7 +44,7 @@ pub fn now() -> u64 {
 
 // timeout event data
 pub struct TimeoutData<T> {
-    time: u64, // the wall clock in ns that the timer expires
+    time: u64,   // the wall clock in ns that the timer expires
     pub data: T, // the data associate with the timeout event
 }
 
@@ -51,10 +53,9 @@ pub type TimeoutHandle<T> = Entry<TimeoutData<T>>;
 
 type IntervalList<T> = Arc<TimeoutList<TimeoutData<T>>>;
 
-
 // this is the data type that used by the binary heap to get the latest timer
 struct IntervalEntry<T> {
-    time: u64, // the head timeout value in the list, should be latest
+    time: u64,             // the head timeout value in the list, should be latest
     list: IntervalList<T>, // point to the interval list
     interval: u64,
 }
@@ -63,7 +64,8 @@ impl<T> IntervalEntry<T> {
     // trigger the timeout event with the supplying function
     // return next expire time
     pub fn pop_timeout<F>(&self, now: u64, f: &F) -> Option<u64>
-        where F: Fn(T)
+    where
+        F: Fn(T),
     {
         let p = |v: &TimeoutData<T>| v.time <= now;
         loop {
@@ -129,7 +131,7 @@ impl<T> TimeOutList<T> {
     pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
         let interval = dur_to_ns(dur);
         let time = now() + interval; // TODO: deal with overflow?
-        //println!("add timer = {:?}", time);
+                                     //println!("add timer = {:?}", time);
 
         let timeout = TimeoutData {
             time: time,

@@ -1,6 +1,6 @@
 use std::io;
 use std::time::Duration;
-use std::net::{self, ToSocketAddrs, SocketAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use io as io_impl;
 use io::net as net_impl;
 use yield_now::yield_with;
@@ -21,14 +21,12 @@ impl UdpSocket {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        io_impl::add_socket(&s).map(|io| {
-            UdpSocket {
-                io: io,
-                sys: s,
-                ctx: io_impl::IoContext::new(),
-                read_timeout: None,
-                write_timeout: None,
-            }
+        io_impl::add_socket(&s).map(|io| UdpSocket {
+            io: io,
+            sys: s,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: None,
+            write_timeout: None,
         })
     }
 
@@ -246,7 +244,7 @@ impl io_impl::AsIoData for UdpSocket {
 //
 
 #[cfg(unix)]
-use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 #[cfg(unix)]
 impl IntoRawFd for UdpSocket {
@@ -276,7 +274,7 @@ impl FromRawFd for UdpSocket {
 //
 
 #[cfg(windows)]
-use std::os::windows::io::{IntoRawSocket, AsRawSocket, FromRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 
 #[cfg(windows)]
 impl IntoRawSocket for UdpSocket {

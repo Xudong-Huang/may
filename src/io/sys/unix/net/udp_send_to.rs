@@ -2,7 +2,7 @@ use std::{self, io};
 use std::time::Duration;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
-use super::super::{IoData, co_io_result};
+use super::super::{co_io_result, IoData};
 use io::AsIoData;
 use net::UdpSocket;
 use yield_now::yield_with;
@@ -58,7 +58,9 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
-        get_scheduler().get_selector().add_io_timer(self.io_data, self.timeout);
+        get_scheduler()
+            .get_selector()
+            .add_io_timer(self.io_data, self.timeout);
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

@@ -3,7 +3,6 @@ use std::thread;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
     value: Option<T>,
@@ -17,7 +16,6 @@ impl<T> Node<T> {
         }))
     }
 }
-
 
 /// The multi-producer single-consumer structure. This is not cloneable, but it
 /// may be safely shared so long as it is guaranteed that there is only one

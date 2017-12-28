@@ -9,7 +9,7 @@ use timeout_list::{now, ns_to_dur};
 use may_queue::mpsc_list::Queue as mpsc;
 
 use super::libc;
-use super::{EventData, IoData, TimerList, timeout_handler};
+use super::{timeout_handler, EventData, IoData, TimerList};
 
 pub type SysEvent = libc::kevent;
 
@@ -51,9 +51,7 @@ impl SingleSelector {
             udata: ptr::null_mut(),
         };
 
-        let ret = unsafe {
-            libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null())
-        };
+        let ret = unsafe { libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null()) };
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -79,7 +77,9 @@ pub struct Selector {
 
 impl Selector {
     pub fn new(io_workers: usize) -> io::Result<Self> {
-        let mut s = Selector { vec: SmallVec::new() };
+        let mut s = Selector {
+            vec: SmallVec::new(),
+        };
 
         for _ in 0..io_workers {
             let ss = try!(SingleSelector::new());
@@ -89,11 +89,12 @@ impl Selector {
         Ok(s)
     }
 
-    pub fn select(&self,
-                  id: usize,
-                  events: &mut [SysEvent],
-                  timeout: Option<u64>)
-                  -> io::Result<Option<u64>> {
+    pub fn select(
+        &self,
+        id: usize,
+        events: &mut [SysEvent],
+        timeout: Option<u64>,
+    ) -> io::Result<Option<u64>> {
         let timeout = timeout.map(|to| {
             let dur = ns_to_dur(to);
             libc::timespec {
@@ -102,14 +103,23 @@ impl Selector {
             }
         });
 
-        let timeout = timeout.as_ref().map(|s| s as *const _).unwrap_or(ptr::null_mut());
+        let timeout = timeout
+            .as_ref()
+            .map(|s| s as *const _)
+            .unwrap_or(ptr::null_mut());
         // info!("select; timeout={:?}", timeout_ms);
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let kqfd = self.vec[id].kqfd;
         let n = unsafe {
-            libc::kevent(kqfd, ptr::null(), 0,
-                         events.as_mut_ptr(), events.len() as libc::c_int, timeout)
+            libc::kevent(
+                kqfd,
+                ptr::null(),
+                0,
+                events.as_mut_ptr(),
+                events.len() as libc::c_int,
+                timeout,
+            )
         };
         if n < 0 {
             return Err(io::Error::last_os_error());
@@ -139,12 +149,12 @@ impl Selector {
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {
-                 unsafe {
-                     // tell the timer handler not to cancel the io
-                     // it's not always true that you can really remove the timer entry
-                     h.get_data().data.event_data = ptr::null_mut();
-                 }
-                 h.remove()
+                unsafe {
+                    // tell the timer handler not to cancel the io
+                    // it's not always true that you can really remove the timer entry
+                    h.get_data().data.event_data = ptr::null_mut();
+                }
+                h.remove()
             });
 
             // schedule the coroutine
@@ -155,7 +165,9 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
-        let next_expire = self.vec[id].timer_list.schedule_timer(now(), &timeout_handler);
+        let next_expire = self.vec[id]
+            .timer_list
+            .schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
     }
 
@@ -172,13 +184,10 @@ impl Selector {
             udata: ptr::null_mut(),
         };
 
-        let ret = unsafe {
-            libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null())
-        };
+        let ret = unsafe { libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null()) };
 
         info!("wakeup id={:?}, ret={:?}", id, ret);
     }
-
 
     // register io event to the selector
     #[inline]
@@ -192,15 +201,21 @@ impl Selector {
         let udata = io_data.as_ref() as *const _;
         let changes = [
             kevent!(fd, libc::EVFILT_READ, flags, udata),
-            kevent!(fd, libc::EVFILT_WRITE, flags, udata)
+            kevent!(fd, libc::EVFILT_WRITE, flags, udata),
         ];
 
         let n = unsafe {
-            libc::kevent(kqfd, changes.as_ptr(), changes.len() as libc::c_int,
-                         ptr::null_mut(), 0, ptr::null())
+            libc::kevent(
+                kqfd,
+                changes.as_ptr(),
+                changes.len() as libc::c_int,
+                ptr::null_mut(),
+                0,
+                ptr::null(),
+            )
         };
         if n < 0 {
-             return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error());
         }
 
         Ok(io_data)
@@ -230,8 +245,14 @@ impl Selector {
         ];
         // ignore the error
         unsafe {
-            libc::kevent(kqfd, changes.as_ptr(), changes.len() as libc::c_int,
-                         ptr::null_mut(), 0, ptr::null());
+            libc::kevent(
+                kqfd,
+                changes.as_ptr(),
+                changes.len() as libc::c_int,
+                ptr::null_mut(),
+                0,
+                ptr::null(),
+            );
         }
 
         // after EpollCtlDel push the unused event data

@@ -2,15 +2,15 @@ use std::{self, io};
 use std::ops::Deref;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
-use std::net::{ToSocketAddrs, SocketAddr};
-use std::os::unix::io::{FromRawFd, IntoRawFd, AsRawFd};
-use super::super::{libc, IoData, co_io_result, add_socket};
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd};
+use super::super::{add_socket, co_io_result, libc, IoData};
 use net::TcpStream;
 use net2::TcpBuilder;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
     io_data: IoData,
@@ -40,13 +40,11 @@ impl TcpStreamConnect {
                 // prevent close the socket
                 s.into_raw_fd();
 
-                add_socket(&builder).map(|io| {
-                    TcpStreamConnect {
-                        io_data: io,
-                        builder: builder,
-                        addr: addr,
-                        can_drop: DelayDrop::new(),
-                    }
+                add_socket(&builder).map(|io| TcpStreamConnect {
+                    io_data: io,
+                    builder: builder,
+                    addr: addr,
+                    can_drop: DelayDrop::new(),
                 })
             })
     }
@@ -73,9 +71,9 @@ impl TcpStreamConnect {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
-                    return self.builder.to_tcp_stream().map(|s| {
-                        TcpStream::from_stream(s, self.io_data.clone())
-                    })
+                    return self.builder
+                        .to_tcp_stream()
+                        .map(|s| TcpStream::from_stream(s, self.io_data.clone()))
                 }
                 ret => return ret.map(|s| TcpStream::from_stream(s, self.io_data.clone())),
             }
@@ -96,7 +94,9 @@ impl EventSource for TcpStreamConnect {
         let _g = self.can_drop.delay_drop();
         let cancel = co_cancel_data(&co);
         let io_data = &self.io_data;
-        get_scheduler().get_selector().add_io_timer(io_data, Some(Duration::from_secs(10)));
+        get_scheduler()
+            .get_selector()
+            .add_io_timer(io_data, Some(Duration::from_secs(10)));
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

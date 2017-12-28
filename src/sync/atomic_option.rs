@@ -59,11 +59,15 @@ unsafe impl<T: Send> Sync for AtomicOption<T> {}
 
 impl<T: Wrapped> AtomicOption<T> {
     pub fn none() -> AtomicOption<T> {
-        AtomicOption { inner: AtomicPtr::new(ptr::null_mut()) }
+        AtomicOption {
+            inner: AtomicPtr::new(ptr::null_mut()),
+        }
     }
 
     pub fn some(t: T) -> AtomicOption<T> {
-        AtomicOption { inner: AtomicPtr::new(t.into_raw()) }
+        AtomicOption {
+            inner: AtomicPtr::new(t.into_raw()),
+        }
     }
 
     #[inline]

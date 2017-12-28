@@ -2,17 +2,17 @@ use std::io;
 use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
 use std::net::TcpStream as SysTcpStream;
-use std::net::{ToSocketAddrs, SocketAddr, SocketAddrV4, SocketAddrV6, Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use super::super::winapi::*;
 use super::super::EventData;
 use super::super::miow::net::TcpStreamExt;
-use super::super::{co_io_result, add_socket, IoData};
+use super::super::{add_socket, co_io_result, IoData};
 use net::TcpStream;
 use net2::TcpBuilder;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
     io_data: EventData,
@@ -49,18 +49,19 @@ impl TcpStreamConnect {
                     }
                 };
 
-                builder.bind(&any).and_then(|_| builder.to_tcp_stream()).and_then(|s| {
-                    // must register io first
-                    try!(s.set_nonblocking(true));
-                    add_socket(&s).map(|_io| {
-                        TcpStreamConnect {
+                builder
+                    .bind(&any)
+                    .and_then(|_| builder.to_tcp_stream())
+                    .and_then(|s| {
+                        // must register io first
+                        try!(s.set_nonblocking(true));
+                        add_socket(&s).map(|_io| TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
                             addr: addr,
                             stream: s,
                             can_drop: DelayDrop::new(),
-                        }
+                        })
                     })
-                })
             })
     }
 
@@ -83,12 +84,14 @@ impl EventSource for TcpStreamConnect {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();
         let cancel = co_cancel_data(&co);
-        s.get_selector().add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
+        s.get_selector()
+            .add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
         self.io_data.co = Some(co);
 
         // call the overlapped connect API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.stream.connect_overlapped(&self.addr, &[], self.io_data.get_overlapped())
+            self.stream
+                .connect_overlapped(&self.addr, &[], self.io_data.get_overlapped())
         });
 
         // register the cancel io data

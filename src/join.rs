@@ -6,7 +6,7 @@ use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use generator::Error;
 use coroutine_impl::Coroutine;
-use sync::{Blocker, AtomicOption};
+use sync::{AtomicOption, Blocker};
 
 pub struct Join {
     // the coroutine that waiting for this join handler
@@ -72,11 +72,12 @@ unsafe impl<T> Send for JoinHandle<T> {}
 unsafe impl<T> Sync for JoinHandle<T> {}
 
 /// create a JoinHandle
-pub fn make_join_handle<T>(co: Coroutine,
-                           join: Arc<UnsafeCell<Join>>,
-                           packet: Arc<AtomicOption<T>>,
-                           panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>)
-                           -> JoinHandle<T> {
+pub fn make_join_handle<T>(
+    co: Coroutine,
+    join: Arc<UnsafeCell<Join>>,
+    packet: Arc<AtomicOption<T>>,
+    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
+) -> JoinHandle<T> {
     JoinHandle {
         co: co,
         join: join,
@@ -109,12 +110,10 @@ impl<T> JoinHandle<T> {
         join.wait();
 
         // take the result
-        self.packet
-            .take(Ordering::Acquire)
-            .ok_or_else(|| {
-                            let p = unsafe { &mut *self.panic.get() };
-                            p.take().unwrap_or_else(|| Box::new(Error::Cancel))
-                        })
+        self.packet.take(Ordering::Acquire).ok_or_else(|| {
+            let p = unsafe { &mut *self.panic.get() };
+            p.take().unwrap_or_else(|| Box::new(Error::Cancel))
+        })
     }
 }
 

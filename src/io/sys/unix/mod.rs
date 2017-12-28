@@ -1,12 +1,12 @@
-extern crate nix;
 extern crate libc;
+extern crate nix;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 #[path = "epoll.rs"]
 mod select;
 
 #[cfg(any(target_os = "bitrig", target_os = "dragonfly", target_os = "freebsd",
-            target_os = "ios", target_os = "macos", target_os = "netbsd", target_os = "openbsd"))]
+          target_os = "ios", target_os = "macos", target_os = "netbsd", target_os = "openbsd"))]
 #[path = "kqueue.rs"]
 mod select;
 
@@ -16,16 +16,16 @@ pub mod cancel;
 use std::sync::Arc;
 use std::ops::Deref;
 use std::cell::RefCell;
-use std::{io, fmt, ptr};
+use std::{fmt, io, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use sync::AtomicOption;
 use scheduler::get_scheduler;
 use yield_now::{get_co_para, set_co_para};
-use coroutine_impl::{CoroutineImpl, run_coroutine};
-use timeout_list::{TimeoutHandle, TimeOutList};
+use coroutine_impl::{run_coroutine, CoroutineImpl};
+use timeout_list::{TimeOutList, TimeoutHandle};
 
-pub use self::select::{SysEvent, Selector};
+pub use self::select::{Selector, SysEvent};
 
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
@@ -58,12 +58,10 @@ fn from_nix_error(err: nix::Error) -> ::std::io::Error {
         InvalidUtf8 => {
             ::std::io::Error::new(::std::io::ErrorKind::InvalidData, "nix invalide utf8")
         }
-        UnsupportedOperation => {
-            ::std::io::Error::new(
-                ::std::io::ErrorKind::PermissionDenied,
-                "nix unsupported operation",
-            )
-        }
+        UnsupportedOperation => ::std::io::Error::new(
+            ::std::io::ErrorKind::PermissionDenied,
+            "nix unsupported operation",
+        ),
     }
 }
 
@@ -87,7 +85,6 @@ fn timeout_handler(data: TimerData) {
     // resume the coroutine with timeout error
     run_coroutine(co);
 }
-
 
 // the timeout data
 pub struct TimerData {
@@ -120,7 +117,9 @@ impl EventData {
     }
 
     pub fn timer_data(&self) -> TimerData {
-        TimerData { event_data: self as *const _ as *mut _ }
+        TimerData {
+            event_data: self as *const _ as *mut _,
+        }
     }
 
     #[inline]
@@ -156,7 +155,6 @@ impl IoData {
         let event_data = Arc::new(EventData::new(fd));
         IoData(event_data)
     }
-
 
     // clear the io flag
     #[inline]

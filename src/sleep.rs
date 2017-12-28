@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use sync::AtomicOption;
 use scheduler::get_scheduler;
-use yield_now::{yield_with, get_co_para};
-use coroutine_impl::{CoroutineImpl, EventSource, is_coroutine, co_cancel_data};
+use yield_now::{get_co_para, yield_with};
+use coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 
 struct Sleep {
     dur: Duration,

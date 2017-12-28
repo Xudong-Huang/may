@@ -3,12 +3,12 @@ use std::ops::Deref;
 use std::time::Duration;
 use std::sync::atomic::Ordering;
 use super::super::nix::unistd::read;
-use super::super::{IoData, from_nix_error, co_io_result};
+use super::super::{co_io_result, from_nix_error, IoData};
 use io::AsIoData;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct SocketRead<'a> {
     io_data: &'a IoData,
@@ -58,7 +58,9 @@ impl<'a> EventSource for SocketRead<'a> {
         let _g = self.can_drop.delay_drop();
 
         let cancel = co_cancel_data(&co);
-        get_scheduler().get_selector().add_io_timer(self.io_data, self.timeout);
+        get_scheduler()
+            .get_selector()
+            .add_io_timer(self.io_data, self.timeout);
         // after register the coroutine, it's possible that other thread run it immediately
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here

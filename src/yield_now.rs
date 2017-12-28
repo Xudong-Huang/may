@@ -1,11 +1,10 @@
 use std::thread;
-use generator::{co_yield_with, co_get_yield};
-use coroutine_impl::{is_coroutine, current_cancel_data};
+use generator::{co_get_yield, co_yield_with};
+use coroutine_impl::{current_cancel_data, is_coroutine};
 use coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
 use scheduler::get_scheduler;
 
-struct Yield {
-}
+struct Yield {}
 
 impl EventSource for Yield {
     fn subscribe(&mut self, co: CoroutineImpl) {

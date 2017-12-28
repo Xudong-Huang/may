@@ -12,7 +12,9 @@ pub struct RawVec<T> {
 #[cfg(not(nightly))]
 impl<T> RawVec<T> {
     pub fn with_capacity(cap: usize) -> Self {
-        RawVec { buf: Vec::with_capacity(cap) }
+        RawVec {
+            buf: Vec::with_capacity(cap),
+        }
     }
 
     pub fn ptr(&self) -> *mut T {
@@ -33,7 +35,6 @@ pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 // block shift
 pub const BLOCK_SHIFT: usize = 8;
 
-
 /// a block node contains a bunch of items stored in a array
 /// this could make the malloc/free not that frequent, aslo
 /// the arrary could speed up list opperations
@@ -43,7 +44,6 @@ pub struct BlockNode<T> {
     // use an array would have it's own drop semantics which is not desired
     data: RawVec<T>,
 }
-
 
 /// we don't implment the block node Drop trait
 /// the queue is responsible to drop all the items

@@ -11,7 +11,9 @@ pub struct CancelIoData {
 
 impl CancelIoData {
     pub fn new(ev_data: &EventData) -> Self {
-        CancelIoData { ev_data: ev_data as *const _ as *mut _ }
+        CancelIoData {
+            ev_data: ev_data as *const _ as *mut _,
+        }
     }
 
     pub unsafe fn cancel(&self) -> io::Result<()> {
@@ -50,6 +52,10 @@ impl CancelIo for CancelIoImpl {
     }
 
     unsafe fn cancel(&self) {
-        self.0.lock().expect("failed to get CancelIo lock").take().map(|d| d.cancel());
+        self.0
+            .lock()
+            .expect("failed to get CancelIo lock")
+            .take()
+            .map(|d| d.cancel());
     }
 }

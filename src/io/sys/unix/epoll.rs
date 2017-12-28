@@ -1,15 +1,15 @@
 use std::time::Duration;
 use std::os::unix::io::RawFd;
-use std::{io, cmp, ptr, isize};
+use std::{cmp, io, isize, ptr};
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
 use coroutine_impl::run_coroutine;
 use timeout_list::{now, ns_to_ms};
 use may_queue::mpsc_list::Queue as mpsc;
 use super::nix::sys::epoll::*;
-use super::nix::unistd::{read, write, close};
+use super::nix::unistd::{close, read, write};
 use super::libc::{eventfd, EFD_NONBLOCK};
-use super::{EventData, IoData, TimerList, from_nix_error, timeout_handler};
+use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 
 fn create_eventfd() -> io::Result<RawFd> {
     let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
@@ -62,7 +62,9 @@ pub struct Selector {
 
 impl Selector {
     pub fn new(io_workers: usize) -> io::Result<Self> {
-        let mut s = Selector { vec: SmallVec::new() };
+        let mut s = Selector {
+            vec: SmallVec::new(),
+        };
 
         for _ in 0..io_workers {
             let ss = try!(SingleSelector::new());
@@ -132,10 +134,9 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
-        let next_expire = self.vec[id].timer_list.schedule_timer(
-            now(),
-            &timeout_handler,
-        );
+        let next_expire = self.vec[id]
+            .timer_list
+            .schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
     }
 
@@ -146,7 +147,6 @@ impl Selector {
         let ret = write(self.vec[id].evfd, buf);
         info!("wakeup id={:?}, ret={:?}", id, ret);
     }
-
 
     // register io event to the selector
     #[inline]

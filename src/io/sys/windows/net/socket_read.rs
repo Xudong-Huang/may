@@ -1,6 +1,6 @@
 use std::{self, io};
 use std::time::Duration;
-use std::os::windows::io::{IntoRawSocket, FromRawSocket, AsRawSocket};
+use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
 use super::super::winapi::*;
 use super::super::EventData;
 use super::super::co_io_result;
@@ -8,7 +8,7 @@ use super::super::miow::net::TcpStreamExt;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct SocketRead<'a> {
     io_data: EventData,
@@ -46,14 +46,16 @@ impl<'a> EventSource for SocketRead<'a> {
         // if the event happened before this there would be something wrong
         // that the timer handle can't be removed in time
         // we must prepare the timer before call the API
-        s.get_selector().add_io_timer(&mut self.io_data, self.timeout);
+        s.get_selector()
+            .add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
         self.io_data.co = Some(co);
 
         // call the overlapped read API
-        co_try!(s,
-                self.io_data.co.take().expect("can't get co"),
-                unsafe { self.socket.read_overlapped(self.buf, self.io_data.get_overlapped()) });
+        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+            self.socket
+                .read_overlapped(self.buf, self.io_data.get_overlapped())
+        });
 
         // register the cancel io data
         cancel.set_io(CancelIoData::new(&self.io_data));

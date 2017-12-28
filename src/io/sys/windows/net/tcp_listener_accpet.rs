@@ -4,15 +4,15 @@ use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
 use super::super::winapi::*;
 use super::super::EventData;
-use super::super::{co_io_result, add_socket};
-use super::super::miow::net::{TcpListenerExt, AcceptAddrsBuf};
+use super::super::{add_socket, co_io_result};
+use super::super::miow::net::{AcceptAddrsBuf, TcpListenerExt};
 use net2::TcpBuilder;
 use yield_now::yield_now;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
-use net::{TcpStream, TcpListener};
-use coroutine_impl::{CoroutineImpl, EventSource, co_cancel_data};
+use net::{TcpListener, TcpStream};
+use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
@@ -56,11 +56,14 @@ impl<'a> TcpListenerAccept<'a> {
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
         }));
 
-        let addr = try!(self.addr.parse(&self.socket).and_then(|a| {
-            a.remote().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
-            })
-        }));
+        let addr = try!(
+            self.addr
+                .parse(&self.socket)
+                .and_then(|a| a.remote().ok_or_else(|| io::Error::new(
+                    io::ErrorKind::Other,
+                    "could not obtain remote address"
+                )))
+        );
 
         Ok((s, addr))
     }
@@ -77,8 +80,11 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
 
         // call the overlapped read API
         let (s, _) = co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket
-                .accept_overlapped(&self.builder, &mut self.addr, self.io_data.get_overlapped())
+            self.socket.accept_overlapped(
+                &self.builder,
+                &mut self.addr,
+                self.io_data.get_overlapped(),
+            )
         });
 
         // the user space has to check if it's set

@@ -1,11 +1,10 @@
 use std::time::Duration;
 use std::io::{self, Read, Write};
-use std::net::{self, ToSocketAddrs, SocketAddr, Shutdown};
+use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
 use io as io_impl;
 use io::net as net_impl;
 use yield_now::yield_with;
 use coroutine_impl::is_coroutine;
-
 
 // ===== TcpStream =====
 //
@@ -27,14 +26,12 @@ impl TcpStream {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        io_impl::add_socket(&s).map(|io| {
-            TcpStream {
-                io: io,
-                sys: s,
-                ctx: io_impl::IoContext::new(),
-                read_timeout: None,
-                write_timeout: None,
-            }
+        io_impl::add_socket(&s).map(|io| TcpStream {
+            io: io,
+            sys: s,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: None,
+            write_timeout: None,
         })
     }
 
@@ -218,7 +215,6 @@ impl io_impl::AsIoData for TcpStream {
     }
 }
 
-
 // ===== TcpListener =====
 //
 //
@@ -237,12 +233,10 @@ impl TcpListener {
         // to avoid unnecessary context switch
         try!(s.set_nonblocking(true));
 
-        io_impl::add_socket(&s).map(|io| {
-            TcpListener {
-                io: io,
-                ctx: io_impl::IoContext::new(),
-                sys: s,
-            }
+        io_impl::add_socket(&s).map(|io| TcpListener {
+            io: io,
+            ctx: io_impl::IoContext::new(),
+            sys: s,
         })
     }
 
@@ -257,7 +251,9 @@ impl TcpListener {
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
-            return self.sys.accept().and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
+            return self.sys
+                .accept()
+                .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
         }
 
         self.io.reset();
@@ -338,7 +334,7 @@ impl<'a> Iterator for Incoming<'a> {
 //
 
 #[cfg(unix)]
-use std::os::unix::io::{IntoRawFd, AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 #[cfg(unix)]
 impl IntoRawFd for TcpStream {
@@ -392,7 +388,7 @@ impl FromRawFd for TcpListener {
 //
 
 #[cfg(windows)]
-use std::os::windows::io::{IntoRawSocket, AsRawSocket, FromRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 
 #[cfg(windows)]
 impl IntoRawSocket for TcpStream {

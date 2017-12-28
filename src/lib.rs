@@ -45,19 +45,19 @@ mod park;
 mod pool;
 mod local;
 mod sleep;
+mod cancel;
+mod config;
 #[macro_use]
 mod macros;
 mod scoped;
-mod cancel;
-mod config;
 mod scheduler;
 mod yield_now;
-mod coroutine_impl;
 mod timeout_list;
+mod coroutine_impl;
 
 pub mod net;
 pub mod sync;
 pub mod cqueue;
 pub mod coroutine;
-pub use config::{config, Config};
 pub use local::LocalKey;
+pub use config::{config, Config};

@@ -1,11 +1,9 @@
-
 use std;
 use std::fmt;
 use std::sync::atomic::Ordering;
 use smallvec::VecLike;
 
 use block_node::*;
-
 
 /// spsc queue
 pub struct Queue<T> {
@@ -239,8 +237,10 @@ mod bench {
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
-            thread::spawn(move || for i in 0..total_work {
-                _q.push(i);
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
             });
 
             let mut size = 0;
@@ -274,8 +274,10 @@ mod bench {
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
-            thread::spawn(move || for i in 0..total_work {
-                _q.push(i);
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
             });
 
             for i in 0..total_work {
@@ -295,8 +297,10 @@ mod bench {
             let total_work: usize = 1000_000;
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
-            thread::spawn(move || for i in 0..total_work {
-                tx.send(i).unwrap();
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    tx.send(i).unwrap();
+                }
             });
 
             for i in 0..total_work {

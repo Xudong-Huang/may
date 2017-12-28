@@ -35,7 +35,7 @@ use std::sync::Arc;
 use std::cell::UnsafeCell;
 
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{Relaxed, Release, Acquire};
+use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 
 struct Node<T> {
     sequence: AtomicUsize,
@@ -152,7 +152,9 @@ impl<T: Send> State<T> {
 
 impl<T: Send> Queue<T> {
     pub fn with_capacity(capacity: usize) -> Queue<T> {
-        Queue { state: Arc::new(State::with_capacity(capacity)) }
+        Queue {
+            state: Arc::new(State::with_capacity(capacity)),
+        }
     }
 
     pub fn push(&self, value: T) -> Result<(), T> {
@@ -166,7 +168,9 @@ impl<T: Send> Queue<T> {
 
 impl<T: Send> Clone for Queue<T> {
     fn clone(&self) -> Queue<T> {
-        Queue { state: self.state.clone() }
+        Queue {
+            state: self.state.clone(),
+        }
     }
 }
 

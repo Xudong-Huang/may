@@ -2,13 +2,13 @@ use std::fmt;
 use std::sync::Arc;
 use std::io::ErrorKind;
 use std::time::Duration;
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use cancel::Cancel;
 use sync::AtomicOption;
 use scheduler::get_scheduler;
 use timeout_list::TimeoutHandle;
-use yield_now::{yield_with, get_co_para, yield_now};
-use coroutine_impl::{CoroutineImpl, EventSource, run_coroutine, co_cancel_data};
+use yield_now::{get_co_para, yield_now, yield_with};
+use coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ParkError {
@@ -72,8 +72,12 @@ impl Park {
         }
 
         loop {
-            match self.state
-                .compare_exchange_weak(state, state - 1, Ordering::AcqRel, Ordering::Relaxed) {
+            match self.state.compare_exchange_weak(
+                state,
+                state - 1,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => return false, // successfully consume the state, no need to block
                 Err(x) => {
                     if x & 1 == 0 {
@@ -95,8 +99,12 @@ impl Park {
         }
 
         loop {
-            match self.state
-                .compare_exchange_weak(state, state + 1, Ordering::AcqRel, Ordering::Relaxed) {
+            match self.state.compare_exchange_weak(
+                state,
+                state + 1,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => return self.wake_up(false),
                 Err(x) => {
                     if x & 1 == 1 {
@@ -123,15 +131,13 @@ impl Park {
 
     #[inline]
     fn wake_up(&self, b_sync: bool) {
-        self.wait_co
-            .take_fast(Ordering::Acquire)
-            .map(|co| {
-                if b_sync {
-                    run_coroutine(co);
-                } else {
-                    get_scheduler().schedule(co);
-                }
-            });
+        self.wait_co.take_fast(Ordering::Acquire).map(|co| {
+            if b_sync {
+                run_coroutine(co);
+            } else {
+                get_scheduler().schedule(co);
+            }
+        });
     }
 
     /// park current coroutine with specified timeout
@@ -214,8 +220,9 @@ impl EventSource for Park {
         let cancel = co_cancel_data(&co);
         // if we share the same park, the previous timer may wake up it by false
         // if we not deleted the timer in time
-        self.timeout_handle =
-            self.timeout.take().map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
+        self.timeout_handle = self.timeout
+            .take()
+            .map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
 
         let _g = self.delay_drop();
 
@@ -243,7 +250,8 @@ impl EventSource for Park {
         self.state.fetch_add(0x02, Ordering::Release);
 
         // should deal with cancel that happened just before the kernel
-        self.is_canceled.store(cancel.is_canceled(), Ordering::Relaxed);
+        self.is_canceled
+            .store(cancel.is_canceled(), Ordering::Relaxed);
 
         if self.check_cancel {
             cancel.check_cancel();
@@ -253,9 +261,10 @@ impl EventSource for Park {
 
 impl fmt::Debug for Park {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "Park {{ co: {:?}, state: {:?} }}",
-               self.wait_co,
-               self.state)
+        write!(
+            f,
+            "Park {{ co: {:?}, state: {:?} }}",
+            self.wait_co, self.state
+        )
     }
 }

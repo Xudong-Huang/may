@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::{Mutex, Condvar};
+use std::sync::{Condvar, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use park::{Park, ParkError};
 use coroutine_impl::is_coroutine;

@@ -1,6 +1,6 @@
+extern crate kernel32;
 extern crate miow;
 extern crate winapi;
-extern crate kernel32;
 
 macro_rules! co_try {
     ($s: expr, $co: expr, $e:expr) => (match $e {
@@ -18,12 +18,12 @@ mod iocp;
 pub mod net;
 pub mod cancel;
 
-use std::{io, fmt};
+use std::{fmt, io};
 use std::os::windows::io::AsRawSocket;
 use yield_now::get_co_para;
 use scheduler::get_scheduler;
 
-pub use self::iocp::{EventData, SysEvent, Selector};
+pub use self::iocp::{EventData, Selector, SysEvent};
 
 // each file associated data, windows already have OVERLAPPED
 // fake windows interface

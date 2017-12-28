@@ -11,7 +11,9 @@ pub struct DelayDrop {
 
 impl DelayDrop {
     pub fn new() -> Self {
-        DelayDrop { can_drop: Box::new((AtomicBool::new(false), AtomicBool::new(false))) }
+        DelayDrop {
+            can_drop: Box::new((AtomicBool::new(false), AtomicBool::new(false))),
+        }
     }
 
     pub fn delay_drop<'a>(&'a self) -> DropGuard<'a> {
