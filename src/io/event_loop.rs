@@ -13,7 +13,6 @@ fn schedule_io_default(co: CoroutineImpl) {
 }
 
 fn schedule_io_on_worker(co: CoroutineImpl) {
-    println!("on my dear");
     get_scheduler().schedule(co);
 }
 
