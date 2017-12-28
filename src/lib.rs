@@ -29,15 +29,15 @@ extern crate log;
 #[doc(hidden)]
 extern crate net2;
 // windows platform not use this crate
-#[allow(unused_extern_crates)]
-#[doc(hidden)]
-extern crate smallvec;
 #[doc(hidden)]
 extern crate crossbeam;
 #[doc(hidden)]
-extern crate may_queue;
-#[doc(hidden)]
 extern crate generator;
+#[doc(hidden)]
+extern crate may_queue;
+#[allow(unused_extern_crates)]
+#[doc(hidden)]
+extern crate smallvec;
 
 mod io;
 mod join;
@@ -59,5 +59,5 @@ pub mod net;
 pub mod sync;
 pub mod cqueue;
 pub mod coroutine;
-pub use config::config;
+pub use config::{config, Config};
 pub use local::LocalKey;
