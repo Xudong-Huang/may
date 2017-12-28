@@ -3,7 +3,7 @@ use std::os::unix::io::RawFd;
 use std::{cmp, io, isize, ptr};
 use std::sync::atomic::Ordering;
 use smallvec::SmallVec;
-use coroutine_impl::run_coroutine;
+use coroutine_impl::CoroutineImpl;
 use timeout_list::{now, ns_to_ms};
 use may_queue::mpsc_list::Queue as mpsc;
 use super::nix::sys::epoll::*;
@@ -58,11 +58,13 @@ impl Drop for SingleSelector {
 pub struct Selector {
     // 128 should be fine for max io threads
     vec: SmallVec<[SingleSelector; 128]>,
+    schedule_policy: fn(CoroutineImpl),
 }
 
 impl Selector {
-    pub fn new(io_workers: usize) -> io::Result<Self> {
+    pub fn new(io_workers: usize, schedule_policy: fn(CoroutineImpl)) -> io::Result<Self> {
         let mut s = Selector {
+            schedule_policy,
             vec: SmallVec::new(),
         };
 
@@ -127,7 +129,7 @@ impl Selector {
             });
 
             // schedule the coroutine
-            run_coroutine(co);
+            (self.schedule_policy)(co);
         }
 
         // free the unused event_data

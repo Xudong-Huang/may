@@ -1,14 +1,31 @@
 use std::io;
 use super::sys::{Selector, SysEvent};
+use scheduler::get_scheduler;
+use coroutine_impl::{run_coroutine, CoroutineImpl};
 
 /// Single threaded IO event loop.
 pub struct EventLoop {
     selector: Selector,
 }
 
+fn schedule_io_default(co: CoroutineImpl) {
+    run_coroutine(co);
+}
+
+fn schedule_io_on_worker(co: CoroutineImpl) {
+    println!("on my dear");
+    get_scheduler().schedule(co);
+}
+
 impl EventLoop {
-    pub fn new(io_workers: usize) -> io::Result<EventLoop> {
-        Selector::new(io_workers).map(|selector| EventLoop { selector: selector })
+    pub fn new(io_workers: usize, run_on_io: bool) -> io::Result<EventLoop> {
+        let schedule_policy = if run_on_io {
+            schedule_io_default
+        } else {
+            schedule_io_on_worker
+        };
+
+        Selector::new(io_workers, schedule_policy).map(|selector| EventLoop { selector: selector })
     }
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever

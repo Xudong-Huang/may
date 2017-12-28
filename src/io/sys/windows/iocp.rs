@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use std::{io, ptr};
 use std::os::windows::io::AsRawSocket;
 use yield_now::set_co_para;
-use coroutine_impl::{run_coroutine, CoroutineImpl};
+use coroutine_impl::CoroutineImpl;
 use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use super::kernel32;
 use super::winapi::*;
@@ -18,7 +18,7 @@ type TimerList = TimeOutList<TimerData>;
 pub type TimerHandle = TimeoutHandle<TimerData>;
 
 // event associated io data, must be construct in the coroutine
-// this passed in to the _overlapped verion API and will read back
+// this passed in to the _overlapped version API and will read back
 // when IOCP get an io event. the timer handle is used to remove
 // from the timeout list and co will be run in the io thread
 #[repr(C)]
@@ -63,14 +63,16 @@ pub struct Selector {
     /// The actual completion port that's used to manage all I/O
     port: CompletionPort,
     timer_list: TimerList,
+    schedule_policy: fn(CoroutineImpl),
 }
 
 impl Selector {
-    pub fn new(_io_workers: usize) -> io::Result<Selector> {
+    pub fn new(_io_workers: usize, schedule_policy: fn(CoroutineImpl)) -> io::Result<Selector> {
         // only let one thread working, other threads blocking, this is more efficient
         CompletionPort::new(1).map(|cp| Selector {
             port: cp,
             timer_list: TimerList::new(),
+            schedule_policy,
         })
     }
 
@@ -105,7 +107,7 @@ impl Selector {
             co.prefetch();
 
             // it's safe to remove the timer since we are
-            // runing the timer_list in the same thread
+            // running the timer_list in the same thread
             // this is not true when running in multi-thread environment
             data.timer.take().map(|h| {
                 unsafe {
@@ -148,7 +150,7 @@ impl Selector {
             }
 
             // schedule the coroutine
-            run_coroutine(co);
+            (self.schedule_policy)(co);
         }
 
         // deal with the timer list
@@ -165,7 +167,7 @@ impl Selector {
             .unwrap();
     }
 
-    // register file hanle to the iocp
+    // register file handle to the iocp
     #[inline]
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle

@@ -54,8 +54,14 @@ pub fn get_scheduler() -> &'static Scheduler {
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(|| {
         let workers = config().get_workers();
-        let io_workers = config().get_io_workers();
-        let b: Box<Scheduler> = Scheduler::new(io_workers);
+        let mut io_workers = config().get_io_workers();
+        let mut run_on_io = true;
+        if io_workers == 0 {
+            // running all the coroutines on normal worker thread
+            io_workers = 1;
+            run_on_io = false;
+        }
+        let b: Box<Scheduler> = Scheduler::new(io_workers, run_on_io);
         unsafe {
             SCHED = Box::into_raw(b);
         }
@@ -109,10 +115,10 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(io_workers: usize) -> Box<Self> {
+    pub fn new(io_workers: usize, run_on_io: bool) -> Box<Self> {
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new(io_workers).expect("can't create event_loop"),
+            event_loop: EventLoop::new(io_workers, run_on_io).expect("can't create event_loop"),
             ready_list: mpmc::new(),
             timer_thread: TimerThread::new(),
             wait_list: WaitList::with_capacity(256), // workers: workers,
