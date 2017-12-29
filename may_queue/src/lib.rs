@@ -2,8 +2,6 @@
 #![cfg_attr(nightly, feature(core_intrinsics))]
 #![cfg_attr(all(nightly, test), feature(test))]
 
-extern crate smallvec;
-
 mod block_node;
 
 pub mod spsc;

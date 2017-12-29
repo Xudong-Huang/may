@@ -9,7 +9,7 @@ struct Node<T> {
     value: Option<T>,
     refs: usize,
 }
-// linked bit is MSB, refcount is 2 for handle and list
+// linked bit is MSB, ref count is 2 for handle and list
 const REF_INIT: usize = 0x1000_0002;
 const REF_COUNT_MASK: usize = 0x0FFF_FFFF;
 
@@ -32,7 +32,7 @@ unsafe impl<T: Sync> Sync for Entry<T> {}
 
 impl<T> Entry<T> {
     // get the internal data mut ref
-    // must make sure it's not poped by the consumer
+    // must make sure it's not popped by the consumer
     pub unsafe fn get_data(&self) -> &mut T {
         (*self.node).value.as_mut().unwrap()
     }
@@ -70,7 +70,7 @@ impl<T> Entry<T> {
             // when next is null, the remove takes no action
             // and expect pop() would eventually consume the data
             // this is mainly used in the timer list, so it's rarely
-            // the next is not contension for that we have wait some time already
+            // the next is not contention for that we have wait some time already
             // leave the last node not removed also persist the queue for a while
             // that prevent frequent queue create and destroy
             if !next.is_null() {
@@ -86,7 +86,7 @@ impl<T> Entry<T> {
                 // since self is not dropped, below is always false
                 node.refs -= 1;
                 if node.refs == 0 {
-                    // release the node only when the refcount becomes 0
+                    // release the node only when the ref count becomes 0
                     let _: Box<Node<T>> = Box::from_raw(node);
                 }
 
@@ -100,7 +100,7 @@ impl<T> Entry<T> {
 
 impl<T> Drop for Entry<T> {
     // only call this drop in the same thread, or you must make sure it happens with no contension
-    // running in a coroutine is a kind of sequencial opperation, so it can safely drop there after
+    // running in a coroutine is a kind of sequential operation, so it can safely drop there after
     // returning from "kernel"
     fn drop(&mut self) {
         let node = unsafe { &mut *self.node };
@@ -140,7 +140,7 @@ impl<T> Queue<T> {
     }
 
     /// Pushes a new value onto this queue.
-    /// if the new node is head, indicat a ture
+    /// if the new node is head, indicate a true
     /// this is used to update the BH if it's a new head
     pub fn push(&self, t: T) -> (Entry<T>, bool) {
         unsafe {
@@ -241,7 +241,7 @@ impl<T> Queue<T> {
             let ret = (*next).value.take().unwrap();
             (*tail).refs -= 1;
             if (*tail).refs == 0 {
-                // release the node only when the refcount becomes 0
+                // release the node only when the ref count becomes 0
                 let _: Box<Node<T>> = Box::from_raw(tail);
             }
 
@@ -287,7 +287,7 @@ impl<T> Queue<T> {
             let ret = (*next).value.take().unwrap();
             (*tail).refs -= 1;
             if (*tail).refs == 0 {
-                // release the node only when the refcount becomes 0
+                // release the node only when the ref count becomes 0
                 let _: Box<Node<T>> = Box::from_raw(tail);
             }
 

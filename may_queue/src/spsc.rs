@@ -1,27 +1,26 @@
 use std;
 use std::fmt;
 use std::sync::atomic::Ordering;
-use smallvec::VecLike;
 
 use block_node::*;
 
 /// spsc queue
 pub struct Queue<T> {
     // ----------------------------------------
-    // keep a chache line align
+    // keep a cache line align
     _pad0: [u8; 64],
     // use for pop
     head: *mut BlockNode<T>,
     // used to track the pop number
     pop_index: usize,
     // -----------------------------------------
-    // keep a chache line align
+    // keep a cache line align
     _pad1: [u8; 64],
     // use for push
     tail: *mut BlockNode<T>,
     // used to track the push number
     push_index: usize,
-    // keep a chache line align
+    // keep a cache line align
     _pad2: [u8; 64],
 }
 
@@ -99,7 +98,7 @@ impl<T> Queue<T> {
     }
 
     // here the max bulk pop should be within a block node
-    pub fn bulk_pop_expect<V: VecLike<T>>(&self, expect: usize, vec: &mut V) -> usize {
+    pub fn bulk_pop_expect<V: Extend<T>>(&self, expect: usize, vec: &mut V) -> usize {
         let mut index = self.pop_index;
         // prevent release version wrong optimization!! use a volatile read
         let push_index = unsafe { std::ptr::read_volatile(&self.push_index) };
@@ -132,14 +131,14 @@ impl<T> Queue<T> {
     }
 
     // bulk pop as much as possible
-    pub fn bulk_pop<V: VecLike<T>>(&self, vec: &mut V) -> usize {
+    pub fn bulk_pop<V: Extend<T>>(&self, vec: &mut V) -> usize {
         self.bulk_pop_expect(0, vec)
     }
 }
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        //  pop all the element to make sure the queue is emppty
+        //  pop all the element to make sure the queue is empty
         while self.pop().is_some() {}
         assert_eq!(self.head, self.tail);
 
@@ -289,7 +288,7 @@ mod bench {
 
     // #[bench]
     // the channel bench result show that it's 10 fold slow than our queue
-    // not to mention the multi core contension
+    // not to mention the multi core contention
     #[allow(dead_code)]
     fn sys_stream_test(b: &mut Bencher) {
         b.iter(|| {

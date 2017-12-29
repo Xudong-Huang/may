@@ -26,7 +26,6 @@ impl<T> RawVec<T> {
 use std::cmp;
 use std::ptr;
 use std::sync::atomic::AtomicPtr;
-use smallvec::VecLike;
 
 // size for block_node
 pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
@@ -36,8 +35,8 @@ pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 pub const BLOCK_SHIFT: usize = 8;
 
 /// a block node contains a bunch of items stored in a array
-/// this could make the malloc/free not that frequent, aslo
-/// the arrary could speed up list opperations
+/// this could make the malloc/free not that frequent, also
+/// the array could speed up list operations
 pub struct BlockNode<T> {
     pub next: AtomicPtr<BlockNode<T>>,
     // we use RawVec to manage the memory
@@ -45,7 +44,7 @@ pub struct BlockNode<T> {
     data: RawVec<T>,
 }
 
-/// we don't implment the block node Drop trait
+/// we don't implement the block node Drop trait
 /// the queue is responsible to drop all the items
 /// and would call its get() method for the dropping
 impl<T> BlockNode<T> {
@@ -80,12 +79,17 @@ impl<T> BlockNode<T> {
     /// you must make sure that end is not passing the end of this block
     /// use bulk_end() for the end para
     #[inline]
-    pub unsafe fn bulk_get<V: VecLike<T>>(&self, start: usize, end: usize, vec: &mut V) -> usize {
+    pub unsafe fn bulk_get<V: Extend<T>>(
+        &self,
+        start: usize,
+        end: usize,
+        vec: &mut V,
+    ) -> usize {
         let size = end.wrapping_sub(start);
         let mut p_data = self.data.ptr().offset((start & BLOCK_MASK) as isize);
         // vec.reserve(size);
         for _i in 0..size {
-            vec.push(ptr::read(p_data));
+            vec.extend(Some(ptr::read(p_data)));
             p_data = p_data.offset(1);
         }
         size
