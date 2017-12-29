@@ -1,5 +1,7 @@
 #![cfg(nightly)]
 #![feature(test)]
+
+#[macro_use]
 extern crate may;
 extern crate test;
 
@@ -14,7 +16,7 @@ fn yield_bench(b: &mut Bencher) {
     // when cancel the generator
     // panic::set_hook(Box::new(|_| {}));
     b.iter(|| {
-        let h = spawn(|| for _i in 0..10000 {
+        let h = go!(|| for _i in 0..10000 {
             yield_now();
         });
 
@@ -34,7 +36,7 @@ fn spawn_bench(b: &mut Bencher) {
             let j = std::thread::spawn(move || {
                 scope(|scope| {
                     for _i in 0..total_work / threads {
-                        scope.spawn(|| {
+                        go!(scope, || {
                             // yield_now();
                         });
                     }
@@ -59,7 +61,7 @@ fn spawn_bench_1(b: &mut Bencher) {
             let work = total_work / threads;
             let j = std::thread::spawn(move || {
                 let v = (0..work)
-                    .map(|_| coroutine::spawn(|| {}))
+                    .map(|_| go!(|| {}))
                     .collect::<Vec<_>>();
                 for h in v {
                     h.join().unwrap();
@@ -82,7 +84,7 @@ fn smoke_bench(b: &mut Bencher) {
         for _t in 0..threads {
             let j = std::thread::spawn(|| {
                 scope(|scope| for _i in 0..200 {
-                    scope.spawn(|| for _j in 0..1000 {
+                    go!(scope, || for _j in 0..1000 {
                         yield_now();
                     });
                 });
@@ -104,7 +106,7 @@ fn smoke_bench_1(b: &mut Bencher) {
         for _t in 0..threads {
             let j = std::thread::spawn(|| {
                 scope(|scope| for _i in 0..2000 {
-                    scope.spawn(|| for _j in 0..4 {
+                    go!(scope, || for _j in 0..4 {
                         yield_now();
                     });
                 });
@@ -124,10 +126,10 @@ fn smoke_bench_2(b: &mut Bencher) {
         scope(|s| {
             // create a main coroutine, let it spawn 10 sub coroutine
             for _ in 0..100 {
-                s.spawn(|| {
+                go!(s, || {
                     scope(|ss| {
                         for _ in 0..100 {
-                            ss.spawn(|| {
+                            go!(ss, || {
                                 // each task yield 4 times
                                 for _ in 0..4 {
                                     yield_now();
@@ -148,10 +150,10 @@ fn smoke_bench_3(b: &mut Bencher) {
         let mut vec = Vec::with_capacity(100);
         // create a main coroutine, let it spawn 10 sub coroutine
         for _ in 0..100 {
-            let j = spawn(|| {
+            let j = go!(|| {
                 let mut _vec = Vec::with_capacity(100);
                 for _ in 0..100 {
-                    let _j = spawn(|| {
+                    let _j = go!(|| {
                         // each task yield 10 times
                         for _ in 0..4 {
                             yield_now();
