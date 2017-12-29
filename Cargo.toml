@@ -16,6 +16,7 @@ exclude = [
     ".travis.yml",
     "appveyor.yml",
     "benches/**/*",
+    "docs/**/*",
 ]
 
 [dependencies]
@@ -25,7 +26,7 @@ time = "0.1"
 smallvec = "0.6"
 generator = "0.6"
 crossbeam = "0.3"
-may_queue = { version = "0.1.0", path = "may_queue" }
+may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
