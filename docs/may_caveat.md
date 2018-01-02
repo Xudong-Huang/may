@@ -44,12 +44,13 @@ And you also should avoid calling functions that internally use a big stack spac
 Builder::new().stack_size(0x2000).spawn(...)
 ```
 
-TODO: I will write a another post that describing how to tune the stack size for your application.
+For how to tune the coroutine stack size, please ref [this][stack_size]
 
 ## Summary
-Develop a coroutine libary in rust is not an easy task. [MAY][may] can't prevent users doing wrong things. So you should know those caveats clearly before using the library. I hope those restrictions will not prevent you from using the library 🙂
+Develop a coroutine library in rust is not an easy task. [MAY][may] can't prevent users doing wrong things. So you should know those caveats clearly before using the library. I hope those restrictions will not prevent you from using the library 🙂
 
 <!--refs-->
 [may]:https://github.com/Xudong-Huang/may
 [cls]:https://blog.zhpass.com/2017/12/18/CLS/
 [issue]:https://github.com/Xudong-Huang/may/issues/6
+[stack_size]:tune_stack_size.md

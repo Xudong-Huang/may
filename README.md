@@ -138,7 +138,7 @@ Access TLS in coroutine would trigger undefined behavior.
 If you need to tune the coroutine stack size, please read [here][stack]
 
 ## Notices
-* The spawn APIs would be change to `unsafe` so that apply rust safety rules. This would be available in `0.2.0` release. please ref this [issue](https://github.com/Xudong-Huang/may/issues/6) and this [issue](https://github.com/Xudong-Huang/may/issues/8)
+* The spawn APIs are changed to `unsafe` since 0.2.0 so that apply rust safety rules. Please ref this [issue](https://github.com/Xudong-Huang/may/issues/6) and this [issue](https://github.com/Xudong-Huang/may/issues/8)
 * Both stable and nightly rust compiler are supported
 * This crate supports below platforms, for more platform support, please ref [generator][generator]
 
