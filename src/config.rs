@@ -58,7 +58,12 @@ impl Config {
 
     /// get the normal workers number
     pub fn get_workers(&self) -> usize {
-        WORKERS.load(Ordering::Acquire)
+        let workers = WORKERS.load(Ordering::Acquire);
+        if workers != 0 {
+            workers
+        } else {
+            DEFAULT_WORKERS
+        }
     }
 
     /// set the io worker thread number
@@ -75,7 +80,7 @@ impl Config {
         IO_WORKERS.load(Ordering::Acquire)
     }
 
-    /// set coroutine pool number, 0 means unlimited
+    /// set cached coroutine pool number
     ///
     /// if you pass 0 to it, will use internal default
     pub fn set_pool_capacity(&self, capacity: usize) -> &Self {
@@ -86,7 +91,12 @@ impl Config {
 
     /// get the coroutine pool capacity
     pub fn get_pool_capacity(&self) -> usize {
-        POOL_CAPACITY.load(Ordering::Acquire)
+        let size = POOL_CAPACITY.load(Ordering::Acquire);
+        if size != 0 {
+            size
+        } else {
+            DEFAULT_POOL_CAPACITY
+        }
     }
 
     /// set default coroutine stack size in usize
