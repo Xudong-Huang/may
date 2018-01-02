@@ -86,7 +86,7 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // async cancel for a coroutine
     pub unsafe fn cancel(&self) {
-        self.state.fetch_add(1, Ordering::Release);
+        self.state.fetch_or(1, Ordering::Release);
         match self.co.take(Ordering::Acquire) {
             Some(co) => {
                 co.take(Ordering::Acquire)
