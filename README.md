@@ -67,7 +67,10 @@ fn main() {
 
 ## Performance
 
-Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`
+Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`.
+
+**Note**
+> The [tokio][tokio] version is not at it's maximum optimization. In theory `future` scheduling is not evolving context switch which should be a little faster than coroutine version. But I can't find a proper example for multi thread version comparison, so just put it here for you to get a some sense about the performance of `May`. If you have a better implementation of `future` based echo server, I will update it here.
 
 **Machine Specs:**
 
