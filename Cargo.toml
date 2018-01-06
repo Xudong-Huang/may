@@ -43,6 +43,7 @@ serde = "1.0"
 serde_derive = "1.0"
 httparse = "1.1"
 bytes = "0.4"
+native-tls = "0.1.4"
 
 
 [profile.release]
