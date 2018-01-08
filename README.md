@@ -138,6 +138,9 @@ Access TLS in coroutine would trigger undefined behavior.
 * Don't run CPU bound tasks for long time
 * Don't exceed the stack. It will trigger undefined behavior.
 
+**Note**
+> The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
+
 ## How to tune stack size
 If you need to tune the coroutine stack size, please read [here][stack]
 
