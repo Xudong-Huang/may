@@ -27,7 +27,6 @@ smallvec = "0.6"
 generator = "0.6"
 crossbeam = "0.3"
 may_queue = { version = "0.1", path = "may_queue" }
-tungstenite = "0.5.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -45,6 +44,7 @@ serde_derive = "1.0"
 httparse = "1.1"
 bytes = "0.4"
 native-tls = "0.1.4"
+tungstenite = "0.5.2"
 
 
 [profile.release]

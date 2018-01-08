@@ -63,14 +63,15 @@ fn main() {
 * [echo server][echo_server]
 * [echo client][echo_client]
 * [simple http][http_sever]
-
+* [simple https][https_sever]
+* [websocket][websocket]
 
 ## Performance
 
 Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`.
 
 **Note**
-> The [tokio][tokio] version is not at it's maximum optimization. In theory `future` scheduling is not evolving context switch which should be a little faster than coroutine version. But I can't find a proper example for multi thread version comparison, so just put it here for you to get a some sense about the performance of `May`. If you have a better implementation of `future` based echo server, I will update it here.
+> The [tokio][tokio] version is not at it's maximum optimization. In theory `future` scheduling is not evolving context switch which should be a little faster than coroutine version. But I can't find a proper example for multi thread version comparison, so just put it here for you to get some sense about the performance of `May`. If you have a better implementation of `future` based echo server, I will update it here.
 
 **Machine Specs:**
 
@@ -163,6 +164,8 @@ May is licensed under either of the following, at your option:
 [echo_server]:examples/echo.rs
 [echo_client]:examples/echo_client.rs
 [http_sever]:examples/http.rs
+[https_sever]:examples/https.rs
+[websocket]:examples/websocket.rs
 [cls]:docs/CLS_instead_of_TLS.md
 [go]:https://tour.golang.org/concurrency/1
 [tokio]:https://github.com/tokio-rs/tokio-core/blob/master/examples/echo-threads.rs
