@@ -2,8 +2,6 @@ use std;
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
-use net2::TcpBuilder;
-use yield_now::yield_now;
 use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
@@ -16,25 +14,26 @@ use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
     socket: &'a std::net::TcpListener,
-    builder: TcpBuilder,
-    ret: Option<std::net::TcpStream>,
+    ret: std::net::TcpStream,
     addr: AcceptAddrsBuf,
     can_drop: DelayDrop,
 }
 
 impl<'a> TcpListenerAccept<'a> {
     pub fn new(socket: &'a TcpListener) -> io::Result<Self> {
-        let addr = try!(socket.local_addr());
-        let builder = match addr {
-            SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
-            SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
+        use socket2::{Domain, Socket, Type};
+
+        let local_addr = socket.local_addr()?;
+        let stream = match local_addr {
+            SocketAddr::V4(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+            SocketAddr::V6(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
         };
+        let stream = stream.into_tcp_stream();
 
         Ok(TcpListenerAccept {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),
             socket: socket.inner(),
-            builder: builder,
-            ret: None,
+            ret: stream,
             addr: AcceptAddrsBuf::new(),
             can_drop: DelayDrop::new(),
         })
@@ -44,12 +43,7 @@ impl<'a> TcpListenerAccept<'a> {
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
         try!(co_io_result(&self.io_data));
         let socket = &self.socket;
-        while self.ret.is_none() {
-            // we should wait until the kernel set it
-            yield_now();
-        }
-
-        let ss = self.ret.unwrap();
+        let ss = self.ret;
         let s = try!(socket.accept_complete(&ss).and_then(|_| {
             try!(ss.set_nonblocking(true));
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
@@ -77,15 +71,11 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // prepare the co first
         self.io_data.co = Some(co);
 
-        let stream = self.builder.to_tcp_stream().unwrap();
         // call the overlapped read API
-        let s = co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.socket
-                .accept_overlapped(&stream, &mut self.addr, self.io_data.get_overlapped())
+                .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
         });
-
-        // the user space has to check if it's set
-        self.ret = Some(stream);
 
         // register the cancel io data
         cancel.set_io(CancelIoData::new(&self.io_data));

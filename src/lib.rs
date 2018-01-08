@@ -27,7 +27,7 @@
 #[doc(hidden)]
 extern crate log;
 #[doc(hidden)]
-extern crate net2;
+extern crate socket2;
 // windows platform not use this crate
 #[doc(hidden)]
 extern crate crossbeam;

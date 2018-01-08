@@ -4,7 +4,6 @@ use std::os::windows::io::AsRawSocket;
 use std::net::TcpStream as SysTcpStream;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use net::TcpStream;
-use net2::TcpBuilder;
 use miow::net::TcpStreamExt;
 use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
@@ -22,18 +21,20 @@ pub struct TcpStreamConnect {
 
 impl TcpStreamConnect {
     pub fn new<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+        use socket2::{Domain, Socket, Type};
+
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
-        try!(addr.to_socket_addrs())
+        addr.to_socket_addrs()?
             .fold(Err(err), |prev, addr| {
                 prev.or_else(|_| {
-                    let builder = match addr {
-                        SocketAddr::V4(..) => try!(TcpBuilder::new_v4()),
-                        SocketAddr::V6(..) => try!(TcpBuilder::new_v6()),
+                    let socket = match addr {
+                        SocketAddr::V4(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+                        SocketAddr::V6(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
                     };
-                    Ok((builder, addr))
+                    Ok((socket, addr))
                 })
             })
-            .and_then(|(builder, addr)| {
+            .and_then(|(socket, addr)| {
                 // windows need to bind first when call ConnectEx API
                 let any = match addr {
                     SocketAddr::V4(..) => {
@@ -48,9 +49,9 @@ impl TcpStreamConnect {
                     }
                 };
 
-                builder
-                    .bind(&any)
-                    .and_then(|_| builder.to_tcp_stream())
+                socket
+                    .bind(&any.into())
+                    .and_then(|_| Ok(socket.into_tcp_stream()))
                     .and_then(|s| {
                         // must register io first
                         try!(s.set_nonblocking(true));
