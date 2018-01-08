@@ -2,11 +2,11 @@ use std::{self, io};
 use std::ops::Deref;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use super::super::{add_socket, co_io_result, IoData};
 use io::AsIoData;
 use yield_now::yield_with;
 use sync::delay_drop::DelayDrop;
 use net::{TcpListener, TcpStream};
+use super::super::{add_socket, co_io_result, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpListenerAccept<'a> {

@@ -1,6 +1,3 @@
-extern crate libc;
-extern crate nix;
-
 #[cfg(any(target_os = "linux", target_os = "android"))]
 #[path = "epoll.rs"]
 mod select;
@@ -19,6 +16,7 @@ use std::cell::RefCell;
 use std::{fmt, io, ptr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
+use nix;
 use sync::AtomicOption;
 use scheduler::get_scheduler;
 use yield_now::{get_co_para, set_co_para};
@@ -49,7 +47,8 @@ fn co_io_result() -> io::Result<()> {
 
 #[inline]
 fn from_nix_error(err: nix::Error) -> ::std::io::Error {
-    use self::nix::Error::*;
+    use nix::Error::*;
+
     match err {
         Sys(errno) => ::std::io::Error::from_raw_os_error(errno as i32),
         InvalidPath => {

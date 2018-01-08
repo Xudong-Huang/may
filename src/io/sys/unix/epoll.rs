@@ -2,13 +2,13 @@ use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::{cmp, io, isize, ptr};
 use std::sync::atomic::Ordering;
+use nix::sys::epoll::*;
 use smallvec::SmallVec;
+use libc::{eventfd, EFD_NONBLOCK};
 use coroutine_impl::CoroutineImpl;
 use timeout_list::{now, ns_to_ms};
+use nix::unistd::{close, read, write};
 use may_queue::mpsc_list::Queue as mpsc;
-use super::nix::sys::epoll::*;
-use super::nix::unistd::{close, read, write};
-use super::libc::{eventfd, EFD_NONBLOCK};
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 
 fn create_eventfd() -> io::Result<RawFd> {

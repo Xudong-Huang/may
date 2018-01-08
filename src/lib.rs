@@ -46,6 +46,13 @@ extern crate miow;
 #[doc(hidden)]
 extern crate winapi;
 
+#[cfg(unix)]
+#[doc(hidden)]
+extern crate libc;
+#[cfg(unix)]
+#[doc(hidden)]
+extern crate nix;
+
 mod io;
 mod join;
 mod park;

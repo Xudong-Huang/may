@@ -2,12 +2,12 @@ use std::{self, io};
 use std::time::Duration;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
-use super::super::{co_io_result, IoData};
 use io::AsIoData;
 use net::UdpSocket;
 use yield_now::yield_with;
 use scheduler::get_scheduler;
 use sync::delay_drop::DelayDrop;
+use super::super::{co_io_result, IoData};
 use coroutine_impl::{CoroutineImpl, EventSource};
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {

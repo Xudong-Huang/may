@@ -3,12 +3,12 @@ use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
 
+use libc;
 use smallvec::SmallVec;
 use coroutine_impl::CoroutineImpl;
 use timeout_list::{now, ns_to_dur};
 use may_queue::mpsc_list::Queue as mpsc;
 
-use super::libc;
 use super::{timeout_handler, EventData, IoData, TimerList};
 
 pub type SysEvent = libc::kevent;
