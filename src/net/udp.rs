@@ -19,7 +19,7 @@ impl UdpSocket {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        try!(s.set_nonblocking(true));
+        s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| UdpSocket {
             io: io,
@@ -50,7 +50,7 @@ impl UdpSocket {
 
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
-        let s = try!(self.sys.try_clone().and_then(|s| UdpSocket::new(s)));
+        let s = self.sys.try_clone().and_then(|s| UdpSocket::new(s))?;
         s.set_read_timeout(self.read_timeout).unwrap();
         s.set_write_timeout(self.write_timeout).unwrap();
         Ok(s)
@@ -59,8 +59,8 @@ impl UdpSocket {
     // windows doesn't support add dup handler to IOCP
     #[cfg(windows)]
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
-        let s = try!(self.sys.try_clone());
-        try!(s.set_nonblocking(true));
+        let s = self.sys.try_clone()?;
+        s.set_nonblocking(true)?;
         io_impl::add_socket(&s).ok();
         Ok(UdpSocket {
             io: io_impl::IoData::new(0),
@@ -72,7 +72,7 @@ impl UdpSocket {
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.send_to(buf, addr);
         }
@@ -84,13 +84,13 @@ impl UdpSocket {
             ret => return ret,
         }
 
-        let writer = try!(net_impl::UdpSendTo::new(self, buf, addr));
+        let writer = net_impl::UdpSendTo::new(self, buf, addr)?;
         yield_with(&writer);
         writer.done()
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.recv_from(buf);
         }
@@ -108,7 +108,7 @@ impl UdpSocket {
     }
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.send(buf);
         }
@@ -126,7 +126,7 @@ impl UdpSocket {
     }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.recv(buf);
         }

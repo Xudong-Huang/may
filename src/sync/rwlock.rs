@@ -179,7 +179,7 @@ impl<T: ?Sized> RwLock<T> {
             }
         }
 
-        let g = try!(RwLockReadGuard::new(self));
+        let g = RwLockReadGuard::new(self)?;
         // finally we add rlock
         *r += 1;
         Ok(g)
@@ -209,7 +209,7 @@ impl<T: ?Sized> RwLock<T> {
             Err(TryLockError::WouldBlock) => return Err(TryLockError::WouldBlock),
             _ => {}
         }
-        Ok(try!(RwLockWriteGuard::new(self)))
+        Ok(RwLockWriteGuard::new(self)?)
     }
 
     fn write_unlock(&self) {

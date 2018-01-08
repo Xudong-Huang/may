@@ -33,7 +33,7 @@ impl<'a> UdpRecvFrom<'a> {
     #[inline]
     pub fn done(self) -> io::Result<(usize, SocketAddr)> {
         loop {
-            try!(co_io_result());
+            co_io_result()?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);

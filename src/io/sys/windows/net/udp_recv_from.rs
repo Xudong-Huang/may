@@ -35,11 +35,11 @@ impl<'a> UdpRecvFrom<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<(usize, SocketAddr)> {
-        let size = try!(co_io_result(&self.io_data));
-        let addr = try!(self.addr.to_socket_addr().ok_or_else(|| io::Error::new(
+        let size = co_io_result(&self.io_data)?;
+        let addr = self.addr.to_socket_addr().ok_or_else(|| io::Error::new(
             io::ErrorKind::Other,
             "could not obtain remote address"
-        )));
+        ))?;
         Ok((size, addr))
     }
 }

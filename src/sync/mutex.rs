@@ -117,7 +117,7 @@ impl<T: ?Sized> Mutex<T> {
             match self.cnt
                 .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
             {
-                Ok(_) => Ok(try!(MutexGuard::new(self))),
+                Ok(_) => Ok(MutexGuard::new(self)?),
                 Err(_) => Err(TryLockError::WouldBlock),
             }
         } else {

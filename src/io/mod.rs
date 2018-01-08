@@ -42,7 +42,7 @@ impl IoContext {
             let me = unsafe { &mut *(self as *const _ as *mut Self) };
             if !is_coroutine() {
                 me.b_co = false;
-                try!(f());
+                f()?;
             }
             me.b_init = true;
         }

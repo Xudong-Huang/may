@@ -27,7 +27,7 @@ impl<'a> TcpListenerAccept<'a> {
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
         loop {
-            try!(co_io_result());
+            co_io_result()?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -36,7 +36,7 @@ impl<'a> TcpListenerAccept<'a> {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret => {
                     return ret.and_then(|(s, a)| {
-                        try!(s.set_nonblocking(true));
+                        s.set_nonblocking(true)?;
                         add_socket(&s).map(|io| (TcpStream::from_stream(s, io), a))
                     });
                 }

@@ -24,7 +24,7 @@ impl TcpStreamConnect {
         use socket2::{Domain, Type};
 
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
-        try!(addr.to_socket_addrs())
+        addr.to_socket_addrs()?
             .fold(Err(err), |prev, addr| {
                 prev.or_else(|_| {
                     let stream = match addr {
@@ -68,7 +68,7 @@ impl TcpStreamConnect {
     pub fn done(mut self) -> io::Result<TcpStream> {
         assert_eq!(self.stream.is_none(), false);
         loop {
-            try!(co_io_result());
+            co_io_result()?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);

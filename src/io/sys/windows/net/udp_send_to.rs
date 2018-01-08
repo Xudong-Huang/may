@@ -25,7 +25,7 @@ impl<'a> UdpSendTo<'a> {
         addr: A,
     ) -> io::Result<Self> {
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
-        try!(addr.to_socket_addrs())
+        addr.to_socket_addrs()?
             .fold(Err(err), |prev, addr| prev.or_else(|_| Ok(addr)))
             .map(|addr| UdpSendTo {
                 io_data: EventData::new(socket.as_raw_socket() as HANDLE),

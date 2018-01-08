@@ -24,7 +24,7 @@ impl TcpStream {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        try!(s.set_nonblocking(true));
+        s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| TcpStream {
             io: io,
@@ -41,12 +41,12 @@ impl TcpStream {
 
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         if !is_coroutine() {
-            let s = try!(net::TcpStream::connect(addr));
+            let s = net::TcpStream::connect(addr)?;
             let io = io_impl::IoData::new(&s);
             return Ok(TcpStream::from_stream(s, io));
         }
 
-        let mut c = try!(net_impl::TcpStreamConnect::new(addr));
+        let mut c = net_impl::TcpStreamConnect::new(addr)?;
 
         match c.get_stream() {
             Some(r) => return r,
@@ -67,7 +67,7 @@ impl TcpStream {
 
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
-        let s = try!(self.sys.try_clone().and_then(|s| TcpStream::new(s)));
+        let s = self.sys.try_clone().and_then(|s| TcpStream::new(s))?;
         s.set_read_timeout(self.read_timeout).unwrap();
         s.set_write_timeout(self.write_timeout).unwrap();
         Ok(s)
@@ -76,8 +76,8 @@ impl TcpStream {
     // windows doesn't support add dup handler to IOCP
     #[cfg(windows)]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
-        let s = try!(self.sys.try_clone());
-        try!(s.set_nonblocking(true));
+        let s = self.sys.try_clone()?;
+        s.set_nonblocking(true)?;
         // ignore the result here
         // it always failed with "The parameter is incorrect"
         io_impl::add_socket(&s).ok();
@@ -138,7 +138,7 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.read(buf);
         }
@@ -159,7 +159,7 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             // this can't be nonblocking!!
             return self.sys.write(buf);
         }
@@ -231,7 +231,7 @@ impl TcpListener {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
-        try!(s.set_nonblocking(true));
+        s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| TcpListener {
             io: io,
@@ -245,12 +245,12 @@ impl TcpListener {
     }
 
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<TcpListener> {
-        let s = try!(net::TcpListener::bind(addr));
+        let s = net::TcpListener::bind(addr)?;
         TcpListener::new(s)
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if !try!(self.ctx.check(|| self.sys.set_nonblocking(false))) {
+        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
             return self.sys
                 .accept()
                 .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
@@ -262,7 +262,7 @@ impl TcpListener {
             ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
         }
 
-        let a = try!(net_impl::TcpListenerAccept::new(self));
+        let a = net_impl::TcpListenerAccept::new(self)?;
         yield_with(&a);
         a.done()
     }
@@ -283,8 +283,8 @@ impl TcpListener {
     // windows doesn't support add dup handler to IOCP
     #[cfg(windows)]
     pub fn try_clone(&self) -> io::Result<TcpListener> {
-        let s = try!(self.sys.try_clone());
-        try!(s.set_nonblocking(true));
+        let s = self.sys.try_clone()?;
+        s.set_nonblocking(true)?;
         io_impl::add_socket(&s).ok();
         Ok(TcpListener {
             io: io_impl::IoData::new(0),

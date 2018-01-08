@@ -41,22 +41,19 @@ impl<'a> TcpListenerAccept<'a> {
 
     #[inline]
     pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
-        try!(co_io_result(&self.io_data));
+        co_io_result(&self.io_data)?;
         let socket = &self.socket;
         let ss = self.ret;
-        let s = try!(socket.accept_complete(&ss).and_then(|_| {
-            try!(ss.set_nonblocking(true));
+        let s = socket.accept_complete(&ss).and_then(|_| {
+            ss.set_nonblocking(true)?;
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
-        }));
+        })?;
 
-        let addr = try!(
-            self.addr
-                .parse(&self.socket)
-                .and_then(|a| a.remote().ok_or_else(|| io::Error::new(
-                    io::ErrorKind::Other,
-                    "could not obtain remote address"
-                )))
-        );
+        let addr = self.addr.parse(&self.socket).and_then(|a| {
+            a.remote().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
+            })
+        })?;
 
         Ok((s, addr))
     }

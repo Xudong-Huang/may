@@ -33,11 +33,11 @@ impl SingleSelector {
         // wakeup data is 0
         let mut info = EpollEvent::new(EPOLLET | EPOLLIN, 0);
 
-        let epfd = try!(epoll_create().map_err(from_nix_error));
-        let evfd = try!(create_eventfd());
+        let epfd = epoll_create().map_err(from_nix_error)?;
+        let evfd = create_eventfd()?;
 
         // add the eventfd to the epfd
-        try!(epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut info).map_err(from_nix_error));
+        epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut info).map_err(from_nix_error)?;
 
         Ok(SingleSelector {
             epfd: epfd,
@@ -69,7 +69,7 @@ impl Selector {
         };
 
         for _ in 0..io_workers {
-            let ss = try!(SingleSelector::new());
+            let ss = SingleSelector::new()?;
             s.vec.push(ss);
         }
 
@@ -91,7 +91,7 @@ impl Selector {
         // Wait for epoll events for at most timeout_ms milliseconds
         let epfd = self.vec[id].epfd;
         let evfd = self.vec[id].evfd;
-        let n = try!(epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error));
+        let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
 
         // add this would increase the performance!!!!!!!!
         // this maybe a linux bug, the code is meaningless

@@ -34,7 +34,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
     #[inline]
     pub fn done(self) -> io::Result<usize> {
         loop {
-            try!(co_io_result());
+            co_io_result()?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);

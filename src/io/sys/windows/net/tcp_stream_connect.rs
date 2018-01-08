@@ -54,7 +54,7 @@ impl TcpStreamConnect {
                     .and_then(|_| Ok(socket.into_tcp_stream()))
                     .and_then(|s| {
                         // must register io first
-                        try!(s.set_nonblocking(true));
+                        s.set_nonblocking(true)?;
                         add_socket(&s).map(|_io| TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
                             addr: addr,
@@ -73,8 +73,8 @@ impl TcpStreamConnect {
 
     #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
-        try!(co_io_result(&self.io_data));
-        try!(self.stream.connect_complete());
+        co_io_result(&self.io_data)?;
+        self.stream.connect_complete()?;
         Ok(TcpStream::from_stream(self.stream, IoData))
     }
 }

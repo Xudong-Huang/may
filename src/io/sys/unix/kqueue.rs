@@ -84,7 +84,7 @@ impl Selector {
         };
 
         for _ in 0..io_workers {
-            let ss = try!(SingleSelector::new());
+            let ss = SingleSelector::new()?;
             s.vec.push(ss);
         }
 
