@@ -39,6 +39,13 @@ extern crate may_queue;
 #[doc(hidden)]
 extern crate smallvec;
 
+#[cfg(windows)]
+#[doc(hidden)]
+extern crate miow;
+#[cfg(windows)]
+#[doc(hidden)]
+extern crate winapi;
+
 mod io;
 mod join;
 mod park;

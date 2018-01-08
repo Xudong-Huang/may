@@ -3,11 +3,11 @@ use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
-use super::super::winapi::*;
-use super::super::miow::net::UdpSocketExt;
-use super::super::{co_io_result, EventData};
 use net::UdpSocket;
+use winapi::shared::ntdef::*;
+use miow::net::UdpSocketExt;
 use scheduler::get_scheduler;
+use super::super::{co_io_result, EventData};
 use coroutine_impl::{CoroutineImpl, EventSource};
 
 pub struct UdpSendTo<'a> {

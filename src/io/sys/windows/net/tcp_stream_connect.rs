@@ -3,15 +3,14 @@ use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
 use std::net::TcpStream as SysTcpStream;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
-use super::super::winapi::*;
-use super::super::EventData;
-use super::super::miow::net::TcpStreamExt;
-use super::super::{add_socket, co_io_result, IoData};
 use net::TcpStream;
 use net2::TcpBuilder;
+use miow::net::TcpStreamExt;
+use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
+use super::super::{add_socket, co_io_result, EventData, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {

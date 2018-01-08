@@ -2,16 +2,15 @@ use std;
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
-use super::super::winapi::*;
-use super::super::EventData;
-use super::super::{add_socket, co_io_result};
-use super::super::miow::net::{AcceptAddrsBuf, TcpListenerExt};
 use net2::TcpBuilder;
 use yield_now::yield_now;
+use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
 use net::{TcpListener, TcpStream};
+use miow::net::{AcceptAddrsBuf, TcpListenerExt};
+use super::super::{add_socket, co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpListenerAccept<'a> {
@@ -78,17 +77,15 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // prepare the co first
         self.io_data.co = Some(co);
 
+        let stream = self.builder.to_tcp_stream().unwrap();
         // call the overlapped read API
-        let (s, _) = co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket.accept_overlapped(
-                &self.builder,
-                &mut self.addr,
-                self.io_data.get_overlapped(),
-            )
+        let s = co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+            self.socket
+                .accept_overlapped(&stream, &mut self.addr, self.io_data.get_overlapped())
         });
 
         // the user space has to check if it's set
-        self.ret = Some(s);
+        self.ret = Some(stream);
 
         // register the cancel io data
         cancel.set_io(CancelIoData::new(&self.io_data));

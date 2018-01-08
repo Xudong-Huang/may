@@ -5,9 +5,13 @@ use std::os::windows::io::AsRawSocket;
 use yield_now::set_co_para;
 use coroutine_impl::CoroutineImpl;
 use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
-use super::kernel32;
-use super::winapi::*;
-use super::miow::iocp::{CompletionPort, CompletionStatus};
+
+use miow::iocp::{CompletionPort, CompletionStatus};
+use winapi::shared::ntdef::*;
+use winapi::shared::winerror::*;
+use winapi::um::minwinbase::OVERLAPPED;
+use winapi::shared::ntstatus::STATUS_CANCELLED;
+use winapi::um::ioapiset::{CancelIoEx, GetOverlappedResult};
 
 // the timeout data
 pub struct TimerData {
@@ -143,7 +147,7 @@ impl Selector {
                         // convert the ntstatus to winerr
                         let mut size: u32 = 0;
                         let o = overlapped as *const _ as *mut _;
-                        kernel32::GetOverlappedResult(data.handle, o, &mut size, FALSE);
+                        GetOverlappedResult(data.handle, o, &mut size, FALSE as i32);
                     }
                     set_co_para(&mut co, io::Error::last_os_error());
                 }
@@ -190,7 +194,7 @@ impl Selector {
 }
 
 unsafe fn cancel_io(handle: HANDLE, overlapped: &mut OVERLAPPED) -> io::Result<()> {
-    let ret = kernel32::CancelIoEx(handle, overlapped);
+    let ret = CancelIoEx(handle, overlapped);
     if ret == 0 {
         Err(io::Error::last_os_error())
     } else {

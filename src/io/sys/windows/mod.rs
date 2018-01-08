@@ -1,7 +1,3 @@
-extern crate kernel32;
-extern crate miow;
-extern crate winapi;
-
 macro_rules! co_try {
     ($s: expr, $co: expr, $e:expr) => (match $e {
         Ok(val) => val,

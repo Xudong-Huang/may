@@ -19,6 +19,10 @@ exclude = [
     "docs/**/*",
 ]
 
+[badges]
+travis-ci = { repository = "Xudong-Huang/may" }
+appveyor = { repository = "Xudong-Huang/may", service = "github" }
+
 [dependencies]
 log = "0.4"
 net2 = "0.2"
@@ -33,9 +37,8 @@ libc = "0.2"
 nix = "0.9"
 
 [target.'cfg(windows)'.dependencies]
-miow = "0.2"
-winapi = "0.2"
-kernel32-sys = "0.2"
+miow = "0.3"
+winapi = "0.3"
 
 [dev-dependencies]
 docopt = "0.8"

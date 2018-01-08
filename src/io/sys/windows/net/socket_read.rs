@@ -1,13 +1,12 @@
 use std::{self, io};
 use std::time::Duration;
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
-use super::super::winapi::*;
-use super::super::EventData;
-use super::super::co_io_result;
-use super::super::miow::net::TcpStreamExt;
+use miow::net::TcpStreamExt;
+use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
+use super::super::{co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct SocketRead<'a> {

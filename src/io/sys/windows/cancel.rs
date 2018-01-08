@@ -2,7 +2,6 @@ use std::io;
 use sync::Mutex;
 use cancel::CancelIo;
 // use scheduler::get_scheduler;
-use super::kernel32;
 use super::EventData;
 
 pub struct CancelIoData {
@@ -17,10 +16,12 @@ impl CancelIoData {
     }
 
     pub unsafe fn cancel(&self) -> io::Result<()> {
+        use winapi::um::ioapiset::CancelIoEx;
+
         let ev = &mut *self.ev_data;
         let handle = ev.handle;
         let overlapped = ev.get_overlapped();
-        let ret = kernel32::CancelIoEx(handle, overlapped);
+        let ret = CancelIoEx(handle, overlapped);
         if ret == 0 {
             let err = io::Error::last_os_error();
             error!("cancel err={:?}", err);

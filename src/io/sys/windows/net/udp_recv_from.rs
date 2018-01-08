@@ -3,13 +3,13 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
-use super::super::winapi::*;
-use super::super::miow::net::{SocketAddrBuf, UdpSocketExt};
-use super::super::{co_io_result, EventData};
 use net::UdpSocket;
+use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
 use sync::delay_drop::DelayDrop;
+use super::super::{co_io_result, EventData};
+use miow::net::{SocketAddrBuf, UdpSocketExt};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct UdpRecvFrom<'a> {

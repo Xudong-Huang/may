@@ -2,11 +2,10 @@ use std;
 use std::io;
 use std::time::Duration;
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
-use super::super::winapi::*;
-use super::super::EventData;
-use super::super::co_io_result;
-use super::super::miow::net::TcpStreamExt;
+use miow::net::TcpStreamExt;
+use winapi::shared::ntdef::*;
 use scheduler::get_scheduler;
+use super::super::{co_io_result, EventData};
 use coroutine_impl::{CoroutineImpl, EventSource};
 
 pub struct SocketWrite<'a> {
