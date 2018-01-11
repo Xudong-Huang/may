@@ -124,8 +124,7 @@ impl TcpStream {
     }
 
     // convert std::net::TcpStream to Self without add_socket
-    // TODO: hide from public use #![feature(pub_restricted)] pub(crate)
-    pub fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
+    pub(crate) fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
             io: io,
             sys: s,
