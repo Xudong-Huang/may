@@ -31,9 +31,26 @@ mod unix {
     }
 
     impl<T: AsRawFd> AsRaw for T {
-        fn set_nonblocking(&self, _: bool) -> io::Result<()> {
-            //TODO:
-            unimplemented!()
+        fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
+            use libc;
+            unsafe {
+                let fd = self.as_raw_fd();
+                let r = libc::fcntl(fd, libc::F_GETFL);
+                if r == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+
+                let r = if nb {
+                    libc::fcntl(fd, libc::F_SETFL, r | libc::O_NONBLOCK)
+                } else {
+                    libc::fcntl(fd, libc::F_SETFL, r & !libc::O_NONBLOCK)
+                };
+
+                if r == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -47,9 +64,17 @@ mod windows {
     }
 
     impl<T: AsRawSocket> AsRaw for T {
-        fn set_nonblocking(&self, _: bool) -> io::Result<()> {
-            //TODO:
-            unimplemented!()
+        fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
+            use winapi::um::winsock2::*;
+            let mut nonblocking = nb as u_long;
+            let socket = self.as_raw_socket() as SOCKET;
+            let r = unsafe { ioctlsocket(socket, FIONBIO, &mut nonblocking) };
+
+            if r == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
         }
     }
 
