@@ -10,33 +10,74 @@ use std::io::{self, Read, Write};
 use yield_now::yield_with;
 use self::io_impl::net as net_impl;
 
+#[cfg(unix)]
+pub use self::unix::AsRaw;
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, AsRawSocket, RawSocket};
+#[cfg(windows)]
+pub use self::windows::{AsRaw, CoHandle};
+
 // here we should use trait alias instead, but it's not stable
 // trait AsRaw = AsRawFd;
 #[cfg(unix)]
-use std::os::unix::io::AsRawFd;
-#[cfg(unix)]
-pub trait AsRaw: AsRawFd {
-    fn set_nonblocking(&self, bool) -> io::Result<()>;
-}
-#[cfg(unix)]
-impl<T: AsRawFd> AsRaw for T {
-    fn set_nonblocking(&self, _: bool) -> io::Result<()> {
-        //TODO:
-        unimplemented!()
+mod unix {
+    use super::*;
+
+    pub trait AsRaw: AsRawFd {
+        fn set_nonblocking(&self, bool) -> io::Result<()>;
+    }
+
+    impl<T: AsRawFd> AsRaw for T {
+        fn set_nonblocking(&self, _: bool) -> io::Result<()> {
+            //TODO:
+            unimplemented!()
+        }
     }
 }
 
 #[cfg(windows)]
-use std::os::windows::io::{AsRawSocket, RawSocket};
-#[cfg(windows)]
-pub trait AsRaw: AsRawSocket {
-    fn set_nonblocking(&self, bool) -> io::Result<()>;
-}
-#[cfg(windows)]
-impl<T: AsRawSocket> AsRaw for T {
-    fn set_nonblocking(&self, _: bool) -> io::Result<()> {
-        //TODO:
-        unimplemented!()
+mod windows {
+    use super::*;
+
+    pub trait AsRaw: AsRawSocket {
+        fn set_nonblocking(&self, bool) -> io::Result<()>;
+    }
+
+    impl<T: AsRawSocket> AsRaw for T {
+        fn set_nonblocking(&self, _: bool) -> io::Result<()> {
+            //TODO:
+            unimplemented!()
+        }
+    }
+
+    /// Wrap `AsRawHanle` type to `AsRawSocket` so that we can use it in `CoIO`
+    /// e.g. `let io = CoIO::new(CoHandle(T))`
+    #[derive(Debug)]
+    pub struct CoHandle<T: AsRawHandle>(pub T);
+
+    impl<T: AsRawHandle> AsRawSocket for CoHandle<T> {
+        fn as_raw_socket(&self) -> RawSocket {
+            self.0.as_raw_handle() as RawSocket
+        }
+    }
+
+    impl<T: AsRawHandle + Read> Read for CoHandle<T> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.0.read(buf)
+        }
+    }
+
+    impl<T: AsRawHandle + Write> Write for CoHandle<T> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0.write(buf)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.flush()
+        }
     }
 }
 
@@ -181,8 +222,7 @@ mod tests {
     use super::*;
 
     #[cfg(unix)]
-    #[test]
-    #[should_panic]
+    #[allow(dead_code)]
     fn compile_co_io() {
         use std::os::unix::io::RawFd;
 
@@ -203,6 +243,32 @@ mod tests {
 
         let a = Fd;
         let mut io = CoIO::new(a).unwrap();
+        let mut buf = [0u8; 100];
+        io.read(&mut buf).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[allow(dead_code)]
+    fn compile_co_io() {
+        use std::os::windows::io::RawHandle;
+
+        #[derive(Debug)]
+        struct Hd;
+
+        impl AsRawHandle for Hd {
+            fn as_raw_handle(&self) -> RawHandle {
+                0 as _
+            }
+        }
+
+        impl Read for Hd {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                Ok(0)
+            }
+        }
+
+        let a = Hd;
+        let mut io = CoIO::new(CoHandle(a)).unwrap();
         let mut buf = [0u8; 100];
         io.read(&mut buf).unwrap();
     }

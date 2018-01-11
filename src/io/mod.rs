@@ -19,6 +19,9 @@ pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 
 pub use self::co_io::{AsRaw, CoIO};
 
+#[cfg(windows)]
+pub use self::co_io::CoHandle;
+
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;
