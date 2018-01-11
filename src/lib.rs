@@ -53,7 +53,6 @@ extern crate libc;
 #[doc(hidden)]
 extern crate nix;
 
-mod io;
 mod join;
 mod park;
 mod pool;
@@ -69,6 +68,7 @@ mod yield_now;
 mod timeout_list;
 mod coroutine_impl;
 
+pub mod io;
 pub mod net;
 pub mod sync;
 pub mod cqueue;
