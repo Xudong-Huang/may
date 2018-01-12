@@ -31,7 +31,7 @@ pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
 }
 
 #[inline]
-pub fn del_socket(io: &IoData) {
+fn del_socket(io: &IoData) {
     // transfer the io to the selector
     get_scheduler().get_selector().del_fd(io.clone());
 }
@@ -177,7 +177,7 @@ impl fmt::Debug for IoData {
 
 impl Drop for IoData {
     fn drop(&mut self) {
-        ::io::del_socket(self);
+        del_socket(self);
     }
 }
 

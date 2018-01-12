@@ -48,9 +48,6 @@ pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_socket(t).map(|_| IoData)
 }
 
-#[allow(dead_code)]
-pub fn del_socket(_io: &IoData) {}
-
 // deal with the io result
 #[inline]
 fn co_io_result(io: &EventData) -> io::Result<usize> {

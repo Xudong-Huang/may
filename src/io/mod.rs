@@ -12,8 +12,6 @@ mod event_loop;
 use std::io;
 use coroutine_impl::is_coroutine;
 
-#[cfg(unix)]
-pub(crate) use self::sys::del_socket;
 pub(crate) use self::event_loop::EventLoop;
 pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 
