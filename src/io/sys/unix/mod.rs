@@ -175,4 +175,10 @@ impl fmt::Debug for IoData {
     }
 }
 
+impl Drop for IoData {
+    fn drop(&mut self) {
+        ::io::del_socket(self);
+    }
+}
+
 unsafe impl Send for IoData {}

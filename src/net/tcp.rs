@@ -200,13 +200,6 @@ impl<'a> Write for &'a TcpStream {
 }
 
 #[cfg(unix)]
-impl Drop for TcpStream {
-    fn drop(&mut self) {
-        io_impl::del_socket(&self.io);
-    }
-}
-
-#[cfg(unix)]
 impl io_impl::AsIoData for TcpStream {
     fn as_io_data(&self) -> &io_impl::IoData {
         &self.io
@@ -296,13 +289,6 @@ impl TcpListener {
     }
 
     // TODO: add all std functions
-}
-
-#[cfg(unix)]
-impl Drop for TcpListener {
-    fn drop(&mut self) {
-        io_impl::del_socket(&self.io);
-    }
 }
 
 #[cfg(unix)]

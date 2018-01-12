@@ -226,13 +226,6 @@ impl UdpSocket {
 }
 
 #[cfg(unix)]
-impl Drop for UdpSocket {
-    fn drop(&mut self) {
-        io_impl::del_socket(&self.io);
-    }
-}
-
-#[cfg(unix)]
 impl io_impl::AsIoData for UdpSocket {
     fn as_io_data(&self) -> &io_impl::IoData {
         &self.io

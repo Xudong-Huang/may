@@ -118,13 +118,6 @@ pub struct CoIO<T: AsRaw> {
 }
 
 #[cfg(unix)]
-impl<T: AsRaw> Drop for CoIO<T> {
-    fn drop(&mut self) {
-        io_impl::del_socket(&self.io);
-    }
-}
-
-#[cfg(unix)]
 impl<T: AsRaw> io_impl::AsIoData for CoIO<T> {
     fn as_io_data(&self) -> &io_impl::IoData {
         &self.io
