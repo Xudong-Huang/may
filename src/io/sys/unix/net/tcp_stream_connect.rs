@@ -17,6 +17,7 @@ pub struct TcpStreamConnect {
     stream: Socket,
     addr: SocketAddr,
     can_drop: DelayDrop,
+    is_connected: bool,
 }
 
 impl TcpStreamConnect {
@@ -43,17 +44,21 @@ impl TcpStreamConnect {
                     stream: stream,
                     addr: addr,
                     can_drop: DelayDrop::new(),
+                    is_connected: false,
                 })
             })
     }
 
     #[inline]
     // return ture if it's connected
-    pub fn is_connected(&self) -> io::Result<bool> {
+    pub fn is_connected(&mut self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system
         match self.stream.connect(&self.addr.into()) {
-            Ok(_) => Ok(true),
+            Ok(_) => {
+                self.is_connected = true;
+                Ok(true)
+            }
             Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => Ok(false),
             Err(e) => Err(e),
         }
@@ -61,6 +66,16 @@ impl TcpStreamConnect {
 
     #[inline]
     pub fn done(self) -> io::Result<TcpStream> {
+        fn convert_to_stream(s: TcpStreamConnect) -> TcpStream {
+            let stream = s.stream.into_tcp_stream();
+            TcpStream::from_stream(stream, s.io_data)
+        }
+
+        // first check if it's already connected
+        if self.is_connected {
+            return Ok(convert_to_stream(self));
+        }
+
         loop {
             co_io_result()?;
 
@@ -68,18 +83,13 @@ impl TcpStreamConnect {
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.stream.connect(&self.addr.into()) {
+                Ok(_) => return Ok(convert_to_stream(self)),
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
-                    let s = self.stream.into_tcp_stream();
-                    return Ok(TcpStream::from_stream(s, self.io_data));
+                    return Ok(convert_to_stream(self));
                 }
-                ret => {
-                    return ret.map(|_| {
-                        let s = self.stream.into_tcp_stream();
-                        TcpStream::from_stream(s, self.io_data)
-                    })
-                }
+                Err(e) => return Err(e),
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

@@ -46,7 +46,7 @@ impl TcpStream {
             return Ok(TcpStream::from_stream(s, io));
         }
 
-        let c = net_impl::TcpStreamConnect::new(addr)?;
+        let mut c = net_impl::TcpStreamConnect::new(addr)?;
 
         if c.is_connected()? {
             return c.done();
