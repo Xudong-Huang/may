@@ -4,6 +4,7 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
 use miow::pipe::NamedPipe;
 use scheduler::get_scheduler;
 use io::cancel::CancelIoData;
+use winapi::shared::winerror::*;
 use sync::delay_drop::DelayDrop;
 use super::super::{co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
@@ -32,7 +33,11 @@ impl<'a> PipeRead<'a> {
     pub fn done(self) -> io::Result<usize> {
         // don't close the socket
         self.pipe.into_raw_handle();
-        co_io_result(&self.io_data)
+        match co_io_result(&self.io_data) {
+            // we should treat the broken pipe as read to end
+            Err(ref e) if Some(ERROR_BROKEN_PIPE as i32) == e.raw_os_error() => Ok(0),
+            ret => ret,
+        }
     }
 }
 
