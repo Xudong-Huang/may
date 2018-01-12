@@ -46,11 +46,10 @@ impl TcpStream {
             return Ok(TcpStream::from_stream(s, io));
         }
 
-        let mut c = net_impl::TcpStreamConnect::new(addr)?;
+        let c = net_impl::TcpStreamConnect::new(addr)?;
 
-        match c.get_stream() {
-            Some(r) => return r,
-            None => {}
+        if c.is_connected()? {
+            return c.done();
         }
 
         yield_with(&c);

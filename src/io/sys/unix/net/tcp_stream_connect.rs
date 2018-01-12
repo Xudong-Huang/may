@@ -14,7 +14,7 @@ use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 
 pub struct TcpStreamConnect {
     io_data: IoData,
-    stream: Option<Socket>,
+    stream: Socket,
     addr: SocketAddr,
     can_drop: DelayDrop,
 }
@@ -40,7 +40,7 @@ impl TcpStreamConnect {
 
                 add_socket(&stream).map(|io| TcpStreamConnect {
                     io_data: io,
-                    stream: Some(stream),
+                    stream: stream,
                     addr: addr,
                     can_drop: DelayDrop::new(),
                 })
@@ -48,42 +48,36 @@ impl TcpStreamConnect {
     }
 
     #[inline]
-    pub fn get_stream(&mut self) -> Option<io::Result<TcpStream>> {
+    // return ture if it's connected
+    pub fn is_connected(&self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system
-        assert_eq!(self.stream.is_none(), false);
-        match self.stream.as_ref().unwrap().connect(&self.addr.into()) {
-            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => None,
-            ret => {
-                let v = ret.map(|_| {
-                    let s = self.stream.take().unwrap().into_tcp_stream();
-                    TcpStream::from_stream(s, self.io_data.clone())
-                });
-                Some(v)
-            }
+        match self.stream.connect(&self.addr.into()) {
+            Ok(_) => Ok(true),
+            Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => Ok(false),
+            Err(e) => Err(e),
         }
     }
 
     #[inline]
-    pub fn done(mut self) -> io::Result<TcpStream> {
-        assert_eq!(self.stream.is_none(), false);
+    pub fn done(self) -> io::Result<TcpStream> {
         loop {
             co_io_result()?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
-            match self.stream.as_ref().unwrap().connect(&self.addr.into()) {
+            match self.stream.connect(&self.addr.into()) {
                 Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
                 Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
-                    let s = self.stream.take().unwrap().into_tcp_stream();
-                    return Ok(TcpStream::from_stream(s, self.io_data.clone()));
+                    let s = self.stream.into_tcp_stream();
+                    return Ok(TcpStream::from_stream(s, self.io_data));
                 }
                 ret => {
                     return ret.map(|_| {
-                        let s = self.stream.take().unwrap().into_tcp_stream();
-                        TcpStream::from_stream(s, self.io_data.clone())
+                        let s = self.stream.into_tcp_stream();
+                        TcpStream::from_stream(s, self.io_data)
                     })
                 }
             }

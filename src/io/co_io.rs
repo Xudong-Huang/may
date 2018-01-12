@@ -1,6 +1,6 @@
 //! # Generic Wrapper for IO object
-//! `CoIO` is a generic wrapper type that be used in coroutine context
-//! with non blocking operations
+//! `CoIO` is a generic wrapper type that can be used in coroutine
+//! context with non blocking operations
 //!
 
 use io as io_impl;

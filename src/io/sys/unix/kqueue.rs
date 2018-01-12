@@ -1,4 +1,5 @@
 use std::{io, ptr};
+use std::sync::Arc;
 use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
@@ -32,7 +33,7 @@ macro_rules! kevent {
 struct SingleSelector {
     kqfd: RawFd,
     timer_list: TimerList,
-    free_ev: mpsc<IoData>,
+    free_ev: mpsc<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -224,7 +225,9 @@ impl Selector {
     }
 
     #[inline]
-    pub fn del_fd(&self, io_data: IoData) {
+    pub fn del_fd(&self, io_data: &IoData) {
+        use std::ops::Deref;
+
         io_data.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // mark the timer as removed if any, this only happened
@@ -258,7 +261,7 @@ impl Selector {
         }
 
         // after EpollCtlDel push the unused event data
-        self.vec[id].free_ev.push(io_data);
+        self.vec[id].free_ev.push(io_data.deref().clone());
     }
 
     // we can't free the event data directly in the worker thread

@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::{cmp, io, isize, ptr};
 use std::sync::atomic::Ordering;
+
 use nix::sys::epoll::*;
 use smallvec::SmallVec;
 use libc::{eventfd, EFD_NONBLOCK};
@@ -25,7 +27,7 @@ struct SingleSelector {
     epfd: RawFd,
     evfd: RawFd,
     timer_list: TimerList,
-    free_ev: mpsc<IoData>,
+    free_ev: mpsc<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -168,7 +170,9 @@ impl Selector {
     }
 
     #[inline]
-    pub fn del_fd(&self, io_data: IoData) {
+    pub fn del_fd(&self, io_data: &IoData) {
+        use std::ops::Deref;
+
         let mut info = EpollEvent::empty();
 
         io_data.timer.borrow_mut().take().map(|h| {
@@ -188,7 +192,7 @@ impl Selector {
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &mut info).ok();
 
         // after EpollCtlDel push the unused event data
-        self.vec[id].free_ev.push(io_data);
+        self.vec[id].free_ev.push(io_data.deref().clone());
     }
 
     // we can't free the event data directly in the worker thread

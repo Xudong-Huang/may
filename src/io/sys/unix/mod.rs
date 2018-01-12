@@ -145,7 +145,6 @@ impl EventData {
 }
 
 // each file associated data
-#[derive(Clone)]
 pub struct IoData(Arc<EventData>);
 
 impl IoData {
