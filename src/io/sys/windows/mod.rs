@@ -12,6 +12,7 @@ macro_rules! co_try {
 
 mod iocp;
 pub mod net;
+pub mod co_io;
 pub mod cancel;
 
 use std::{fmt, io};

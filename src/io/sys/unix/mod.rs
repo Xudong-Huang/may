@@ -8,6 +8,7 @@ mod select;
 mod select;
 
 pub mod net;
+pub mod co_io;
 pub mod cancel;
 
 use std::sync::Arc;

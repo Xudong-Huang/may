@@ -1,3 +1,5 @@
+//! coroutine io utilities
+
 #[cfg(unix)]
 #[path = "sys/unix/mod.rs"]
 mod sys;
@@ -6,7 +8,6 @@ mod sys;
 #[path = "sys/windows/mod.rs"]
 mod sys;
 
-mod co_io;
 mod event_loop;
 
 use std::io;
@@ -14,12 +15,6 @@ use coroutine_impl::is_coroutine;
 
 pub(crate) use self::event_loop::EventLoop;
 pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
-
-pub use self::co_io::{AsRaw, CoIO};
-
-#[cfg(windows)]
-pub use self::co_io::CoHandle;
-
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;
@@ -55,3 +50,8 @@ impl IoContext {
         Ok(self.b_co)
     }
 }
+
+// export the generic IO wrapper
+pub use self::sys::co_io::CoIO;
+#[cfg(windows)]
+pub use self::sys::co_io::CoHandle;
