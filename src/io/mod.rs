@@ -52,6 +52,4 @@ impl IoContext {
 }
 
 // export the generic IO wrapper
-pub use self::sys::co_io::CoIO;
-#[cfg(windows)]
-pub use self::sys::co_io::CoHandle;
+pub use self::sys::co_io::CoIo;

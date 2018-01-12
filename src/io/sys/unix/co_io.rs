@@ -1,5 +1,5 @@
 //! # Generic Wrapper for IO object
-//! `CoIO` is a generic wrapper type that can be used in coroutine
+//! `CoIo` is a generic wrapper type that can be used in coroutine
 //! context with non blocking operations
 //!
 
@@ -33,7 +33,7 @@ fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     }
 }
 
-pub struct CoIO<T: AsRawFd> {
+pub struct CoIo<T: AsRawFd> {
     inner: T,
     io: io_impl::IoData,
     ctx: io_impl::IoContext,
@@ -41,27 +41,27 @@ pub struct CoIO<T: AsRawFd> {
     write_timeout: Option<Duration>,
 }
 
-impl<T: AsRawFd> io_impl::AsIoData for CoIO<T> {
+impl<T: AsRawFd> io_impl::AsIoData for CoIo<T> {
     fn as_io_data(&self) -> &io_impl::IoData {
         &self.io
     }
 }
 
-impl<T: AsRawFd> AsRawFd for CoIO<T> {
+impl<T: AsRawFd> AsRawFd for CoIo<T> {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
     }
 }
 
-impl<T: AsRawFd> CoIO<T> {
-    /// create `CoIO` instance from `T`
+impl<T: AsRawFd> CoIo<T> {
+    /// create `CoIo` instance from `T`
     pub fn new(io: T) -> io::Result<Self> {
         // only set non blocking in coroutine context
         // we would first call nonblocking io in the coroutine
         // to avoid unnecessary context switch
         set_nonblocking(&io, true)?;
 
-        io_impl::add_socket(&io).map(|io_data| CoIO {
+        io_impl::add_socket(&io).map(|io_data| CoIo {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),
@@ -104,7 +104,7 @@ impl<T: AsRawFd> CoIO<T> {
     }
 }
 
-impl<T: AsRawFd + Read> Read for CoIO<T> {
+impl<T: AsRawFd + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if !self.ctx.check(|| self.set_nonblocking(false))? {
             // this can't be nonblocking!!
@@ -125,7 +125,7 @@ impl<T: AsRawFd + Read> Read for CoIO<T> {
     }
 }
 
-impl<T: AsRawFd + Write> Write for CoIO<T> {
+impl<T: AsRawFd + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if !self.ctx.check(|| self.set_nonblocking(false))? {
             // this can't be nonblocking!!
@@ -149,22 +149,22 @@ impl<T: AsRawFd + Write> Write for CoIO<T> {
     }
 }
 
-impl<'a, T: AsRawFd + Read> Read for &'a CoIO<T> {
+impl<'a, T: AsRawFd + Read> Read for &'a CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::read(s, buf)
+        CoIo::<T>::read(s, buf)
     }
 }
 
-impl<'a, T: AsRawFd + Write> Write for &'a CoIO<T> {
+impl<'a, T: AsRawFd + Write> Write for &'a CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::write(s, buf)
+        CoIo::<T>::write(s, buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::flush(s)
+        CoIo::<T>::flush(s)
     }
 }
 
@@ -192,7 +192,7 @@ mod tests {
         }
 
         let a = Fd;
-        let mut io = CoIO::new(a).unwrap();
+        let mut io = CoIo::new(a).unwrap();
         let mut buf = [0u8; 100];
         io.read(&mut buf).unwrap();
     }

@@ -1,5 +1,5 @@
 //! # Generic Wrapper for IO object
-//! `CoIO` is a generic wrapper type that can be used in coroutine
+//! `CoIo` is a generic wrapper type that can be used in coroutine
 //! context with non blocking operations
 //!
 
@@ -9,39 +9,12 @@ use self::io_impl::net as net_impl;
 
 use std::time::Duration;
 use std::io::{self, Read, Write};
-use std::os::windows::io::{AsRawHandle, AsRawSocket, RawSocket};
-
-/// Wrap `AsRawHanle` type to `AsRawSocket` so that we can use it in `CoIO`
-/// e.g. `let io = CoIO::new(CoHandle(T))`
-#[derive(Debug)]
-pub struct CoHandle<T: AsRawHandle>(pub T);
-
-impl<T: AsRawHandle> AsRawSocket for CoHandle<T> {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.0.as_raw_handle() as RawSocket
-    }
-}
-
-impl<T: AsRawHandle + Read> Read for CoHandle<T> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
-    }
-}
-
-impl<T: AsRawHandle + Write> Write for CoHandle<T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.0.flush()
-    }
-}
+use std::os::windows::io::{AsRawHandle, AsRawSocket, RawHandle, RawSocket};
 
 /// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
 /// this type can be used in coroutine context without blocking the thread
 #[derive(Debug)]
-pub struct CoIO<T: AsRawSocket> {
+pub struct CoIo<T: AsRawHandle> {
     inner: T,
     io: io_impl::IoData,
     ctx: io_impl::IoContext,
@@ -49,16 +22,24 @@ pub struct CoIO<T: AsRawSocket> {
     write_timeout: Option<Duration>,
 }
 
-impl<T: AsRawSocket> AsRawSocket for CoIO<T> {
+impl<T: AsRawHandle> AsRawSocket for CoIo<T> {
     fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_socket()
+        self.inner.as_raw_handle() as RawSocket
     }
 }
 
-impl<T: AsRawSocket> CoIO<T> {
-    /// create `CoIO` instance from `T`
+impl<T: AsRawHandle> CoIo<T> {
+    /// create `CoIo` instance from `T`
     pub fn new(io: T) -> io::Result<Self> {
-        io_impl::add_socket(&io).map(|io_data| CoIO {
+        struct CoHandle(RawHandle);
+        impl AsRawSocket for CoHandle {
+            fn as_raw_socket(&self) -> RawSocket {
+                self.0 as RawSocket
+            }
+        }
+
+        let socket = CoHandle(io.as_raw_handle());
+        io_impl::add_socket(&socket).map(|io_data| CoIo {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),
@@ -97,8 +78,12 @@ impl<T: AsRawSocket> CoIO<T> {
     }
 }
 
-impl<T: AsRawSocket + Read> Read for CoIO<T> {
+impl<T: AsRawHandle + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if !self.ctx.check(|| Ok(()))? {
+            return self.inner.read(buf);
+        }
+
         self.io.reset();
         let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
         yield_with(&reader);
@@ -106,8 +91,12 @@ impl<T: AsRawSocket + Read> Read for CoIO<T> {
     }
 }
 
-impl<T: AsRawSocket + Write> Write for CoIO<T> {
+impl<T: AsRawHandle + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if !self.ctx.check(|| Ok(()))? {
+            return self.inner.write(buf);
+        }
+
         self.io.reset();
         let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
         yield_with(&writer);
@@ -119,22 +108,22 @@ impl<T: AsRawSocket + Write> Write for CoIO<T> {
     }
 }
 
-impl<'a, T: AsRawSocket + Read> Read for &'a CoIO<T> {
+impl<'a, T: AsRawHandle + Read> Read for &'a CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::read(s, buf)
+        CoIo::<T>::read(s, buf)
     }
 }
 
-impl<'a, T: AsRawSocket + Write> Write for &'a CoIO<T> {
+impl<'a, T: AsRawHandle + Write> Write for &'a CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::write(s, buf)
+        CoIo::<T>::write(s, buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
         let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIO::<T>::flush(s)
+        CoIo::<T>::flush(s)
     }
 }
 
@@ -162,7 +151,7 @@ mod tests {
         }
 
         let a = Hd;
-        let mut io = CoIO::new(CoHandle(a)).unwrap();
+        let mut io = CoIo::new(a).unwrap();
         let mut buf = [0u8; 100];
         io.read(&mut buf).unwrap();
     }
