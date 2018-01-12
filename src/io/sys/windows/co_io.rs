@@ -5,7 +5,7 @@
 
 use io as io_impl;
 use yield_now::yield_with;
-use self::io_impl::net as net_impl;
+use super::pipe::{PipeRead, PipeWrite};
 
 use std::time::Duration;
 use std::io::{self, Read, Write};
@@ -22,9 +22,9 @@ pub struct CoIo<T: AsRawHandle> {
     write_timeout: Option<Duration>,
 }
 
-impl<T: AsRawHandle> AsRawSocket for CoIo<T> {
-    fn as_raw_socket(&self) -> RawSocket {
-        self.inner.as_raw_handle() as RawSocket
+impl<T: AsRawHandle> AsRawHandle for CoIo<T> {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.inner.as_raw_handle()
     }
 }
 
@@ -38,8 +38,8 @@ impl<T: AsRawHandle> CoIo<T> {
             }
         }
 
-        let socket = CoHandle(io.as_raw_handle());
-        io_impl::add_socket(&socket).map(|io_data| CoIo {
+        let handle = CoHandle(io.as_raw_handle());
+        io_impl::add_socket(&handle).map(|io_data| CoIo {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),
@@ -85,7 +85,7 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
         }
 
         self.io.reset();
-        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
+        let reader = PipeRead::new(self, buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -98,7 +98,7 @@ impl<T: AsRawHandle + Write> Write for CoIo<T> {
         }
 
         self.io.reset();
-        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
+        let writer = PipeWrite::new(self, buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }

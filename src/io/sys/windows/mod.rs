@@ -11,6 +11,7 @@ macro_rules! co_try {
 }
 
 mod iocp;
+mod pipe;
 pub mod net;
 pub mod co_io;
 pub mod cancel;
