@@ -52,4 +52,5 @@ impl IoContext {
 }
 
 // export the generic IO wrapper
+pub mod co_io_err;
 pub use self::sys::co_io::CoIo;

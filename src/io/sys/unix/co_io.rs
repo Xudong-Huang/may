@@ -3,16 +3,17 @@
 //! context with non blocking operations
 //!
 
+use libc;
 use io as io_impl;
 use yield_now::yield_with;
 use self::io_impl::net as net_impl;
+use self::io_impl::co_io_err::Error;
 
 use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
-    use libc;
     unsafe {
         let fd = fd.as_raw_fd();
         let r = libc::fcntl(fd, libc::F_GETFL);
@@ -33,6 +34,9 @@ fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     }
 }
 
+/// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
+/// this type can be used in coroutine context without blocking the thread
+#[derive(Debug)]
 pub struct CoIo<T: AsRawFd> {
     inner: T,
     io: io_impl::IoData,
@@ -55,13 +59,18 @@ impl<T: AsRawFd> AsRawFd for CoIo<T> {
 
 impl<T: AsRawFd> CoIo<T> {
     /// create `CoIo` instance from `T`
-    pub fn new(io: T) -> io::Result<Self> {
-        // only set non blocking in coroutine context
-        // we would first call nonblocking io in the coroutine
-        // to avoid unnecessary context switch
-        set_nonblocking(&io, true)?;
+    pub fn new(io: T) -> Result<Self, Error<T>> {
+        let io_data = match io_impl::add_socket(&io) {
+            Ok(o) => o,
+            Err(e) => return Err(Error::new(e, io)),
+        };
 
-        io_impl::add_socket(&io).map(|io_data| CoIo {
+        match set_nonblocking(&io, true) {
+            Ok(_) => {}
+            Err(e) => return Err(Error::new(e, io)),
+        }
+
+        Ok(CoIo {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),

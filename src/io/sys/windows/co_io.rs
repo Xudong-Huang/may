@@ -5,6 +5,7 @@
 
 use io as io_impl;
 use yield_now::yield_with;
+use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 
 use std::time::Duration;
@@ -30,7 +31,7 @@ impl<T: AsRawHandle> AsRawHandle for CoIo<T> {
 
 impl<T: AsRawHandle> CoIo<T> {
     /// create `CoIo` instance from `T`
-    pub fn new(io: T) -> io::Result<Self> {
+    pub fn new(io: T) -> Result<Self, Error<T>> {
         struct CoHandle(RawHandle);
         impl AsRawSocket for CoHandle {
             fn as_raw_socket(&self) -> RawSocket {
@@ -39,13 +40,16 @@ impl<T: AsRawHandle> CoIo<T> {
         }
 
         let handle = CoHandle(io.as_raw_handle());
-        io_impl::add_socket(&handle).map(|io_data| CoIo {
-            inner: io,
-            io: io_data,
-            ctx: io_impl::IoContext::new(),
-            read_timeout: None,
-            write_timeout: None,
-        })
+        match io_impl::add_socket(&handle) {
+            Ok(io_data) => Ok(CoIo {
+                inner: io,
+                io: io_data,
+                ctx: io_impl::IoContext::new(),
+                read_timeout: None,
+                write_timeout: None,
+            }),
+            Err(e) => Err(Error::new(e, io)),
+        }
     }
 
     /// convert back to original type
