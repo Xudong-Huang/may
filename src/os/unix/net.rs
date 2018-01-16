@@ -564,7 +564,6 @@ impl<'a> Iterator for Incoming<'a> {
     }
 }
 
-/*
 /// A Unix datagram socket.
 ///
 /// # Examples
@@ -578,12 +577,12 @@ impl<'a> Iterator for Incoming<'a> {
 /// let (count, address) = socket.recv_from(&mut buf).unwrap();
 /// println!("socket {:?} sent {:?}", address, &buf[..count]);
 /// ```
-pub struct UnixDatagram(Socket);
+pub struct UnixDatagram(CoIo<net::UnixDatagram>);
 
 impl fmt::Debug for UnixDatagram {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut builder = fmt.debug_struct("UnixDatagram");
-        builder.field("fd", self.0.as_inner());
+        builder.field("fd", &self.as_raw_fd());
         if let Ok(addr) = self.local_addr() {
             builder.field("local", &addr);
         }
@@ -611,7 +610,7 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
-
+        unimplemented!()
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
@@ -630,8 +629,9 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn unbound() -> io::Result<UnixDatagram> {
-        let inner = Socket::new_raw(libc::AF_UNIX, libc::SOCK_DGRAM)?;
-        Ok(UnixDatagram(inner))
+        unimplemented!()
+        // let inner = Socket::new_raw(libc::AF_UNIX, libc::SOCK_DGRAM)?;
+        // Ok(UnixDatagram(inner))
     }
 
     /// Create an unnamed pair of connected sockets.
@@ -652,8 +652,10 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn pair() -> io::Result<(UnixDatagram, UnixDatagram)> {
-        let (i1, i2) = Socket::new_pair(libc::AF_UNIX, libc::SOCK_DGRAM)?;
-        Ok((UnixDatagram(i1), UnixDatagram(i2)))
+        let (i1, i2) = net::UnixDatagram::pair()?;
+        let i1 = UnixDatagram(CoIo::new(i1)?);
+        let i2 = UnixDatagram(CoIo::new(i2)?);
+        Ok((i1, i2))
     }
 
     /// Connects the socket to the specified address.
@@ -680,7 +682,7 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn connect<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
-       
+        unimplemented!()
     }
 
     /// Creates a new independently owned handle to the underlying socket.
@@ -699,7 +701,8 @@ impl UnixDatagram {
     /// let sock_copy = sock.try_clone().expect("try_clone failed");
     /// ```
     pub fn try_clone(&self) -> io::Result<UnixDatagram> {
-        self.0.duplicate().map(UnixDatagram)
+        let datagram = self.0.inner().try_clone()?;
+        Ok(UnixDatagram(CoIo::new(datagram)?))
     }
 
     /// Returns the address of this socket.
@@ -714,7 +717,7 @@ impl UnixDatagram {
     /// let addr = sock.local_addr().expect("Couldn't get local address");
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        SocketAddr::new(|addr, len| unsafe { libc::getsockname(*self.0.as_inner(), addr, len) })
+        self.0.inner().local_addr()
     }
 
     /// Returns the address of this socket's peer.
@@ -734,7 +737,7 @@ impl UnixDatagram {
     /// let addr = sock.peer_addr().expect("Couldn't get peer address");
     /// ```
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        SocketAddr::new(|addr, len| unsafe { libc::getpeername(*self.0.as_inner(), addr, len) })
+        self.0.inner().peer_addr()
     }
 
     /// Receives data from the socket.
@@ -755,7 +758,7 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-
+        unimplemented!()
     }
 
     /// Receives data from the socket.
@@ -772,7 +775,8 @@ impl UnixDatagram {
     /// sock.recv(buf.as_mut_slice()).expect("recv function failed");
     /// ```
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
+        unimplemented!()
+        // self.0.read(buf)
     }
 
     /// Sends data on the socket to the specified address.
@@ -788,7 +792,7 @@ impl UnixDatagram {
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
     /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
-
+        unimplemented!()
     }
 
     /// Sends data on the socket to the socket's peer.
@@ -808,7 +812,8 @@ impl UnixDatagram {
     /// sock.send(b"omelette au fromage").expect("send_to function failed");
     /// ```
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        unimplemented!()
+        // self.0.write(buf)
     }
 
     /// Sets the read timeout for the socket.
@@ -830,7 +835,7 @@ impl UnixDatagram {
     /// sock.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout function failed");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.set_timeout(timeout, libc::SO_RCVTIMEO)
+        self.0.set_read_timeout(timeout)
     }
 
     /// Sets the write timeout for the socket.
@@ -853,7 +858,7 @@ impl UnixDatagram {
     ///     .expect("set_write_timeout function failed");
     /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
+        self.0.set_write_timeout(timeout)
     }
 
     /// Returns the read timeout of this socket.
@@ -869,7 +874,7 @@ impl UnixDatagram {
     /// assert_eq!(sock.read_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
-        self.0.timeout(libc::SO_RCVTIMEO)
+        self.0.read_timeout()
     }
 
     /// Returns the write timeout of this socket.
@@ -886,7 +891,7 @@ impl UnixDatagram {
     /// assert_eq!(sock.write_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
-        self.0.timeout(libc::SO_SNDTIMEO)
+        self.0.write_timeout()
     }
 
     /// Returns the value of the `SO_ERROR` option.
@@ -902,7 +907,7 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.0.take_error()
+        self.0.inner().take_error()
     }
 
     /// Shut down the read, write, or both halves of this connection.
@@ -919,28 +924,30 @@ impl UnixDatagram {
     /// sock.shutdown(Shutdown::Both).expect("shutdown function failed");
     /// ```
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.0.shutdown(how)
+        self.0.inner().shutdown(how)
     }
 }
 
 impl AsRawFd for UnixDatagram {
     fn as_raw_fd(&self) -> RawFd {
-        *self.0.as_inner()
+        self.0.as_raw_fd()
     }
 }
 
 impl FromRawFd for UnixDatagram {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixDatagram {
-        UnixDatagram(Socket::from_inner(fd))
+        let datagram = FromRawFd::from_raw_fd(fd);
+        UnixDatagram(CoIo::new(datagram).expect("can't convert to UnixDatagram"))
     }
 }
 
 impl IntoRawFd for UnixDatagram {
     fn into_raw_fd(self) -> RawFd {
-        self.0.into_inner()
+        self.0.into_raw_fd()
     }
 }
 
+/*
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
     use thread;
