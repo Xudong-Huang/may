@@ -2,11 +2,11 @@
 
 #[cfg(unix)]
 #[path = "sys/unix/mod.rs"]
-mod sys;
+pub(crate) mod sys;
 
 #[cfg(windows)]
 #[path = "sys/windows/mod.rs"]
-mod sys;
+pub(crate) mod sys;
 
 mod event_loop;
 

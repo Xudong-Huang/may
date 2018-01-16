@@ -84,6 +84,17 @@ impl<T: AsRawFd> CoIo<T> {
             write_timeout: None,
         })
     }
+  
+    /// create from raw io ojbect which is already registered
+    pub(crate) fn from_raw(io: T, io_data: io_impl::IoData) -> Self {
+        CoIo {
+            inner: io,
+            io: io_data,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: None,
+            write_timeout: None,
+        }
+    }
 
     fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
         set_nonblocking(self, nb)

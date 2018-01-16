@@ -1,23 +1,24 @@
 //! Unix-specific networking functionality
 
 use std::fmt;
-use std::io::{self, Read, Write};
+use std::io;
 use std::net::Shutdown;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::os::unix::net::SocketAddr;
+use std::os::unix::net::{self, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
 
-use libc;
-use socket2::{Socket, Domain, Type};
-
+use io::CoIo;
+use yield_now::yield_with;
+use io::sys::net as net_impl;
+use coroutine_impl::is_coroutine;
 
 /// A Unix stream socket.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use std::os::unix::net::UnixStream;
+/// use may::os::unix::net::UnixStream;
 /// use std::io::prelude::*;
 ///
 /// let mut stream = UnixStream::connect("/path/to/my/socket").unwrap();
@@ -26,12 +27,12 @@ use socket2::{Socket, Domain, Type};
 /// stream.read_to_string(&mut response).unwrap();
 /// println!("{}", response);
 /// ```
-pub struct UnixStream(Socket);
+pub struct UnixStream(CoIo<net::UnixStream>);
 
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut builder = fmt.debug_struct("UnixStream");
-        builder.field("fd", self.0.as_inner());
+        builder.field("fd", &self.0.inner().as_raw_fd());
         if let Ok(addr) = self.local_addr() {
             builder.field("local", &addr);
         }
@@ -43,12 +44,17 @@ impl fmt::Debug for UnixStream {
 }
 
 impl UnixStream {
+    /// create from CoIo
+    pub(crate) fn from_coio(io: CoIo<net::UnixStream>) -> Self {
+        UnixStream(io)
+    }
+
     /// Connects to the socket named by `path`.
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let socket = match UnixStream::connect("/tmp/sock") {
     ///     Ok(sock) => sock,
@@ -59,6 +65,19 @@ impl UnixStream {
     /// };
     /// ```
     pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<UnixStream> {
+        if !is_coroutine() {
+            let stream = net::UnixStream::connect(path)?;
+            return Ok(UnixStream(CoIo::new(stream)?));
+        }
+
+        let mut c = net_impl::UnixStreamConnect::new(path)?;
+
+        if c.is_connected()? {
+            return c.done();
+        }
+
+        yield_with(&c);
+        c.done()
     }
 
     /// Creates an unnamed pair of connected sockets.
@@ -68,7 +87,7 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let (sock1, sock2) = match UnixStream::pair() {
     ///     Ok((sock1, sock2)) => (sock1, sock2),
@@ -79,8 +98,10 @@ impl UnixStream {
     /// };
     /// ```
     pub fn pair() -> io::Result<(UnixStream, UnixStream)> {
-        let (i1, i2) = Socket::new_pair(libc::AF_UNIX, libc::SOCK_STREAM)?;
-        Ok((UnixStream(i1), UnixStream(i2)))
+        let (i1, i2) = net::UnixStream::pair()?;
+        let i1 = UnixStream(CoIo::new(i1)?);
+        let i2 = UnixStream(CoIo::new(i2)?);
+        Ok((i1, i2))
     }
 
     /// Creates a new independently owned handle to the underlying socket.
@@ -93,13 +114,14 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// let sock_copy = socket.try_clone().expect("Couldn't clone socket");
     /// ```
     pub fn try_clone(&self) -> io::Result<UnixStream> {
-        self.0.duplicate().map(UnixStream)
+        let stream = self.0.inner().try_clone()?;
+        Ok(UnixStream(CoIo::new(stream)?))
     }
 
     /// Returns the socket address of the local half of this connection.
@@ -107,13 +129,13 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// let addr = socket.local_addr().expect("Couldn't get local address");
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        SocketAddr::new(|addr, len| unsafe { libc::getsockname(*self.0.as_inner(), addr, len) })
+        self.0.inner().local_addr()
     }
 
     /// Returns the socket address of the remote half of this connection.
@@ -121,59 +143,53 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// let addr = socket.peer_addr().expect("Couldn't get peer address");
     /// ```
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        SocketAddr::new(|addr, len| unsafe { libc::getpeername(*self.0.as_inner(), addr, len) })
+        self.0.inner().peer_addr()
     }
 
     /// Sets the read timeout for the socket.
     ///
-    /// If the provided value is [`None`], then [`read`] calls will block
-    /// indefinitely. It is an error to pass the zero [`Duration`] to this
+    /// If the provided value is `None`, then `read` calls will block
+    /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// [`None`]: ../../../../std/option/enum.Option.html#variant.None
-    /// [`read`]: ../../../../std/io/trait.Read.html#tymethod.read
-    /// [`Duration`]: ../../../../std/time/struct.Duration.html
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     /// use std::time::Duration;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.set_timeout(timeout, libc::SO_RCVTIMEO)
+        // self.0.set_timeout(timeout, libc::SO_RCVTIMEO)?;
+        self.0.set_read_timeout(timeout)
     }
 
     /// Sets the write timeout for the socket.
     ///
-    /// If the provided value is [`None`], then [`write`] calls will block
-    /// indefinitely. It is an error to pass the zero [`Duration`] to this
+    /// If the provided value is `None`, then `write` calls will block
+    /// indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
-    ///
-    /// [`None`]: ../../../../std/option/enum.Option.html#variant.None
-    /// [`read`]: ../../../../std/io/trait.Write.html#tymethod.write
-    /// [`Duration`]: ../../../../std/time/struct.Duration.html
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     /// use std::time::Duration;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// socket.set_write_timeout(Some(Duration::new(1, 0))).expect("Couldn't set write timeout");
     /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
+        // self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
+        self.0.set_write_timeout(timeout)
     }
 
     /// Returns the read timeout of this socket.
@@ -181,7 +197,7 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     /// use std::time::Duration;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
@@ -189,7 +205,8 @@ impl UnixStream {
     /// assert_eq!(socket.read_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
-        self.0.timeout(libc::SO_RCVTIMEO)
+        // self.0.timeout(libc::SO_RCVTIMEO)
+        self.0.read_timeout()
     }
 
     /// Returns the write timeout of this socket.
@@ -197,7 +214,7 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     /// use std::time::Duration;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
@@ -205,7 +222,8 @@ impl UnixStream {
     /// assert_eq!(socket.write_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
-        self.0.timeout(libc::SO_SNDTIMEO)
+        // self.0.timeout(libc::SO_SNDTIMEO)
+        self.0.write_timeout()
     }
 
     /// Returns the value of the `SO_ERROR` option.
@@ -213,7 +231,7 @@ impl UnixStream {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// if let Ok(Some(err)) = socket.take_error() {
@@ -221,28 +239,26 @@ impl UnixStream {
     /// }
     /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.0.take_error()
+        self.0.inner().take_error()
     }
 
     /// Shuts down the read, write, or both halves of this connection.
     ///
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
-    /// (see the documentation of [`Shutdown`]).
-    ///
-    /// [`Shutdown`]: ../../../../std/net/enum.Shutdown.html
+    /// (see the documentation of libstd `Shutdown`).
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixStream;
+    /// use may::os::unix::net::UnixStream;
     /// use std::net::Shutdown;
     ///
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// socket.shutdown(Shutdown::Both).expect("shutdown function failed");
     /// ```
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
-        self.0.shutdown(how)
+        self.0.inner().shutdown(how)
     }
 }
 
@@ -254,7 +270,7 @@ impl io::Read for UnixStream {
 
 impl<'a> io::Read for &'a UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buf)
+        (&self.0).read(buf)
     }
 }
 
@@ -270,39 +286,40 @@ impl io::Write for UnixStream {
 
 impl<'a> io::Write for &'a UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.write(buf)
+        (&self.0).write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        (&self.0).flush()
     }
 }
 
 impl AsRawFd for UnixStream {
     fn as_raw_fd(&self) -> RawFd {
-        *self.0.as_inner()
+        self.0.as_raw_fd()
     }
 }
 
 impl FromRawFd for UnixStream {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixStream {
-        UnixStream(Socket::from_inner(fd))
+        let stream = FromRawFd::from_raw_fd(fd);
+        UnixStream(CoIo::new(stream).expect("can't convert to UnixStream"))
     }
 }
 
 impl IntoRawFd for UnixStream {
     fn into_raw_fd(self) -> RawFd {
-        self.0.into_inner()
+        self.0.into_raw_fd()
     }
 }
-
+/*
 /// A structure representing a Unix domain socket server.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// use std::thread;
-/// use std::os::unix::net::{UnixStream, UnixListener};
+/// use may::os::unix::net::{UnixStream, UnixListener};
 ///
 /// fn handle_client(stream: UnixStream) {
 ///     // ...
@@ -343,7 +360,7 @@ impl UnixListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixListener;
+    /// use may::os::unix::net::UnixListener;
     ///
     /// let listener = match UnixListener::bind("/path/to/the/socket") {
     ///     Ok(sock) => sock,
@@ -359,15 +376,13 @@ impl UnixListener {
     /// Accepts a new incoming connection to this listener.
     ///
     /// This function will block the calling thread until a new Unix connection
-    /// is established. When established, the corresponding [`UnixStream`] and
+    /// is established. When established, the corresponding `UnixStream` and
     /// the remote peer's address will be returned.
-    ///
-    /// [`UnixStream`]: ../../../../std/os/unix/net/struct.UnixStream.html
     ///
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixListener;
+    /// use may::os::unix::net::UnixListener;
     ///
     /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
     ///
@@ -389,7 +404,7 @@ impl UnixListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixListener;
+    /// use may::os::unix::net::UnixListener;
     ///
     /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
     ///
@@ -404,7 +419,7 @@ impl UnixListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixListener;
+    /// use may::os::unix::net::UnixListener;
     ///
     /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
     ///
@@ -419,7 +434,7 @@ impl UnixListener {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixListener;
+    /// use may::os::unix::net::UnixListener;
     ///
     /// let listener = UnixListener::bind("/tmp/sock").unwrap();
     ///
@@ -433,17 +448,14 @@ impl UnixListener {
 
     /// Returns an iterator over incoming connections.
     ///
-    /// The iterator will never return [`None`] and will also not yield the
-    /// peer's [`SocketAddr`] structure.
-    ///
-    /// [`None`]: ../../../../std/option/enum.Option.html#variant.None
-    /// [`SocketAddr`]: struct.SocketAddr.html
+    /// The iterator will never return `None` and will also not yield the
+    /// peer's `SocketAddr` structure.
     ///
     /// # Examples
     ///
     /// ```no_run
     /// use std::thread;
-    /// use std::os::unix::net::{UnixStream, UnixListener};
+    /// use may::os::unix::net::{UnixStream, UnixListener};
     ///
     /// fn handle_client(stream: UnixStream) {
     ///     // ...
@@ -494,18 +506,15 @@ impl<'a> IntoIterator for &'a UnixListener {
     }
 }
 
-/// An iterator over incoming connections to a [`UnixListener`].
+/// An iterator over incoming connections to a `UnixListener`.
 ///
-/// It will never return [`None`].
-///
-/// [`None`]: ../../../../std/option/enum.Option.html#variant.None
-/// [`UnixListener`]: struct.UnixListener.html
+/// It will never return `None`.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// use std::thread;
-/// use std::os::unix::net::{UnixStream, UnixListener};
+/// use may::os::unix::net::{UnixStream, UnixListener};
 ///
 /// fn handle_client(stream: UnixStream) {
 ///     // ...
@@ -546,7 +555,7 @@ impl<'a> Iterator for Incoming<'a> {
 /// # Examples
 ///
 /// ```no_run
-/// use std::os::unix::net::UnixDatagram;
+/// use may::os::unix::net::UnixDatagram;
 ///
 /// let socket = UnixDatagram::bind("/path/to/my/socket").unwrap();
 /// socket.send_to(b"hello world", "/path/to/other/socket").unwrap();
@@ -576,7 +585,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = match UnixDatagram::bind("/path/to/the/socket") {
     ///     Ok(sock) => sock,
@@ -595,7 +604,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = match UnixDatagram::unbound() {
     ///     Ok(sock) => sock,
@@ -617,7 +626,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let (sock1, sock2) = match UnixDatagram::pair() {
     ///     Ok((sock1, sock2)) => (sock1, sock2),
@@ -644,7 +653,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// match sock.connect("/path/to/the/socket") {
@@ -668,7 +677,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::bind("/path/to/the/socket").unwrap();
     ///
@@ -683,7 +692,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::bind("/path/to/the/socket").unwrap();
     ///
@@ -702,7 +711,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// sock.connect("/path/to/the/socket").unwrap();
@@ -721,7 +730,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// let mut buf = vec![0; 10];
@@ -741,7 +750,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::bind("/path/to/the/socket").unwrap();
     /// let mut buf = vec![0; 10];
@@ -758,7 +767,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
@@ -777,7 +786,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// sock.connect("/some/sock").expect("Couldn't connect");
@@ -789,19 +798,17 @@ impl UnixDatagram {
 
     /// Sets the read timeout for the socket.
     ///
-    /// If the provided value is [`None`], then [`recv`] and [`recv_from`] calls will
-    /// block indefinitely. It is an error to pass the zero [`Duration`] to this
+    /// If the provided value is `None`, then [`recv`] and [`recv_from`] calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
-    /// [`None`]: ../../../../std/option/enum.Option.html#variant.None
     /// [`recv`]: #method.recv
     /// [`recv_from`]: #method.recv_from
-    /// [`Duration`]: ../../../../std/time/struct.Duration.html
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
@@ -813,19 +820,17 @@ impl UnixDatagram {
 
     /// Sets the write timeout for the socket.
     ///
-    /// If the provided value is [`None`], then [`send`] and [`send_to`] calls will
-    /// block indefinitely. It is an error to pass the zero [`Duration`] to this
+    /// If the provided value is `None`, then [`send`] and [`send_to`] calls will
+    /// block indefinitely. It is an error to pass the zero `Duration` to this
     /// method.
     ///
-    /// [`None`]: ../../../../std/option/enum.Option.html#variant.None
     /// [`send`]: #method.send
     /// [`send_to`]: #method.send_to
-    /// [`Duration`]: ../../../../std/time/struct.Duration.html
     ///
     /// # Examples
     ///
     /// ```
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
@@ -841,7 +846,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
@@ -857,7 +862,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
@@ -874,7 +879,7 @@ impl UnixDatagram {
     /// # Examples
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
     /// if let Ok(Some(err)) = sock.take_error() {
@@ -889,12 +894,10 @@ impl UnixDatagram {
     ///
     /// This function will cause all pending and future I/O calls on the
     /// specified portions to immediately return with an appropriate value
-    /// (see the documentation of [`Shutdown`]).
-    ///
-    /// [`Shutdown`]: ../../../../std/net/enum.Shutdown.html
+    /// (see the documentation of libstd `Shutdown`).
     ///
     /// ```no_run
-    /// use std::os::unix::net::UnixDatagram;
+    /// use may::os::unix::net::UnixDatagram;
     /// use std::net::Shutdown;
     ///
     /// let sock = UnixDatagram::unbound().unwrap();
@@ -1236,3 +1239,4 @@ mod test {
         assert!(UnixStream::connect("\0asdf").is_err());
     }
 }
+*/
