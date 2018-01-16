@@ -168,6 +168,7 @@ impl UnixStream {
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.inner().set_read_timeout(timeout)?;
         self.0.set_read_timeout(timeout)
     }
 
@@ -187,6 +188,7 @@ impl UnixStream {
     /// socket.set_write_timeout(Some(Duration::new(1, 0))).expect("Couldn't set write timeout");
     /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.inner().set_write_timeout(timeout)?;
         self.0.set_write_timeout(timeout)
     }
 
@@ -577,7 +579,7 @@ impl<'a> Iterator for Incoming<'a> {
 /// let (count, address) = socket.recv_from(&mut buf).unwrap();
 /// println!("socket {:?} sent {:?}", address, &buf[..count]);
 /// ```
-pub struct UnixDatagram(CoIo<net::UnixDatagram>);
+pub struct UnixDatagram(pub(crate) CoIo<net::UnixDatagram>);
 
 impl fmt::Debug for UnixDatagram {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -610,7 +612,8 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
-        unimplemented!()
+        let datagram = net::UnixDatagram::bind(path)?;
+        Ok(UnixDatagram(CoIo::new(datagram)?))
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
@@ -629,9 +632,8 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn unbound() -> io::Result<UnixDatagram> {
-        unimplemented!()
-        // let inner = Socket::new_raw(libc::AF_UNIX, libc::SOCK_DGRAM)?;
-        // Ok(UnixDatagram(inner))
+        let datagram = net::UnixDatagram::unbound()?;
+        Ok(UnixDatagram(CoIo::new(datagram)?))
     }
 
     /// Create an unnamed pair of connected sockets.
@@ -682,7 +684,9 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn connect<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
-        unimplemented!()
+        // for UnixDatagram connect it's a nonblocking operation
+        // so we just use the system call
+        self.0.inner().connect(path)
     }
 
     /// Creates a new independently owned handle to the underlying socket.
@@ -758,7 +762,21 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        unimplemented!()
+        if !self.0.ctx_check()? {
+            // this can't be nonblocking!!
+            return self.0.inner().recv_from(buf);
+        }
+
+        self.0.io_reset();
+        // this is an earlier return try for nonblocking read
+        match self.0.inner().recv_from(buf) {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret => return ret,
+        }
+
+        let reader = net_impl::UnixRecvFrom::new(self, buf);
+        yield_with(&reader);
+        reader.done()
     }
 
     /// Receives data from the socket.
@@ -775,8 +793,21 @@ impl UnixDatagram {
     /// sock.recv(buf.as_mut_slice()).expect("recv function failed");
     /// ```
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        unimplemented!()
-        // self.0.read(buf)
+        if !self.0.ctx_check()? {
+            // this can't be nonblocking!!
+            return self.0.inner().recv(buf);
+        }
+
+        self.0.io_reset();
+        // this is an earlier return try for nonblocking read
+        match self.0.inner().recv(buf) {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret => return ret,
+        }
+
+        let reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
+        yield_with(&reader);
+        reader.done()
     }
 
     /// Sends data on the socket to the specified address.
@@ -792,7 +823,21 @@ impl UnixDatagram {
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
     /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
-        unimplemented!()
+        if !self.0.ctx_check()? {
+            // this can't be nonblocking!!
+            return self.0.inner().send_to(buf, path);
+        }
+
+        self.0.io_reset();
+        // this is an earlier return try for nonblocking read
+        match self.0.inner().send_to(buf, path.as_ref()) {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret => return ret,
+        }
+
+        let writer = net_impl::UnixSendTo::new(self, buf, path.as_ref())?;
+        yield_with(&writer);
+        writer.done()
     }
 
     /// Sends data on the socket to the socket's peer.
@@ -812,8 +857,21 @@ impl UnixDatagram {
     /// sock.send(b"omelette au fromage").expect("send_to function failed");
     /// ```
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        unimplemented!()
-        // self.0.write(buf)
+        if !self.0.ctx_check()? {
+            // this can't be nonblocking!!
+            return self.0.inner().send(buf);
+        }
+
+        self.0.io_reset();
+        // this is an earlier return try for nonblocking write
+        match self.0.inner().send(buf) {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            ret => return ret,
+        }
+
+        let writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());
+        yield_with(&writer);
+        writer.done()
     }
 
     /// Sets the read timeout for the socket.
@@ -827,7 +885,7 @@ impl UnixDatagram {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
@@ -835,6 +893,7 @@ impl UnixDatagram {
     /// sock.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout function failed");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.inner().set_read_timeout(timeout)?;
         self.0.set_read_timeout(timeout)
     }
 
@@ -849,7 +908,7 @@ impl UnixDatagram {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
@@ -858,6 +917,7 @@ impl UnixDatagram {
     ///     .expect("set_write_timeout function failed");
     /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.0.inner().set_write_timeout(timeout)?;
         self.0.set_write_timeout(timeout)
     }
 
@@ -865,7 +925,7 @@ impl UnixDatagram {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
@@ -881,7 +941,7 @@ impl UnixDatagram {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use may::os::unix::net::UnixDatagram;
     /// use std::time::Duration;
     ///
@@ -946,15 +1006,14 @@ impl IntoRawFd for UnixDatagram {
         self.0.into_raw_fd()
     }
 }
-
 /*
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
-    use thread;
-    use io;
-    use io::prelude::*;
-    use time::Duration;
-    use sys_common::io::test::tmpdir;
+    use std::io;
+    use std::io::prelude::*;
+    use std::path::PathBuf;
+    use std::time::Duration;
+    use std::thread;
 
     use super::*;
 

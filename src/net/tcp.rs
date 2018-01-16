@@ -109,6 +109,7 @@ impl TcpStream {
     }
 
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+        self.sys.set_write_timeout(dur)?;
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.write_timeout = dur;
         Ok(())

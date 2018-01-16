@@ -6,6 +6,8 @@ mod udp_send_to;
 mod udp_recv_from;
 mod unix_stream_connect;
 mod unix_listener_accpet;
+mod unix_send_to;
+mod unix_recv_from;
 
 pub use self::socket_read::SocketRead;
 pub use self::socket_write::SocketWrite;
@@ -15,3 +17,5 @@ pub use self::udp_send_to::UdpSendTo;
 pub use self::udp_recv_from::UdpRecvFrom;
 pub use self::unix_stream_connect::UnixStreamConnect;
 pub use self::unix_listener_accpet::UnixListenerAccept;
+pub use self::unix_send_to::UnixSendTo;
+pub use self::unix_recv_from::UnixRecvFrom;
