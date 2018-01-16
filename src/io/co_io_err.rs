@@ -31,9 +31,9 @@ impl<T> fmt::Debug for Error<T> {
     }
 }
 
-impl<T> Into<io::Error> for Error<T> {
-    fn into(self) -> io::Error {
-        self.err
+impl<T> From<Error<T>> for io::Error {
+    fn from(err: Error<T>) -> Self {
+        err.err
     }
 }
 
