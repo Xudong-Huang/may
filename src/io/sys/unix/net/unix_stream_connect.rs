@@ -10,7 +10,7 @@ use yield_now::yield_with;
 use scheduler::get_scheduler;
 use os::unix::net::UnixStream;
 use sync::delay_drop::DelayDrop;
-use socket2::{Domain, Socket, SockAddr, Type};
+use socket2::{Domain, SockAddr, Socket, Type};
 use super::super::{add_socket, co_io_result, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 

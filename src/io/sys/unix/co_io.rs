@@ -84,7 +84,7 @@ impl<T: AsRawFd> CoIo<T> {
             write_timeout: None,
         })
     }
-  
+
     /// create from raw io ojbect which is already registered
     pub(crate) fn from_raw(io: T, io_data: io_impl::IoData) -> Self {
         CoIo {
@@ -94,6 +94,16 @@ impl<T: AsRawFd> CoIo<T> {
             read_timeout: None,
             write_timeout: None,
         }
+    }
+
+    /// reset internal io data
+    pub(crate) fn io_reset(&self) {
+        self.io.reset()
+    }
+
+    /// check current ctx
+    pub(crate) fn ctx_check(&self) -> io::Result<bool> {
+        self.ctx.check(|| self.set_nonblocking(false))
     }
 
     fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
@@ -142,7 +152,7 @@ impl<T: AsRawFd> CoIo<T> {
 
 impl<T: AsRawFd + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.set_nonblocking(false))? {
+        if !self.ctx_check()? {
             // this can't be nonblocking!!
             return self.inner.read(buf);
         }
@@ -163,7 +173,7 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
 
 impl<T: AsRawFd + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.set_nonblocking(false))? {
+        if !self.ctx_check()? {
             // this can't be nonblocking!!
             return self.inner.write(buf);
         }

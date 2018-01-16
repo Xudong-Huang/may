@@ -55,6 +55,17 @@ impl<T: AsRawHandle> CoIo<T> {
         })
     }
 
+    /// reset internal io data
+    #[allow(dead_code)]
+    pub(crate) fn io_reset(&self) {
+        self.io.reset()
+    }
+
+    /// check current ctx
+    pub(crate) fn ctx_check(&self) -> io::Result<bool> {
+        self.ctx.check(|| Ok(()))
+    }
+
     /// get inner ref
     pub fn inner(&self) -> &T {
         &self.inner
@@ -97,7 +108,7 @@ impl<T: AsRawHandle> CoIo<T> {
 
 impl<T: AsRawHandle + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| Ok(()))? {
+        if !self.ctx_check()? {
             return self.inner.read(buf);
         }
 
@@ -110,7 +121,7 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
 
 impl<T: AsRawHandle + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| Ok(()))? {
+        if !self.ctx_check()? {
             return self.inner.write(buf);
         }
 

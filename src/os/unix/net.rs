@@ -32,7 +32,7 @@ pub struct UnixStream(CoIo<net::UnixStream>);
 impl fmt::Debug for UnixStream {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut builder = fmt.debug_struct("UnixStream");
-        builder.field("fd", &self.0.inner().as_raw_fd());
+        builder.field("fd", &self.as_raw_fd());
         if let Ok(addr) = self.local_addr() {
             builder.field("local", &addr);
         }
@@ -168,7 +168,6 @@ impl UnixStream {
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        // self.0.set_timeout(timeout, libc::SO_RCVTIMEO)?;
         self.0.set_read_timeout(timeout)
     }
 
@@ -188,7 +187,6 @@ impl UnixStream {
     /// socket.set_write_timeout(Some(Duration::new(1, 0))).expect("Couldn't set write timeout");
     /// ```
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        // self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
         self.0.set_write_timeout(timeout)
     }
 
@@ -205,7 +203,6 @@ impl UnixStream {
     /// assert_eq!(socket.read_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
-        // self.0.timeout(libc::SO_RCVTIMEO)
         self.0.read_timeout()
     }
 
@@ -222,7 +219,6 @@ impl UnixStream {
     /// assert_eq!(socket.write_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
-        // self.0.timeout(libc::SO_SNDTIMEO)
         self.0.write_timeout()
     }
 
@@ -312,7 +308,7 @@ impl IntoRawFd for UnixStream {
         self.0.into_raw_fd()
     }
 }
-/*
+
 /// A structure representing a Unix domain socket server.
 ///
 /// # Examples
@@ -341,12 +337,12 @@ impl IntoRawFd for UnixStream {
 ///     }
 /// }
 /// ```
-pub struct UnixListener(Socket);
+pub struct UnixListener(pub(crate) CoIo<net::UnixListener>);
 
 impl fmt::Debug for UnixListener {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut builder = fmt.debug_struct("UnixListener");
-        builder.field("fd", self.0.as_inner());
+        builder.field("fd", &self.as_raw_fd());
         if let Ok(addr) = self.local_addr() {
             builder.field("local", &addr);
         }
@@ -371,6 +367,8 @@ impl UnixListener {
     /// };
     /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixListener> {
+        let listener = net::UnixListener::bind(path)?;
+        Ok(UnixListener(CoIo::new(listener)?))
     }
 
     /// Accepts a new incoming connection to this listener.
@@ -392,7 +390,21 @@ impl UnixListener {
     /// }
     /// ```
     pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
-        
+        if !self.0.ctx_check()? {
+            let (s, a) = self.0.inner().accept()?;
+            return Ok((UnixStream(CoIo::new(s)?), a));
+        }
+
+        self.0.io_reset();
+        match self.0.inner().accept() {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+            Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
+        }
+
+        let a = net_impl::UnixListenerAccept::new(self)?;
+        yield_with(&a);
+        a.done()
     }
 
     /// Creates a new independently owned handle to the underlying socket.
@@ -411,7 +423,8 @@ impl UnixListener {
     /// let listener_copy = listener.try_clone().expect("try_clone failed");
     /// ```
     pub fn try_clone(&self) -> io::Result<UnixListener> {
-        self.0.duplicate().map(UnixListener)
+        let listener = self.0.inner().try_clone()?;
+        Ok(UnixListener(CoIo::new(listener)?))
     }
 
     /// Returns the local socket address of this listener.
@@ -426,7 +439,7 @@ impl UnixListener {
     /// let addr = listener.local_addr().expect("Couldn't get local address");
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        SocketAddr::new(|addr, len| unsafe { libc::getsockname(*self.0.as_inner(), addr, len) })
+        self.0.inner().local_addr()
     }
 
     /// Returns the value of the `SO_ERROR` option.
@@ -443,7 +456,7 @@ impl UnixListener {
     /// }
     /// ```
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        self.0.take_error()
+        self.0.inner().take_error()
     }
 
     /// Returns an iterator over incoming connections.
@@ -481,19 +494,20 @@ impl UnixListener {
 
 impl AsRawFd for UnixListener {
     fn as_raw_fd(&self) -> RawFd {
-        *self.0.as_inner()
+        self.0.as_raw_fd()
     }
 }
 
 impl FromRawFd for UnixListener {
     unsafe fn from_raw_fd(fd: RawFd) -> UnixListener {
-        UnixListener(Socket::from_inner(fd))
+        let listener = FromRawFd::from_raw_fd(fd);
+        UnixListener(CoIo::new(listener).expect("can't convert to UnixListener"))
     }
 }
 
 impl IntoRawFd for UnixListener {
     fn into_raw_fd(self) -> RawFd {
-        self.0.into_inner()
+        self.0.into_raw_fd()
     }
 }
 
@@ -550,6 +564,7 @@ impl<'a> Iterator for Incoming<'a> {
     }
 }
 
+/*
 /// A Unix datagram socket.
 ///
 /// # Examples
@@ -596,7 +611,7 @@ impl UnixDatagram {
     /// };
     /// ```
     pub fn bind<P: AsRef<Path>>(path: P) -> io::Result<UnixDatagram> {
-        
+
     }
 
     /// Creates a Unix Datagram socket which is not bound to any address.
@@ -740,7 +755,7 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        
+
     }
 
     /// Receives data from the socket.
@@ -773,7 +788,7 @@ impl UnixDatagram {
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
     /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
-        
+
     }
 
     /// Sends data on the socket to the socket's peer.
