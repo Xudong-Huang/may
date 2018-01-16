@@ -24,7 +24,6 @@ fn yield_bench(b: &mut Bencher) {
     });
 }
 
-
 #[bench]
 fn spawn_bench(b: &mut Bencher) {
     may::config().set_workers(4);
@@ -60,9 +59,7 @@ fn spawn_bench_1(b: &mut Bencher) {
         for _t in 0..threads {
             let work = total_work / threads;
             let j = std::thread::spawn(move || {
-                let v = (0..work)
-                    .map(|_| go!(|| {}))
-                    .collect::<Vec<_>>();
+                let v = (0..work).map(|_| go!(|| {})).collect::<Vec<_>>();
                 for h in v {
                     h.join().unwrap();
                 }
@@ -83,10 +80,12 @@ fn smoke_bench(b: &mut Bencher) {
         let mut vec = Vec::with_capacity(threads);
         for _t in 0..threads {
             let j = std::thread::spawn(|| {
-                scope(|scope| for _i in 0..200 {
-                    go!(scope, || for _j in 0..1000 {
-                        yield_now();
-                    });
+                scope(|scope| {
+                    for _i in 0..200 {
+                        go!(scope, || for _j in 0..1000 {
+                            yield_now();
+                        });
+                    }
                 });
             });
             vec.push(j);
@@ -105,10 +104,12 @@ fn smoke_bench_1(b: &mut Bencher) {
         let mut vec = Vec::with_capacity(threads);
         for _t in 0..threads {
             let j = std::thread::spawn(|| {
-                scope(|scope| for _i in 0..2000 {
-                    go!(scope, || for _j in 0..4 {
-                        yield_now();
-                    });
+                scope(|scope| {
+                    for _i in 0..2000 {
+                        go!(scope, || for _j in 0..4 {
+                            yield_now();
+                        });
+                    }
                 });
             });
             vec.push(j);

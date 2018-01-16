@@ -79,12 +79,7 @@ impl<T> BlockNode<T> {
     /// you must make sure that end is not passing the end of this block
     /// use bulk_end() for the end para
     #[inline]
-    pub unsafe fn bulk_get<V: Extend<T>>(
-        &self,
-        start: usize,
-        end: usize,
-        vec: &mut V,
-    ) -> usize {
+    pub unsafe fn bulk_get<V: Extend<T>>(&self, start: usize, end: usize, vec: &mut V) -> usize {
         let size = end.wrapping_sub(start);
         let mut p_data = self.data.ptr().offset((start & BLOCK_MASK) as isize);
         // vec.reserve(size);
