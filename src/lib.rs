@@ -69,6 +69,7 @@ mod timeout_list;
 mod coroutine_impl;
 
 pub mod io;
+pub mod os;
 pub mod net;
 pub mod sync;
 pub mod cqueue;
