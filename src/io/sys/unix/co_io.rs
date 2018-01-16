@@ -11,7 +11,7 @@ use self::io_impl::co_io_err::Error;
 
 use std::time::Duration;
 use std::io::{self, Read, Write};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {
@@ -57,6 +57,12 @@ impl<T: AsRawFd> AsRawFd for CoIo<T> {
     }
 }
 
+impl<T: AsRawFd + IntoRawFd> IntoRawFd for CoIo<T> {
+    fn into_raw_fd(self) -> RawFd {
+        self.inner.into_raw_fd()
+    }
+}
+
 impl<T: AsRawFd> CoIo<T> {
     /// create `CoIo` instance from `T`
     pub fn new(io: T) -> Result<Self, Error<T>> {
@@ -83,8 +89,18 @@ impl<T: AsRawFd> CoIo<T> {
         set_nonblocking(self, nb)
     }
 
+    /// get inner ref
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    /// get inner mut ref
+    pub fn inner_mut(&mut self) -> &T {
+        &mut self.inner
+    }
+
     /// convert back to original type
-    pub fn into_raw(self) -> T {
+    pub fn into_inner(self) -> T {
         self.inner
     }
 

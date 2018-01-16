@@ -5,12 +5,11 @@
 
 use io as io_impl;
 use yield_now::yield_with;
-use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 
 use std::time::Duration;
 use std::io::{self, Read, Write};
-use std::os::windows::io::{AsRawHandle, AsRawSocket, RawHandle, RawSocket};
+use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
 
 /// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
 /// this type can be used in coroutine context without blocking the thread
@@ -29,9 +28,16 @@ impl<T: AsRawHandle> AsRawHandle for CoIo<T> {
     }
 }
 
+impl<T: AsRawHandle + IntoRawHandle> IntoRawHandle for CoIo<T> {
+    fn into_raw_handle(self) -> RawHandle {
+        self.inner.into_raw_handle()
+    }
+}
+
 impl<T: AsRawHandle> CoIo<T> {
     /// create `CoIo` instance from `T`
-    pub fn new(io: T) -> Result<Self, Error<T>> {
+    pub fn new(io: T) -> io::Result<Self> {
+        use std::os::windows::io::{AsRawSocket, RawSocket};
         struct CoHandle(RawHandle);
         impl AsRawSocket for CoHandle {
             fn as_raw_socket(&self) -> RawSocket {
@@ -40,20 +46,27 @@ impl<T: AsRawHandle> CoIo<T> {
         }
 
         let handle = CoHandle(io.as_raw_handle());
-        match io_impl::add_socket(&handle) {
-            Ok(io_data) => Ok(CoIo {
-                inner: io,
-                io: io_data,
-                ctx: io_impl::IoContext::new(),
-                read_timeout: None,
-                write_timeout: None,
-            }),
-            Err(e) => Err(Error::new(e, io)),
-        }
+        io_impl::add_socket(&handle).map(|io_data| CoIo {
+            inner: io,
+            io: io_data,
+            ctx: io_impl::IoContext::new(),
+            read_timeout: None,
+            write_timeout: None,
+        })
+    }
+
+    /// get inner ref
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    /// get inner mut ref
+    pub fn inner_mut(&mut self) -> &T {
+        &mut self.inner
     }
 
     /// convert back to original type
-    pub fn into_raw(self) -> T {
+    pub fn into_inner(self) -> T {
         self.inner
     }
 
