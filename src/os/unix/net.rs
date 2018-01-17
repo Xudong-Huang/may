@@ -1006,16 +1006,19 @@ impl IntoRawFd for UnixDatagram {
         self.0.into_raw_fd()
     }
 }
-/*
+
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
     use std::io;
     use std::io::prelude::*;
-    use std::path::PathBuf;
     use std::time::Duration;
-    use std::thread;
+    use tempdir::TempDir;
 
     use super::*;
+
+    fn tmpdir() -> TempDir {
+        TempDir::new("test").expect("failed to create TempDir")
+    }
 
     macro_rules! or_panic {
         ($e:expr) => {
@@ -1034,7 +1037,7 @@ mod test {
         let msg2 = b"world!";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::spawn(move || {
+        let thread = go!(move || {
             let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
             or_panic!(stream.read(&mut buf));
@@ -1062,7 +1065,7 @@ mod test {
         let msg2 = b"world!";
 
         let (mut s1, mut s2) = or_panic!(UnixStream::pair());
-        let thread = thread::spawn(move || {
+        let thread = go!(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
             or_panic!(s1.read(&mut buf));
@@ -1087,7 +1090,7 @@ mod test {
         let msg2 = b"world";
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::spawn(move || {
+        let thread = go!(move || {
             let mut stream = or_panic!(listener.accept()).0;
             or_panic!(stream.write_all(msg1));
             or_panic!(stream.write_all(msg2));
@@ -1111,12 +1114,10 @@ mod test {
         let socket_path = dir.path().join("sock");
 
         let listener = or_panic!(UnixListener::bind(&socket_path));
-        let thread = thread::spawn(move || {
-            for stream in listener.incoming().take(2) {
-                let mut stream = or_panic!(stream);
-                let mut buf = [0];
-                or_panic!(stream.read(&mut buf));
-            }
+        let thread = go!(move || for stream in listener.incoming().take(2) {
+            let mut stream = or_panic!(stream);
+            let mut buf = [0];
+            or_panic!(stream.read(&mut buf));
         });
 
         for _ in 0..2 {
@@ -1298,7 +1299,7 @@ mod test {
         let msg2 = b"world!";
 
         let (s1, s2) = or_panic!(UnixDatagram::pair());
-        let thread = thread::spawn(move || {
+        let thread = go!(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
             or_panic!(s1.recv(&mut buf));
@@ -1320,4 +1321,3 @@ mod test {
         assert!(UnixStream::connect("\0asdf").is_err());
     }
 }
-*/

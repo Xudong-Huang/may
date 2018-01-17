@@ -38,6 +38,9 @@ extern crate may_queue;
 #[allow(unused_extern_crates)]
 #[doc(hidden)]
 extern crate smallvec;
+#[cfg(test)]
+#[doc(hidden)]
+extern crate tempdir;
 
 #[cfg(windows)]
 #[doc(hidden)]

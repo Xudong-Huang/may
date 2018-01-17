@@ -33,21 +33,22 @@ crossbeam = "0.3"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
 nix = "0.9"
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 miow = "0.3"
 winapi = "0.3"
 
 [dev-dependencies]
-docopt = "0.8"
-serde = "1.0"
-serde_derive = "1.0"
-httparse = "1.1"
 bytes = "0.4"
-native-tls = "0.1.4"
-tungstenite = "0.5.2"
+serde = "1.0"
+docopt = "0.8"
+tempdir = "0.3"
+httparse = "1.1"
+native-tls = "0.1"
+tungstenite = "0.5"
+serde_derive = "1.0"
 
 
 [profile.release]
