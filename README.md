@@ -132,11 +132,18 @@ There are four things you should avoid when writing coroutines:
 * Don't call thread blocking APIs.
 It will hurt the performance. 
 
-* Don't use Thread Local Storage.
-Access TLS in coroutine would trigger undefined behavior.
+* Carefully use Thread Local Storage.
+Access TLS in coroutine may trigger undefined behavior.
+> it's considered **unsafe** with the following pattern
+> ```rust
+> set_tls();
+> coroutine::yield_now(); // or other coroutine api that would cause a scheduling
+> use_tls();
+> ```
+> but it's **safe** if your code is not sensitive about the previous state of TLS. Or there is no coroutine scheduling between **set** TLS and **use** TLS.
 
-* Don't run CPU bound tasks for long time
-* Don't exceed the stack. It will trigger undefined behavior.
+* Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness.
+* Don't exceed the coroutine stack. It will trigger undefined behavior.
 
 **Note**
 > The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
