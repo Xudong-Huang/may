@@ -31,7 +31,16 @@ impl Flag {
     #[inline]
     pub fn done(&self, guard: &Guard) {
         if !guard.panicking && thread::panicking() {
-            self.failed.store(1, Ordering::Relaxed);
+            let is_canceled = if ::coroutine_impl::is_coroutine() {
+                let cancel = ::coroutine_impl::current_cancel_data();
+                cancel.is_canceled()
+            } else {
+                false
+            };
+
+            if !is_canceled {
+                self.failed.store(1, Ordering::Relaxed);
+            }
         }
     }
 

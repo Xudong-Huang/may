@@ -7,7 +7,7 @@ use sync::AtomicOption;
 use yield_now::set_co_para;
 use io::cancel::CancelIoImpl;
 use scheduler::get_scheduler;
-use coroutine_impl::{current_cancel_data, CoroutineImpl};
+use coroutine_impl::CoroutineImpl;
 
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe
@@ -21,8 +21,9 @@ pub fn trigger_cancel_panic() -> ! {
     }
 
     // should we clear the cancel flag to let other API continue?
-    // so that we can avoid the re-panic problem
-    current_cancel_data().state.store(0, Ordering::Release);
+    // so that we can avoid the re-panic problem?
+    // currently this is not used in any drop implmentation
+    // current_cancel_data().state.store(0, Ordering::Release);
     panic!(Error::Cancel);
 }
 

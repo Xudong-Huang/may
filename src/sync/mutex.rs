@@ -511,4 +511,43 @@ mod tests {
         let g = mutex1.lock().unwrap();
         assert_eq!(*g, 1);
     }
+
+    #[test]
+    fn test_mutex_canceled_by_other_wait() {
+        use std::mem::drop;
+        use std::time::Duration;
+        use sleep::sleep;
+
+        let mutex1 = Arc::new(Mutex::new(0));
+        let mutex2 = mutex1.clone();
+        let mutex3 = mutex1.clone();
+        let g = mutex1.lock().unwrap();
+
+        let h1 = go!(move || {
+            let mut g = mutex2.lock().unwrap();
+            // test cancel when holding the mutext
+            // this should not be poision
+            sleep(Duration::from_secs(10000));
+            *g += 1;
+        });
+
+        let h2 = go!(move || {
+            // let h1 enqueue
+            sleep(Duration::from_millis(50));
+            let mut g = mutex3.lock().unwrap();
+            *g += 1;
+        });
+
+        // wait h1 and h2 enqueue
+        sleep(Duration::from_millis(100));
+        // release the mutex, so that h1 go the lock
+        drop(g);
+        sleep(Duration::from_millis(50));
+        // cancel h1 while h1 hold the lock
+        unsafe { h1.coroutine().cancel() };
+        h1.join().unwrap_err();
+        h2.join().unwrap();
+        let g = mutex1.lock().unwrap();
+        assert_eq!(*g, 1);
+    }
 }
