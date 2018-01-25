@@ -42,9 +42,64 @@ fn filter_cancel_panic() {
     }));
 }
 
+static mut SCHED: *const Scheduler = 0 as *const _;
+
+#[cold]
+#[inline(never)]
+fn init_scheduler() {
+    let workers = config().get_workers();
+    let mut io_workers = config().get_io_workers();
+    let mut run_on_io = true;
+    if io_workers == 0 {
+        // running all the coroutines on normal worker thread
+        io_workers = 1;
+        run_on_io = false;
+    }
+    let b: Box<Scheduler> = Scheduler::new(io_workers, run_on_io);
+    unsafe {
+        SCHED = Box::into_raw(b);
+    }
+
+    // run the workers in background
+    for _id in 0..workers {
+        thread::spawn(move || {
+            filter_cancel_panic();
+            let s = unsafe { &*SCHED };
+            s.run();
+        });
+    }
+
+    // timer thread
+    thread::spawn(move || {
+        filter_cancel_panic();
+        let s = unsafe { &*SCHED };
+        // timer function
+        let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
+            // just re-push the co to the visit list
+            co.take_fast(Ordering::Relaxed).map(|mut c| {
+                // set the timeout result for the coroutine
+                set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                s.schedule(c);
+            });
+        };
+
+        s.timer_thread.run(&timer_event_handler);
+    });
+
+    // io event loop thread
+    for id in 0..io_workers {
+        thread::spawn(move || {
+            filter_cancel_panic();
+            let s = unsafe { &*SCHED };
+            s.event_loop.run(id).unwrap_or_else(|e| {
+                panic!("event_loop failed running, err={}", e);
+            });
+        });
+    }
+}
+
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
-    static mut SCHED: *const Scheduler = 0 as *const _;
     unsafe {
         if likely(!SCHED.is_null()) {
             return &*SCHED;
@@ -52,57 +107,7 @@ pub fn get_scheduler() -> &'static Scheduler {
     }
 
     static ONCE: Once = ONCE_INIT;
-    ONCE.call_once(|| {
-        let workers = config().get_workers();
-        let mut io_workers = config().get_io_workers();
-        let mut run_on_io = true;
-        if io_workers == 0 {
-            // running all the coroutines on normal worker thread
-            io_workers = 1;
-            run_on_io = false;
-        }
-        let b: Box<Scheduler> = Scheduler::new(io_workers, run_on_io);
-        unsafe {
-            SCHED = Box::into_raw(b);
-        }
-
-        // run the workers in background
-        for _id in 0..workers {
-            thread::spawn(move || {
-                filter_cancel_panic();
-                let s = unsafe { &*SCHED };
-                s.run();
-            });
-        }
-
-        // timer thread
-        thread::spawn(move || {
-            filter_cancel_panic();
-            let s = unsafe { &*SCHED };
-            // timer function
-            let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
-                // just re-push the co to the visit list
-                co.take_fast(Ordering::Relaxed).map(|mut c| {
-                    // set the timeout result for the coroutine
-                    set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-                    s.schedule(c);
-                });
-            };
-
-            s.timer_thread.run(&timer_event_handler);
-        });
-
-        // io event loop thread
-        for id in 0..io_workers {
-            thread::spawn(move || {
-                filter_cancel_panic();
-                let s = unsafe { &*SCHED };
-                s.event_loop.run(id).unwrap_or_else(|e| {
-                    panic!("event_loop failed running, err={}", e);
-                });
-            });
-        }
-    });
+    ONCE.call_once(init_scheduler);
     unsafe { &*SCHED }
 }
 
