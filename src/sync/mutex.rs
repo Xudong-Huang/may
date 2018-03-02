@@ -149,7 +149,7 @@ impl<T: ?Sized> Mutex<T> {
     where
         T: Sized,
     {
-        let data = unsafe { self.data.into_inner() };
+        let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
 

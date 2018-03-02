@@ -226,7 +226,7 @@ impl<T: ?Sized> RwLock<T> {
     {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock the inner lock.
-        let data = unsafe { self.data.into_inner() };
+        let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
 
