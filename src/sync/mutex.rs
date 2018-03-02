@@ -149,7 +149,11 @@ impl<T: ?Sized> Mutex<T> {
     where
         T: Sized,
     {
+        // TODO: wait for stable remove the unsafe signature
+        #[cfg(not(nightly))]
         let data = unsafe { self.data.into_inner() };
+        #[cfg(nightly)]
+        let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
 

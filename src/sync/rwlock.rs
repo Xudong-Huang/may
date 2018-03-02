@@ -226,7 +226,11 @@ impl<T: ?Sized> RwLock<T> {
     {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock the inner lock.
+        // TODO: wait for stable remove the unsafe signature
+        #[cfg(not(nightly))]
         let data = unsafe { self.data.into_inner() };
+        #[cfg(nightly)]
+        let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
 
