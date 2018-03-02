@@ -1,6 +1,6 @@
 [package]
 name = "may"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Xudong-Huang/may.git"
@@ -52,7 +52,6 @@ serde_derive = "1.0"
 
 
 [profile.release]
-opt-level=3
 lto = true
 
 [build-dependencies]

@@ -1,3 +1,16 @@
+## v0.3.0
+
+`MAY` 0.3.0 improve performance and add some new features
+
+* fix bugs
+* add https server example
+* add websocket server example
+* replace net2 dependency with socket2 (#21)
+* improve performance for getting scheduler instance
+* support CoIo as a generic wrapper for normal io object (#22)
+* support unix socket (#17)
+
+
 ## v0.2.0
 
 `MAY` 0.2.0 focus on changing the `spawn` APIs to unsafe so that apply rust safety rules. And this is a breaking change to `v0.1.0`
