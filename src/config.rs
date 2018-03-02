@@ -1,8 +1,7 @@
 //! `May` Configuration interface
 //!
 
-use std::sync::{Once, ONCE_INIT};
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // default configs
 const DEFAULT_WORKERS: usize = 2;
@@ -12,33 +11,16 @@ const DEFAULT_IO_WORKERS: usize = 2;
 const DEFAULT_STACK_SIZE: usize = 0x1000;
 const DEFAULT_POOL_CAPACITY: usize = 100;
 
-static WORKERS: AtomicUsize = ATOMIC_USIZE_INIT;
-static IO_WORKERS: AtomicUsize = ATOMIC_USIZE_INIT;
-static STACK_SIZE: AtomicUsize = ATOMIC_USIZE_INIT;
-static POOL_CAPACITY: AtomicUsize = ATOMIC_USIZE_INIT;
+static WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_WORKERS);
+static IO_WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_IO_WORKERS);
+static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
+static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
 
 /// `May` Configuration type
 pub struct Config;
 
 /// get the may configuration instance
 pub fn config() -> Config {
-    // TODO: update to use const fn once stable
-    static INIT: AtomicUsize = ATOMIC_USIZE_INIT;
-    static ONCE: Once = ONCE_INIT;
-    if INIT.load(Ordering::Acquire) != 0 {
-        // already initialized
-        return Config;
-    }
-
-    ONCE.call_once(|| {
-        WORKERS.store(DEFAULT_WORKERS, Ordering::Release);
-        IO_WORKERS.store(DEFAULT_IO_WORKERS, Ordering::Release);
-        STACK_SIZE.store(DEFAULT_STACK_SIZE, Ordering::Release);
-        POOL_CAPACITY.store(DEFAULT_POOL_CAPACITY, Ordering::Release);
-        // tell that we already init to default
-        INIT.store(1, Ordering::Release);
-    });
-
     Config
 }
 
