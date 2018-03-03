@@ -46,7 +46,24 @@ impl TcpStream {
             return Ok(TcpStream::from_stream(s, io));
         }
 
-        let mut c = net_impl::TcpStreamConnect::new(addr)?;
+        let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
+
+        if c.is_connected()? {
+            return c.done();
+        }
+
+        yield_with(&c);
+        c.done()
+    }
+
+    pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
+        if !is_coroutine() {
+            let s = net::TcpStream::connect_timeout(addr, timeout)?;
+            let io = io_impl::IoData::new(&s);
+            return Ok(TcpStream::from_stream(s, io));
+        }
+
+        let mut c = net_impl::TcpStreamConnect::new(addr, Some(timeout))?;
 
         if c.is_connected()? {
             return c.done();

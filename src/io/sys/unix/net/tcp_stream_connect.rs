@@ -15,13 +15,14 @@ use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 pub struct TcpStreamConnect {
     io_data: IoData,
     stream: Socket,
+    timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
     is_connected: bool,
 }
 
 impl TcpStreamConnect {
-    pub fn new<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(addr: A, timeout: Option<Duration>) -> io::Result<Self> {
         use socket2::{Domain, Type};
 
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
@@ -42,6 +43,7 @@ impl TcpStreamConnect {
                 add_socket(&stream).map(|io| TcpStreamConnect {
                     io_data: io,
                     stream: stream,
+                    timeout: timeout,
                     addr: addr,
                     can_drop: DelayDrop::new(),
                     is_connected: false,
@@ -110,7 +112,7 @@ impl EventSource for TcpStreamConnect {
         let io_data = &self.io_data;
         get_scheduler()
             .get_selector()
-            .add_io_timer(io_data, Some(Duration::from_secs(10)));
+            .add_io_timer(io_data, self.timeout);
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

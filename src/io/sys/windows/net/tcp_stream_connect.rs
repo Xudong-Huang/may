@@ -15,15 +15,19 @@ use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 pub struct TcpStreamConnect {
     io_data: EventData,
     stream: SysTcpStream,
+    timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
 }
 
 impl TcpStreamConnect {
-    pub fn new<A: ToSocketAddrs>(addr: A) -> io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(addr: A, timeout: Option<Duration>) -> io::Result<Self> {
         use socket2::{Domain, Socket, Type};
 
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
+        // TODO:
+        // resolve addr is a blocking operation!
+        // here we should use a thread to finish the resolve?
         addr.to_socket_addrs()?
             .fold(Err(err), |prev, addr| {
                 prev.or_else(|_| {
@@ -59,6 +63,7 @@ impl TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
                             addr: addr,
                             stream: s,
+                            timeout: timeout,
                             can_drop: DelayDrop::new(),
                         })
                     })
@@ -85,7 +90,7 @@ impl EventSource for TcpStreamConnect {
         let s = get_scheduler();
         let cancel = co_cancel_data(&co);
         s.get_selector()
-            .add_io_timer(&mut self.io_data, Some(Duration::from_secs(10)));
+            .add_io_timer(&mut self.io_data, self.timeout);
         self.io_data.co = Some(co);
 
         // call the overlapped connect API
