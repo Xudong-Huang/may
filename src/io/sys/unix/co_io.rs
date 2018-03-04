@@ -103,11 +103,8 @@ impl<T: AsRawFd> CoIo<T> {
 
     /// check current ctx
     pub(crate) fn ctx_check(&self) -> io::Result<bool> {
-        self.ctx.check(|| self.set_nonblocking(false))
-    }
-
-    fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
-        set_nonblocking(self, nb)
+        self.ctx.check_nonblocking(|b| set_nonblocking(self, b))?;
+        self.ctx.check_context(|b| set_nonblocking(self, b))
     }
 
     /// get inner ref
@@ -146,6 +143,12 @@ impl<T: AsRawFd> CoIo<T> {
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.write_timeout = dur;
+        Ok(())
+    }
+
+    /// set nonblocking mode
+    pub fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
+        self.ctx.set_nonblocking(nb);
         Ok(())
     }
 }

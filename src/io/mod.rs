@@ -11,6 +11,7 @@ pub(crate) mod sys;
 mod event_loop;
 
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
 use coroutine_impl::is_coroutine;
 
 pub(crate) use self::event_loop::EventLoop;
@@ -21,24 +22,73 @@ pub trait AsIoData {
 }
 
 #[derive(Debug)]
-pub(crate) struct IoContext; 
+pub(crate) struct IoContext {
+    nonblocking: AtomicBool,
+    blocked_io: AtomicBool,
+}
 
 impl IoContext {
     pub fn new() -> Self {
-        IoContext
+        IoContext {
+            // default is blocking mode in coroutine context
+            nonblocking: AtomicBool::new(false),
+            // track current io object nonblocking mode
+            blocked_io: AtomicBool::new(true),
+        }
+    }
+
+    // return Ok(ture) if it's a nonblocking request
+    // f is a closure to set the actual inner io nonblocking mode
+    #[inline]
+    pub fn check_nonblocking<F>(&self, f: F) -> io::Result<bool>
+    where
+        F: FnOnce(bool) -> io::Result<()>,
+    {
+        // for coroutine context
+        if self.nonblocking.load(Ordering::Relaxed) {
+            #[cold]
+            {
+                if !self.blocked_io.load(Ordering::Relaxed) {
+                    f(true)?;
+                    self.blocked_io.store(true, Ordering::Relaxed);
+                }
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    // return Ok(ture) if it's a coroutine context
+    // f is a closure to set the actual inner io nonblocking mode
+    #[inline]
+    pub fn check_context<F>(&self, f: F) -> io::Result<bool>
+    where
+        F: FnOnce(bool) -> io::Result<()>,
+    {
+        // thread context
+        if !is_coroutine() {
+            #[cold]
+            {
+                if self.blocked_io.load(Ordering::Relaxed) {
+                    f(false)?;
+                    self.blocked_io.store(false, Ordering::Relaxed);
+                }
+                return Ok(false);
+            }
+        }
+
+        // for coroutine context
+        if !self.blocked_io.load(Ordering::Relaxed) {
+            #[cold]
+            f(true)?;
+            self.blocked_io.store(true, Ordering::Relaxed);
+        }
+        Ok(true)
     }
 
     #[inline]
-    // return Ok(ture) if it's a coroutine context
-    pub fn check<F>(&self, f: F) -> io::Result<bool>
-    where
-        F: FnOnce() -> io::Result<()>,
-    {
-        if !is_coroutine() {
-            f()?;
-            return Ok(false);
-        }
-        Ok(true)
+    pub fn set_nonblocking(&self, nonblocking: bool) {
+        self.nonblocking.store(nonblocking, Ordering::Relaxed);
     }
 }
 

@@ -140,6 +140,11 @@ impl TcpStream {
         Ok(self.write_timeout)
     }
 
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.ctx.set_nonblocking(nonblocking);
+        Ok(())
+    }
+
     // convert std::net::TcpStream to Self without add_socket
     pub(crate) fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
@@ -154,8 +159,10 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
-            // this can't be nonblocking!!
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
+            #[cold]
             return self.sys.read(buf);
         }
 
@@ -175,8 +182,10 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
-            // this can't be nonblocking!!
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
+            #[cold]
             return self.sys.write(buf);
         }
 
@@ -259,7 +268,10 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
+            #[cold]
             return self.sys
                 .accept()
                 .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));

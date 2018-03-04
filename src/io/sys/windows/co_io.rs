@@ -63,7 +63,9 @@ impl<T: AsRawHandle> CoIo<T> {
 
     /// check current ctx
     pub(crate) fn ctx_check(&self) -> io::Result<bool> {
-        self.ctx.check(|| Ok(()))
+        // FIXME: overlappened doesn't depend on the nonblocking?
+        // self.ctx.check_nonblocking(|_| Ok(()))?;
+        self.ctx.check_context(|_| Ok(()))
     }
 
     /// get inner ref
@@ -102,6 +104,13 @@ impl<T: AsRawHandle> CoIo<T> {
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.write_timeout = dur;
+        Ok(())
+    }
+
+    /// set nonblocking
+    pub fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
+        //set_nonblocking(self, nb)
+        self.ctx.set_nonblocking(nb);
         Ok(())
     }
 }

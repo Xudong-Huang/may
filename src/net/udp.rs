@@ -72,7 +72,9 @@ impl UdpSocket {
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
             // this can't be nonblocking!!
             return self.sys.send_to(buf, addr);
         }
@@ -90,7 +92,9 @@ impl UdpSocket {
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
             // this can't be nonblocking!!
             return self.sys.recv_from(buf);
         }
@@ -108,7 +112,9 @@ impl UdpSocket {
     }
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
             // this can't be nonblocking!!
             return self.sys.send(buf);
         }
@@ -126,7 +132,9 @@ impl UdpSocket {
     }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx.check(|| self.sys.set_nonblocking(false))? {
+        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
             // this can't be nonblocking!!
             return self.sys.recv(buf);
         }
