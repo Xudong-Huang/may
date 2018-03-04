@@ -21,33 +21,24 @@ pub trait AsIoData {
 }
 
 #[derive(Debug)]
-pub(crate) struct IoContext {
-    b_init: bool,
-    b_co: bool,
-}
+pub(crate) struct IoContext; 
 
 impl IoContext {
     pub fn new() -> Self {
-        IoContext {
-            b_init: false,
-            b_co: true,
-        }
+        IoContext
     }
 
     #[inline]
+    // return Ok(ture) if it's a coroutine context
     pub fn check<F>(&self, f: F) -> io::Result<bool>
     where
         F: FnOnce() -> io::Result<()>,
     {
-        if !self.b_init {
-            let me = unsafe { &mut *(self as *const _ as *mut Self) };
-            if !is_coroutine() {
-                me.b_co = false;
-                f()?;
-            }
-            me.b_init = true;
+        if !is_coroutine() {
+            f()?;
+            return Ok(false);
         }
-        Ok(self.b_co)
+        Ok(true)
     }
 }
 
