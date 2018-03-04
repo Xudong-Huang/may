@@ -224,6 +224,20 @@ impl UnixStream {
         self.0.write_timeout()
     }
 
+    /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use may::os::unix::net::UnixStream;
+    ///
+    /// let socket = UnixStream::connect("/tmp/sock").unwrap();
+    /// socket.set_nonblocking(true).expect("Couldn't set nonblocking");
+    /// ```
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.0.set_nonblocking(nonblocking)
+    }
+
     /// Returns the value of the `SO_ERROR` option.
     ///
     /// # Examples
@@ -442,6 +456,21 @@ impl UnixListener {
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.inner().local_addr()
+    }
+
+    /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use may::os::unix::net::UnixListener;
+    ///
+    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
+    ///
+    /// listener.set_nonblocking(true).expect("Couldn't set non blocking");
+    /// ```
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.0.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.
@@ -952,6 +981,20 @@ impl UnixDatagram {
     /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.write_timeout()
+    }
+
+    /// Moves the socket into or out of nonblocking mode.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use may::os::unix::net::UnixDatagram;
+    ///
+    /// let sock = UnixDatagram::unbound().unwrap();
+    /// sock.set_nonblocking(true).expect("set_nonblocking function failed");
+    /// ```
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.0.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.

@@ -314,6 +314,11 @@ impl TcpListener {
         })
     }
 
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.ctx.set_nonblocking(nonblocking);
+        Ok(())
+    }
+
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.sys.take_error()
     }

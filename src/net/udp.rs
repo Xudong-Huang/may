@@ -151,6 +151,11 @@ impl UdpSocket {
         reader.done()
     }
 
+    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.ctx.set_nonblocking(nonblocking);
+        Ok(())
+    }
+
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_read_timeout(dur)?;
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
