@@ -1,17 +1,17 @@
+use std::os::unix::io::RawFd;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use std::os::unix::io::RawFd;
 use std::{cmp, io, isize, ptr};
-use std::sync::atomic::Ordering;
 
-use nix::sys::epoll::*;
-use smallvec::SmallVec;
-use libc::{eventfd, EFD_NONBLOCK};
-use coroutine_impl::CoroutineImpl;
-use timeout_list::{now, ns_to_ms};
-use nix::unistd::{close, read, write};
-use may_queue::mpsc_list::Queue as mpsc;
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
+use coroutine_impl::CoroutineImpl;
+use libc::{eventfd, EFD_NONBLOCK};
+use may_queue::mpsc_list::Queue as mpsc;
+use nix::sys::epoll::*;
+use nix::unistd::{close, read, write};
+use smallvec::SmallVec;
+use timeout_list::{now, ns_to_ms};
 
 fn create_eventfd() -> io::Result<RawFd> {
     let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
@@ -33,7 +33,7 @@ struct SingleSelector {
 impl SingleSelector {
     pub fn new() -> io::Result<Self> {
         // wakeup data is 0
-        let mut info = EpollEvent::new(EPOLLET | EPOLLIN, 0);
+        let mut info = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, 0);
 
         let epfd = epoll_create().map_err(from_nix_error)?;
         let evfd = create_eventfd()?;
@@ -84,7 +84,7 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let mut ev = EpollEvent::new(EPOLLIN, 0);
+        let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
         let timeout_ms = timeout
             .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
@@ -156,7 +156,7 @@ impl Selector {
     #[inline]
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
         let mut info = EpollEvent::new(
-            EPOLLIN | EPOLLOUT | EPOLLET,
+            EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT | EpollFlags::EPOLLET,
             io_data.as_ref() as *const _ as _,
         );
 
