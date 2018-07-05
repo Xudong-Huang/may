@@ -4,11 +4,12 @@ extern crate httparse;
 extern crate may;
 extern crate native_tls;
 
-use may::net::TcpListener;
-use httparse::Status;
 use bytes::BufMut;
+use httparse::Status;
+use may::net::TcpListener;
+use native_tls::{Identity, TlsAcceptor};
+use std::fs::File;
 use std::io::{Read, Write};
-use native_tls::{Pkcs12, TlsAcceptor};
 use std::sync::Arc;
 
 fn req_done(buf: &[u8], path: &mut String) -> Option<usize> {
@@ -27,11 +28,14 @@ fn req_done(buf: &[u8], path: &mut String) -> Option<usize> {
 fn main() {
     may::config().set_io_workers(4);
 
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-    let pkcs12 = Pkcs12::from_der(include_bytes!("cert/mycert.pfx"), "password").unwrap();
-    let acceptor = TlsAcceptor::builder(pkcs12).unwrap().build().unwrap();
+    let mut file = File::open("examples/cert/mycert.pfx").unwrap();
+    let mut identity = vec![];
+    file.read_to_end(&mut identity).unwrap();
+    let identity = Identity::from_pkcs12(&identity, "password").unwrap();
+    let acceptor = TlsAcceptor::new(identity).unwrap();
     let acceptor = Arc::new(acceptor);
 
+    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
     while let Ok((stream, _)) = listener.accept() {
         let acceptor = acceptor.clone();
         let mut stream = acceptor.accept(stream).unwrap();
