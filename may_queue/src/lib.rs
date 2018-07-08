@@ -1,5 +1,6 @@
 #![cfg_attr(nightly, feature(alloc))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
+#![cfg_attr(nightly, feature(raw_vec_internals))]
 #![cfg_attr(all(nightly, test), feature(test))]
 
 mod block_node;
