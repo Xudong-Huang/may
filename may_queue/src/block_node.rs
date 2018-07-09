@@ -1,15 +1,8 @@
-#[cfg(nightly)]
-extern crate alloc;
-#[cfg(nightly)]
-use self::alloc::raw_vec::RawVec;
-
-#[cfg(not(nightly))]
 #[derive(Debug)]
 pub struct RawVec<T> {
     buf: Vec<T>,
 }
 
-#[cfg(not(nightly))]
 impl<T> RawVec<T> {
     pub fn with_capacity(cap: usize) -> Self {
         RawVec {

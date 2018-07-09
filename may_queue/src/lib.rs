@@ -1,13 +1,12 @@
-#![cfg_attr(nightly, feature(alloc))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
 #![cfg_attr(all(nightly, test), feature(test))]
 
 mod block_node;
 
-pub mod spsc;
+pub mod mpmc_bounded;
 pub mod mpsc_list;
 pub mod mpsc_list_v1;
-pub mod mpmc_bounded;
+pub mod spsc;
 
 pub use block_node::BLOCK_SIZE;
 
@@ -19,7 +18,7 @@ mod test_queue {
 
     macro_rules! block_pop_sc_impl {
         // `()` indicates that the macro takes no argument.
-        ($queue: ident) => (
+        ($queue:ident) => {
             impl<T> ScBlockPop<T> for super::$queue::Queue<T> {
                 fn block_pop(&self) -> T {
                     let mut i = 0;
@@ -36,7 +35,7 @@ mod test_queue {
                     }
                 }
             }
-        )
+        };
     }
 
     block_pop_sc_impl!(spsc);
