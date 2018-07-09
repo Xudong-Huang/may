@@ -1,18 +1,18 @@
 use std::io;
 use std::ops::Deref;
 use std::path::Path;
-use std::time::Duration;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
-use libc;
-use io::CoIo;
-use yield_now::yield_with;
-use scheduler::get_scheduler;
-use os::unix::net::UnixStream;
-use sync::delay_drop::DelayDrop;
-use socket2::{Domain, SockAddr, Socket, Type};
 use super::super::{add_socket, co_io_result, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::CoIo;
+use libc;
+use os::unix::net::UnixStream;
+use scheduler::get_scheduler;
+use socket2::{Domain, SockAddr, Socket, Type};
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct UnixStreamConnect {
     io_data: IoData,

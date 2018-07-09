@@ -1,16 +1,17 @@
 use std::io;
-use std::ops::Deref;
-use std::time::Duration;
-use std::sync::atomic::Ordering;
 use std::net::{SocketAddr, ToSocketAddrs};
-use libc;
-use net::TcpStream;
-use socket2::Socket;
-use yield_now::yield_with;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
+use std::ops::Deref;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+
 use super::super::{add_socket, co_io_result, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use libc;
+use net::TcpStream;
+use scheduler::get_scheduler;
+use socket2::Socket;
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct TcpStreamConnect {
     io_data: IoData,

@@ -2,27 +2,37 @@
 #[path = "epoll.rs"]
 mod select;
 
-#[cfg(any(target_os = "bitrig", target_os = "dragonfly", target_os = "freebsd",
-          target_os = "ios", target_os = "macos", target_os = "netbsd", target_os = "openbsd"))]
+#[cfg(
+    any(
+        target_os = "bitrig",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    )
+)]
 #[path = "kqueue.rs"]
 mod select;
 
-pub mod net;
-pub mod co_io;
 pub mod cancel;
+pub mod co_io;
+pub mod net;
 
-use std::sync::Arc;
-use std::ops::Deref;
 use std::cell::RefCell;
-use std::{fmt, io, ptr};
+use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
-use nix;
-use sync::AtomicOption;
-use scheduler::get_scheduler;
-use yield_now::{get_co_para, set_co_para};
+use std::sync::Arc;
+use std::{fmt, io, ptr};
+
 use coroutine_impl::{run_coroutine, CoroutineImpl};
+use nix;
+use scheduler::get_scheduler;
+use sync::AtomicOption;
 use timeout_list::{TimeOutList, TimeoutHandle};
+use yield_now::{get_co_para, set_co_para};
 
 pub use self::select::{Selector, SysEvent};
 

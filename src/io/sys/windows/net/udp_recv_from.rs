@@ -1,21 +1,21 @@
-use std;
 use std::io;
 use std::net::SocketAddr;
-use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
-use net::UdpSocket;
-use winapi::shared::ntdef::*;
-use scheduler::get_scheduler;
-use io::cancel::CancelIoData;
-use sync::delay_drop::DelayDrop;
+use std::time::Duration;
+
 use super::super::{co_io_result, EventData};
-use miow::net::{SocketAddrBuf, UdpSocketExt};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::cancel::CancelIoData;
+use miow::net::{SocketAddrBuf, UdpSocketExt};
+use net::UdpSocket;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use winapi::shared::ntdef::*;
 
 pub struct UdpRecvFrom<'a> {
     io_data: EventData,
     buf: &'a mut [u8],
-    socket: &'a std::net::UdpSocket,
+    socket: &'a ::std::net::UdpSocket,
     addr: SocketAddrBuf,
     timeout: Option<Duration>,
     can_drop: DelayDrop,

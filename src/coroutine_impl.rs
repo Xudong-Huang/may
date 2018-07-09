@@ -1,17 +1,18 @@
-use std::io;
+use std::cell::UnsafeCell;
 use std::fmt;
+use std::io;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use std::cell::UnsafeCell;
-use std::sync::atomic::Ordering;
-use park::Park;
+
 use cancel::Cancel;
-use sync::AtomicOption;
-use local::CoroutineLocal;
-use scheduler::get_scheduler;
 use config::config;
-use join::{make_join_handle, Join, JoinHandle};
 use generator::{get_local_data, Generator, Gn};
+use join::{make_join_handle, Join, JoinHandle};
+use local::CoroutineLocal;
+use park::Park;
+use scheduler::get_scheduler;
+use sync::AtomicOption;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types

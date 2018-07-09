@@ -3,15 +3,15 @@
 //! context with non blocking operations
 //!
 
-use libc;
-use io as io_impl;
-use yield_now::yield_with;
-use self::io_impl::net as net_impl;
-use self::io_impl::co_io_err::Error;
-
-use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+use std::time::Duration;
+
+use self::io_impl::co_io_err::Error;
+use self::io_impl::net as net_impl;
+use io as io_impl;
+use libc;
+use yield_now::yield_with;
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {

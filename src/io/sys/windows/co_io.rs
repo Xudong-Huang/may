@@ -3,13 +3,13 @@
 //! context with non blocking operations
 //!
 
-use io as io_impl;
-use yield_now::yield_with;
-use super::pipe::{PipeRead, PipeWrite};
-
-use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
+use std::time::Duration;
+
+use super::pipe::{PipeRead, PipeWrite};
+use io as io_impl;
+use yield_now::yield_with;
 
 /// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
 /// this type can be used in coroutine context without blocking the thread

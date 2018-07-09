@@ -1,15 +1,16 @@
-use std::{self, io};
 use std::ops::Deref;
-use std::time::Duration;
-use std::sync::atomic::Ordering;
 use std::os::unix::net::SocketAddr;
-use io::AsIoData;
-use yield_now::yield_with;
-use scheduler::get_scheduler;
-use os::unix::net::UnixDatagram;
-use sync::delay_drop::DelayDrop;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::{self, io};
+
 use super::super::{co_io_result, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::AsIoData;
+use os::unix::net::UnixDatagram;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct UnixRecvFrom<'a> {
     io_data: &'a IoData,

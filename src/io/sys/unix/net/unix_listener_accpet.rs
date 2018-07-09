@@ -1,14 +1,14 @@
 use std::io;
 use std::ops::Deref;
-use std::sync::atomic::Ordering;
 use std::os::unix::net::{self, SocketAddr};
+use std::sync::atomic::Ordering;
 
-use io::{AsIoData, CoIo};
-use io::sys::{co_io_result, IoData};
-use yield_now::yield_with;
-use sync::delay_drop::DelayDrop;
-use os::unix::net::{UnixListener, UnixStream};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::sys::{co_io_result, IoData};
+use io::{AsIoData, CoIo};
+use os::unix::net::{UnixListener, UnixStream};
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct UnixListenerAccept<'a> {
     io_data: &'a IoData,

@@ -3,6 +3,7 @@ extern crate generator;
 extern crate may;
 
 use std::time::Duration;
+
 use may::{coroutine, cqueue};
 
 // this is wrapper to work around the compile error

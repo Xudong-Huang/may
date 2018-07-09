@@ -1,20 +1,20 @@
-use std;
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
-use winapi::shared::ntdef::*;
-use scheduler::get_scheduler;
-use io::cancel::CancelIoData;
-use sync::delay_drop::DelayDrop;
-use net::{TcpListener, TcpStream};
-use miow::net::{AcceptAddrsBuf, TcpListenerExt};
+
 use super::super::{add_socket, co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::cancel::CancelIoData;
+use miow::net::{AcceptAddrsBuf, TcpListenerExt};
+use net::{TcpListener, TcpStream};
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use winapi::shared::ntdef::*;
 
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
-    socket: &'a std::net::TcpListener,
-    ret: std::net::TcpStream,
+    socket: &'a ::std::net::TcpListener,
+    ret: ::std::net::TcpStream,
     addr: AcceptAddrsBuf,
     can_drop: DelayDrop,
 }

@@ -1,10 +1,11 @@
-use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
+use std::time::Duration;
+
+use coroutine_impl::is_coroutine;
 use io as io_impl;
 use io::net as net_impl;
 use yield_now::yield_with;
-use coroutine_impl::is_coroutine;
 
 // ===== TcpStream =====
 //
@@ -272,7 +273,8 @@ impl TcpListener {
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             #[cold]
-            return self.sys
+            return self
+                .sys
                 .accept()
                 .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
         }

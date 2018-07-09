@@ -1,9 +1,10 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
 use super::EventData;
 use cancel::CancelIo;
-use sync::AtomicOption;
 use scheduler::get_scheduler;
+use sync::AtomicOption;
 
 pub struct CancelIoImpl(AtomicOption<Arc<EventData>>);
 

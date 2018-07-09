@@ -56,26 +56,26 @@ extern crate libc;
 #[doc(hidden)]
 extern crate nix;
 
-mod join;
-mod park;
-mod pool;
-mod local;
-mod sleep;
 mod cancel;
 mod config;
+mod join;
+mod local;
+mod park;
+mod pool;
+mod sleep;
 #[macro_use]
 mod macros;
-mod scoped;
-mod scheduler;
-mod yield_now;
-mod timeout_list;
 mod coroutine_impl;
+mod scheduler;
+mod scoped;
+mod timeout_list;
+mod yield_now;
 
-pub mod io;
-pub mod os;
-pub mod net;
-pub mod sync;
-pub mod cqueue;
 pub mod coroutine;
-pub use local::LocalKey;
+pub mod cqueue;
+pub mod io;
+pub mod net;
+pub mod os;
+pub mod sync;
 pub use config::{config, Config};
+pub use local::LocalKey;

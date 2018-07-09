@@ -31,8 +31,8 @@
 
 // This queue is copy pasted from old rust stdlib.
 
-use std::sync::Arc;
 use std::cell::UnsafeCell;
+use std::sync::Arc;
 
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
@@ -179,9 +179,9 @@ mod bench {
     extern crate test;
     use self::test::Bencher;
 
-    use std::thread;
-    use std::sync::mpsc::channel;
     use super::Queue;
+    use std::sync::mpsc::channel;
+    use std::thread;
 
     #[bench]
     fn bounded_mpmc(b: &mut Bencher) {

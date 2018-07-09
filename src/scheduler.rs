@@ -1,18 +1,18 @@
 use std::io;
-use std::thread;
-use std::time::Duration;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Once, ONCE_INIT};
+use std::thread;
+use std::time::Duration;
 
-use timeout_list;
 use config::config;
-use sync::AtomicOption;
-use pool::CoroutinePool;
-use yield_now::set_co_para;
-use io::{EventLoop, Selector};
-use crossbeam::sync::SegQueue as mpmc;
-use may_queue::mpmc_bounded::Queue as WaitList;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
+use crossbeam::sync::SegQueue as mpmc;
+use io::{EventLoop, Selector};
+use may_queue::mpmc_bounded::Queue as WaitList;
+use pool::CoroutinePool;
+use sync::AtomicOption;
+use timeout_list;
+use yield_now::set_co_para;
 
 #[cfg(nightly)]
 use std::intrinsics::likely;
@@ -29,8 +29,8 @@ type TimerThread = timeout_list::TimerThread<TimerData>;
 
 // filter out the cancel panic, don't print anything for it
 fn filter_cancel_panic() {
-    use std::panic;
     use generator::Error;
+    use std::panic;
     let old = panic::take_hook();
     ::std::panic::set_hook(Box::new(move |info| {
         match info.payload().downcast_ref::<Error>() {

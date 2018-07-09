@@ -1,14 +1,15 @@
 use std::fmt;
-use std::sync::Arc;
 use std::io::ErrorKind;
-use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
 use cancel::Cancel;
-use sync::AtomicOption;
+use coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
 use scheduler::get_scheduler;
+use sync::AtomicOption;
 use timeout_list::TimeoutHandle;
 use yield_now::{get_co_para, yield_now, yield_with};
-use coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ParkError {
@@ -220,7 +221,8 @@ impl EventSource for Park {
         let cancel = co_cancel_data(&co);
         // if we share the same park, the previous timer may wake up it by false
         // if we not deleted the timer in time
-        self.timeout_handle = self.timeout
+        self.timeout_handle = self
+            .timeout
             .take()
             .map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
 

@@ -4,9 +4,9 @@ extern crate generator;
 #[macro_use]
 extern crate may;
 
-use may::coroutine;
 use coroutine::yield_now;
 use generator::Gn;
+use may::coroutine;
 
 #[test]
 fn panic_coroutine() {

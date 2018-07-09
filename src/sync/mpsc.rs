@@ -1,14 +1,14 @@
 //! compatible with std::sync::mpsc except for both thread and coroutine
 //! please ref the doc from std::sync::mpsc
 use std::fmt;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
 use super::mpsc_list;
 use super::{AtomicOption, Blocker};
-
 // TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -91,7 +91,8 @@ impl<T> InnerQueue<T> {
 
     pub fn drop_chan(&self) {
         match self.channels.fetch_sub(1, Ordering::SeqCst) {
-            1 => self.to_wake
+            1 => self
+                .to_wake
                 .take(Ordering::Relaxed)
                 .map(|w| w.unpark())
                 .unwrap_or(()),
@@ -293,11 +294,11 @@ impl<T> fmt::Debug for Receiver<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::env;
+    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
     use std::thread;
     use std::time::{Duration, Instant};
-    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
-    use super::*;
 
     pub fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {

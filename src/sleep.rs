@@ -1,10 +1,11 @@
-use std::thread;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 use sync::AtomicOption;
+
+use coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use scheduler::get_scheduler;
 use yield_now::{get_co_para, yield_with};
-use coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 
 struct Sleep {
     dur: Duration,

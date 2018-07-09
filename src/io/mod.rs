@@ -12,10 +12,10 @@ mod event_loop;
 
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
-use coroutine_impl::is_coroutine;
 
 pub(crate) use self::event_loop::EventLoop;
 pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
+use coroutine_impl::is_coroutine;
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;

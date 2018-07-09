@@ -5,18 +5,19 @@ extern crate may;
 #[macro_use]
 extern crate serde_derive;
 
-use std::time::Duration;
 use std::io::{self, Read, Write};
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
 use may::coroutine;
 use may::net::TcpStream;
 
 use docopt::Docopt;
 
-const VERSION: &'static str = "0.1.0";
+const VERSION: &str = "0.1.0";
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Tcp echo client.
 
 Usage:
@@ -45,10 +46,12 @@ struct Args {
 }
 
 macro_rules! t {
-    ($e: expr) => (match $e {
-        Err(err) => return println!("call = {:?}\nerr = {:?}", stringify!($e), err),
-        Ok(val) => val,
-    })
+    ($e:expr) => {
+        match $e {
+            Err(err) => return println!("call = {:?}\nerr = {:?}", stringify!($e), err),
+            Ok(val) => val,
+        }
+    };
 }
 
 fn main() {

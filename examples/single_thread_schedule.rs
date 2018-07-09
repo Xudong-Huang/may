@@ -2,6 +2,7 @@
 extern crate may;
 
 use std::io::{Read, Write};
+
 use may::coroutine;
 use may::net::{TcpListener, TcpStream};
 

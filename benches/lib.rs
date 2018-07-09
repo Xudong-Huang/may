@@ -5,9 +5,8 @@
 extern crate may;
 extern crate test;
 
-// use std::panic;
-use may::coroutine;
 use coroutine::*;
+use may::coroutine;
 use test::Bencher;
 
 #[bench]

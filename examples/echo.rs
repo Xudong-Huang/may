@@ -6,12 +6,13 @@ extern crate serde_derive;
 
 // use std::time::Duration;
 use std::io::{Read, Write};
+
 use docopt::Docopt;
 use may::net::{TcpListener, TcpStream};
 
-const VERSION: &'static str = "0.1.0";
+const VERSION: &str = "0.1.0";
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Tcp echo server.
 
 Usage:
@@ -34,10 +35,12 @@ struct Args {
 }
 
 macro_rules! t {
-    ($e: expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => return println!("err = {:?}", err),
-    })
+    ($e:expr) => {
+        match $e {
+            Ok(val) => val,
+            Err(err) => return println!("err = {:?}", err),
+        }
+    };
 }
 
 fn handle_client(mut stream: TcpStream) {

@@ -1,13 +1,13 @@
 // modified from crossbeam
 
+use std::cell::RefCell;
 use std::fmt;
 use std::mem;
 use std::panic;
-use std::thread;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::cell::RefCell;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::thread;
 
 use coroutine_impl::{spawn, Coroutine};
 use join::JoinHandle;

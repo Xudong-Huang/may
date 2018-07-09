@@ -1,16 +1,17 @@
 use std::io;
-use std::time::Duration;
-use std::os::windows::io::AsRawSocket;
 use std::net::TcpStream as SysTcpStream;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
-use net::TcpStream;
-use miow::net::TcpStreamExt;
-use winapi::shared::ntdef::*;
-use scheduler::get_scheduler;
-use io::cancel::CancelIoData;
-use sync::delay_drop::DelayDrop;
+use std::os::windows::io::AsRawSocket;
+use std::time::Duration;
+
 use super::super::{add_socket, co_io_result, EventData, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::cancel::CancelIoData;
+use miow::net::TcpStreamExt;
+use net::TcpStream;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use winapi::shared::ntdef::*;
 
 pub struct TcpStreamConnect {
     io_data: EventData,

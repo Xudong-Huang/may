@@ -1,17 +1,17 @@
-use std::time::Duration;
 use std::cell::UnsafeCell;
-use std::{io, ptr};
 use std::os::windows::io::AsRawSocket;
-use yield_now::set_co_para;
-use coroutine_impl::CoroutineImpl;
-use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
+use std::time::Duration;
+use std::{io, ptr};
 
+use coroutine_impl::CoroutineImpl;
 use miow::iocp::{CompletionPort, CompletionStatus};
+use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use winapi::shared::ntdef::*;
-use winapi::shared::winerror::*;
-use winapi::um::minwinbase::OVERLAPPED;
 use winapi::shared::ntstatus::STATUS_CANCELLED;
+use winapi::shared::winerror::*;
 use winapi::um::ioapiset::{CancelIoEx, GetOverlappedResult};
+use winapi::um::minwinbase::OVERLAPPED;
+use yield_now::set_co_para;
 
 // the timeout data
 pub struct TimerData {

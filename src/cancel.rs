@@ -1,13 +1,14 @@
 use std::io;
-use std::thread;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::thread;
+
+use coroutine_impl::CoroutineImpl;
 use generator::Error;
-use sync::AtomicOption;
-use yield_now::set_co_para;
 use io::cancel::CancelIoImpl;
 use scheduler::get_scheduler;
-use coroutine_impl::CoroutineImpl;
+use sync::AtomicOption;
+use yield_now::set_co_para;
 
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe

@@ -8,10 +8,10 @@ use std::os::unix::net::{self, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
 
+use coroutine_impl::is_coroutine;
+use io::sys::net as net_impl;
 use io::CoIo;
 use yield_now::yield_with;
-use io::sys::net as net_impl;
-use coroutine_impl::is_coroutine;
 
 /// A Unix stream socket.
 ///
@@ -1069,7 +1069,7 @@ mod test {
                 Ok(e) => e,
                 Err(e) => panic!("{}", e),
             }
-        }
+        };
     }
 
     #[test]

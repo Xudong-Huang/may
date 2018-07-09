@@ -1,11 +1,12 @@
-use std::sync::Arc;
 use std::any::TypeId;
-use std::collections::HashMap;
 use std::cell::{RefCell, UnsafeCell};
+use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
-use join::Join;
+use std::sync::Arc;
+
 use coroutine_impl::Coroutine;
 use generator::get_local_data;
+use join::Join;
 
 // thread local map storage
 thread_local!{static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
@@ -70,8 +71,10 @@ impl<T> Opaque for T {}
 pub struct LocalKey<T> {
     // "private" fields which have to be public to get around macro hygiene, not
     // included in the stability story for this type. Can change at any time.
-    #[doc(hidden)] pub __key: fn() -> TypeId,
-    #[doc(hidden)] pub __init: fn() -> T,
+    #[doc(hidden)]
+    pub __key: fn() -> TypeId,
+    #[doc(hidden)]
+    pub __init: fn() -> T,
 }
 
 pub struct IdHasher {

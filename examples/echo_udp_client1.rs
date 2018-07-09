@@ -4,18 +4,18 @@ extern crate may;
 #[macro_use]
 extern crate serde_derive;
 
-use std::time::Duration;
 use std::io::{self, Write};
 use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+use docopt::Docopt;
 use may::coroutine;
 use may::net::UdpSocket;
 
-use docopt::Docopt;
+const VERSION: &str = "0.1.0";
 
-const VERSION: &'static str = "0.1.0";
-
-const USAGE: &'static str = "
+const USAGE: &str = "
 Udp echo client.
 
 Usage:
@@ -44,14 +44,16 @@ struct Args {
 }
 
 macro_rules! t {
-    ($e: expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => {
-            println!("call = {:?}", stringify!($e));
-            println!("err = {:?}", err);
-            return;
+    ($e:expr) => {
+        match $e {
+            Ok(val) => val,
+            Err(err) => {
+                println!("call = {:?}", stringify!($e));
+                println!("err = {:?}", err);
+                return;
+            }
         }
-    })
+    };
 }
 
 fn main() {

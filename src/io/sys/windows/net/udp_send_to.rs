@@ -1,19 +1,19 @@
-use std;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::time::Duration;
 use std::os::windows::io::AsRawSocket;
-use net::UdpSocket;
-use winapi::shared::ntdef::*;
-use miow::net::UdpSocketExt;
-use scheduler::get_scheduler;
+use std::time::Duration;
+
 use super::super::{co_io_result, EventData};
 use coroutine_impl::{CoroutineImpl, EventSource};
+use miow::net::UdpSocketExt;
+use net::UdpSocket;
+use scheduler::get_scheduler;
+use winapi::shared::ntdef::*;
 
 pub struct UdpSendTo<'a> {
     io_data: EventData,
     buf: &'a [u8],
-    socket: &'a std::net::UdpSocket,
+    socket: &'a ::std::net::UdpSocket,
     addr: SocketAddr,
     timeout: Option<Duration>,
 }

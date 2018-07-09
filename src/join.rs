@@ -1,11 +1,12 @@
-use std::fmt;
 use std::any::Any;
+use std::cell::UnsafeCell;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::Result;
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, Ordering};
-use generator::Error;
+
 use coroutine_impl::Coroutine;
+use generator::Error;
 use sync::{AtomicOption, Blocker};
 
 pub struct Join {

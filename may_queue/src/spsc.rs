@@ -222,9 +222,9 @@ mod bench {
     use self::test::Bencher;
 
     use super::*;
-    use std::thread;
-    use std::sync::Arc;
     use std::sync::mpsc::channel;
+    use std::sync::Arc;
+    use std::thread;
 
     use test_queue::ScBlockPop;
 

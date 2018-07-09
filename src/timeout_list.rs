@@ -1,16 +1,17 @@
 extern crate time;
-use std::mem;
-use std::cmp;
-use std::thread;
-use std::sync::{Arc, Mutex, RwLock};
-use std::sync::atomic::Ordering;
-use std::time::Duration;
-use std::collections::{BinaryHeap, HashMap};
 
-use sync::AtomicOption;
+use std::cmp;
+use std::collections::{BinaryHeap, HashMap};
+use std::mem;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
+use std::time::Duration;
+
 use may_queue::mpsc_list::Queue as mpsc;
-use may_queue::mpsc_list_v1::Queue as TimeoutList;
 use may_queue::mpsc_list_v1::Entry;
+use may_queue::mpsc_list_v1::Queue as TimeoutList;
+use sync::AtomicOption;
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
@@ -306,8 +307,8 @@ impl<T> TimerThread<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
     use std::time::Duration;
 
     #[test]

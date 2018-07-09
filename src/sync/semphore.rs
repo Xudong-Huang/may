@@ -1,11 +1,12 @@
 use std::fmt;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::sync::atomic::{AtomicIsize, Ordering};
+
 use super::blocking::SyncBlocker;
-use park::ParkError;
-use crossbeam::sync::SegQueue;
 use cancel::trigger_cancel_panic;
+use crossbeam::sync::SegQueue;
+use park::ParkError;
 
 /// Semphore primitive
 ///
@@ -130,7 +131,8 @@ impl Semphore {
         // just manipulate the cnt is enough
         let mut cnt = self.cnt.load(Ordering::Acquire);
         while cnt > 0 {
-            match self.cnt
+            match self
+                .cnt
                 .compare_exchange(cnt, cnt - 1, Ordering::SeqCst, Ordering::Relaxed)
             {
                 Ok(_) => return true,
@@ -171,11 +173,11 @@ impl fmt::Debug for Semphore {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use super::*;
     use std::sync::Arc;
+    use std::thread;
     use std::time::Duration;
     use sync::mpsc::channel;
-    use super::*;
 
     #[test]
     fn sanity_1() {

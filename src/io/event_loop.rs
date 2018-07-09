@@ -1,7 +1,8 @@
 use std::io;
+
 use super::sys::{Selector, SysEvent};
-use scheduler::get_scheduler;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
+use scheduler::get_scheduler;
 
 /// Single threaded IO event loop.
 pub struct EventLoop {

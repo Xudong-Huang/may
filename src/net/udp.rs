@@ -1,6 +1,7 @@
 use std::io;
-use std::time::Duration;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::time::Duration;
+
 use io as io_impl;
 use io::net as net_impl;
 use yield_now::yield_with;

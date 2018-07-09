@@ -1,9 +1,10 @@
 #[macro_use]
 extern crate may;
 
-use may::io::CoIo;
-use std::time::Duration;
 use std::io::{self, Read, Write};
+use std::time::Duration;
+
+use may::io::CoIo;
 
 // create the io object that can be used in coroutine
 // note that we can only access the io ojbect in one thread/coroutin

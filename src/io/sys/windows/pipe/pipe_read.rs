@@ -1,13 +1,14 @@
 use std::io;
-use std::time::Duration;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
-use miow::pipe::NamedPipe;
-use scheduler::get_scheduler;
-use io::cancel::CancelIoData;
-use winapi::shared::winerror::*;
-use sync::delay_drop::DelayDrop;
+use std::time::Duration;
+
 use super::super::{co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::cancel::CancelIoData;
+use miow::pipe::NamedPipe;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use winapi::shared::winerror::*;
 
 pub struct PipeRead<'a> {
     io_data: EventData,

@@ -3,10 +3,11 @@ extern crate httparse;
 #[macro_use]
 extern crate may;
 
-use may::net::TcpListener;
-use httparse::Status;
-use bytes::BufMut;
 use std::io::{Read, Write};
+
+use bytes::BufMut;
+use httparse::Status;
+use may::net::TcpListener;
 
 fn req_done(buf: &[u8], path: &mut String) -> Option<usize> {
     let mut headers = [httparse::EMPTY_HEADER; 16];

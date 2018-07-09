@@ -1,9 +1,9 @@
 //! modified from std::sys_common::poison except for both thread and coroutine
 //! please ref the doc and comments from std::sys_common::poison
 
-use std::thread;
-use std::sync::{LockResult, PoisonError};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LockResult, PoisonError};
+use std::thread;
 
 pub struct Flag {
     failed: AtomicUsize,

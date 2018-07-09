@@ -1,14 +1,15 @@
 use std::panic;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicUsize, Ordering};
+
 use cancel::Cancel;
+use coroutine_impl::{current_cancel_data, run_coroutine, Coroutine, CoroutineImpl, EventSource};
 use join::JoinHandle;
 use may_queue::mpsc_list;
 use scoped::spawn_unsafe;
-use yield_now::yield_with;
 use sync::{AtomicOption, Blocker};
-use coroutine_impl::{current_cancel_data, run_coroutine, Coroutine, CoroutineImpl, EventSource};
+use yield_now::yield_with;
 
 /// This enumeration is the list of the possible reasons that `poll`
 /// could not return Event when called.
@@ -228,14 +229,14 @@ impl Cqueue {
     /// it will propagate the panic to the caller
     pub fn poll(&self, timeout: Option<Duration>) -> Result<Event, PollError> {
         macro_rules! run_ev {
-            ($ev:ident) => ({
+            ($ev:ident) => {{
                 if $ev.kind == EventKind::Done {
                     self.check_panic($ev.id);
                     continue;
                 }
                 $ev.continue_bottom();
                 return Ok($ev);
-            })
+            }};
         }
 
         let deadline = timeout.map(|dur| Instant::now() + dur);

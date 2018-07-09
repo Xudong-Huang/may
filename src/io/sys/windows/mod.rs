@@ -1,25 +1,27 @@
 macro_rules! co_try {
-    ($s: expr, $co: expr, $e:expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => {
-            let mut co = $co;
-            ::yield_now::set_co_para(&mut co, err);
-            $s.schedule(co);
-            return;
+    ($s:expr, $co:expr, $e:expr) => {
+        match $e {
+            Ok(val) => val,
+            Err(err) => {
+                let mut co = $co;
+                ::yield_now::set_co_para(&mut co, err);
+                $s.schedule(co);
+                return;
+            }
         }
-    })
+    };
 }
 
-mod iocp;
-mod pipe;
-pub mod net;
-pub mod co_io;
 pub mod cancel;
+pub mod co_io;
+mod iocp;
+pub mod net;
+mod pipe;
 
-use std::{fmt, io};
-use std::os::windows::io::AsRawSocket;
-use yield_now::get_co_para;
 use scheduler::get_scheduler;
+use std::os::windows::io::AsRawSocket;
+use std::{fmt, io};
+use yield_now::get_co_para;
 
 pub use self::iocp::{EventData, Selector, SysEvent};
 

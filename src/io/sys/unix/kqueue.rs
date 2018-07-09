@@ -1,14 +1,14 @@
-use std::{io, ptr};
-use std::sync::Arc;
-use std::time::Duration;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::Duration;
+use std::{io, ptr};
 
-use libc;
-use smallvec::SmallVec;
 use coroutine_impl::CoroutineImpl;
-use timeout_list::{now, ns_to_dur};
+use libc;
 use may_queue::mpsc_list::Queue as mpsc;
+use smallvec::SmallVec;
+use timeout_list::{now, ns_to_dur};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
 
@@ -18,7 +18,7 @@ pub type SysEvent = libc::kevent;
 const NOTIFY_IDENT: usize = 42;
 
 macro_rules! kevent {
-    ($id: expr, $filter: expr, $flags: expr, $data: expr) => {
+    ($id:expr, $filter:expr, $flags:expr, $data:expr) => {
         libc::kevent {
             ident: $id as libc::uintptr_t,
             filter: $filter,
@@ -27,7 +27,7 @@ macro_rules! kevent {
             data: 0,
             udata: $data as *mut _,
         }
-    }
+    };
 }
 
 struct SingleSelector {

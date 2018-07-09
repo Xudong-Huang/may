@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate may;
 
-use may::coroutine;
 use coroutine::yield_now;
+use may::coroutine;
 
 fn main() {
     let mut array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];

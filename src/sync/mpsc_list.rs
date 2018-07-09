@@ -1,6 +1,7 @@
-use std::ptr;
 use std::cell::UnsafeCell;
+use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
+
 use yield_now::yield_now;
 
 struct Node<T> {

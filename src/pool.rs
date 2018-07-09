@@ -1,6 +1,6 @@
-use generator::Gn;
 use config::config;
 use coroutine_impl::CoroutineImpl;
+use generator::Gn;
 use may_queue::mpmc_bounded::Queue;
 
 /// the raw coroutine pool, with stack and register prepared

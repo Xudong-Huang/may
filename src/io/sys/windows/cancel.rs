@@ -1,6 +1,7 @@
 use std::io;
-use sync::Mutex;
+
 use cancel::CancelIo;
+use sync::Mutex;
 // use scheduler::get_scheduler;
 use super::EventData;
 

@@ -1,17 +1,17 @@
-use std;
 use std::io;
-use std::time::Duration;
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
-use miow::net::TcpStreamExt;
-use winapi::shared::ntdef::*;
-use scheduler::get_scheduler;
+use std::time::Duration;
+
 use super::super::{co_io_result, EventData};
 use coroutine_impl::{CoroutineImpl, EventSource};
+use miow::net::TcpStreamExt;
+use scheduler::get_scheduler;
+use winapi::shared::ntdef::*;
 
 pub struct SocketWrite<'a> {
     io_data: EventData,
     buf: &'a [u8],
-    socket: std::net::TcpStream,
+    socket: ::std::net::TcpStream,
     timeout: Option<Duration>,
 }
 

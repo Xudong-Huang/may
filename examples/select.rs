@@ -2,9 +2,10 @@
 extern crate may;
 
 use std::time::Duration;
+
 use may::coroutine;
-use may::sync::mpsc::channel;
 use may::net::TcpListener;
+use may::sync::mpsc::channel;
 
 // general select example that use cqueue
 fn main() {

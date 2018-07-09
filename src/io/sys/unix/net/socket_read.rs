@@ -1,14 +1,15 @@
 use std::io;
 use std::ops::Deref;
-use std::time::Duration;
 use std::sync::atomic::Ordering;
-use io::AsIoData;
-use nix::unistd::read;
-use yield_now::yield_with;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
+use std::time::Duration;
+
 use super::super::{co_io_result, from_nix_error, IoData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::AsIoData;
+use nix::unistd::read;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct SocketRead<'a> {
     io_data: &'a IoData,

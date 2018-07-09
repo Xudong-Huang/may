@@ -3,8 +3,8 @@ extern crate may;
 extern crate native_tls;
 extern crate tungstenite;
 
-use tungstenite::server::accept;
 use may::net::TcpListener;
+use tungstenite::server::accept;
 
 fn main() {
     let handler = go!(move || {

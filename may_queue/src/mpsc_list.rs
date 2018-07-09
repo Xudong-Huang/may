@@ -1,7 +1,7 @@
-use std::ptr;
-use std::thread;
 use std::cell::UnsafeCell;
+use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::thread;
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
@@ -103,9 +103,9 @@ impl<T> Drop for Queue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use std::sync::mpsc::channel;
     use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_queue() {

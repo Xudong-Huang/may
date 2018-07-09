@@ -7,7 +7,7 @@
 #[macro_export]
 macro_rules! go {
     // for free spawn
-    ($func: expr) => ({
+    ($func:expr) => {{
         fn _go_check<F, T>(f: F) -> F
         where
             F: FnOnce() -> T + Send + 'static,
@@ -17,10 +17,10 @@ macro_rules! go {
         }
         let f = _go_check($func);
         unsafe { $crate::coroutine::spawn(f) }
-    });
+    }};
 
     // for builder/scope spawn
-    ($builder: expr, $func: expr) => ({
+    ($builder:expr, $func:expr) => {{
         fn _go_check<F, T>(f: F) -> F
         where
             F: FnOnce() -> T + Send,
@@ -30,10 +30,10 @@ macro_rules! go {
         }
         let f = _go_check($func);
         unsafe { $builder.spawn(f) }
-    });
+    }};
 
     // for cqueue add spawn
-    ($cqueue: expr, $token: expr, $func: expr) => ({
+    ($cqueue:expr, $token:expr, $func:expr) => {{
         fn _go_check<F, T>(f: F) -> F
         where
             F: FnOnce($crate::cqueue::EventSender) -> T + Send,
@@ -43,40 +43,34 @@ macro_rules! go {
         }
         let f = _go_check($func);
         unsafe { $cqueue.add($token, f) }
-    })
+    }};
 }
 
 /// macro used to create the select coroutine
 /// that will run in a infinite loop, and generate
 /// as many events as possible
 #[macro_export]
-macro_rules! cqueue_add{
-    (
-        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
-    ) => ({
-        go!($cqueue, $token, |es| {
-            loop {
-                let $name = $top;
-                es.send(es.get_token());
-                $bottom
-            }
+macro_rules! cqueue_add {
+    ($cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr) => {{
+        go!($cqueue, $token, |es| loop {
+            let $name = $top;
+            es.send(es.get_token());
+            $bottom
         })
-    })
+    }};
 }
 
 /// macro used to create the select coroutine
 /// that will run only once, thus generate only one event
 #[macro_export]
-macro_rules! cqueue_add_oneshot{
-    (
-        $cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr
-    ) => ({
+macro_rules! cqueue_add_oneshot {
+    ($cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr) => {{
         go!($cqueue, $token, |es| {
             let $name = $top;
             es.send(es.get_token());
             $bottom
         })
-    })
+    }};
 }
 
 /// macro used to select for only one event
@@ -125,9 +119,11 @@ macro_rules! join {
 /// so different coroutines will contain different values.
 #[macro_export]
 macro_rules! coroutine_local {
-    (static $NAME:ident: $t:ty = $e:expr) => (
+    (static $NAME:ident : $t:ty = $e:expr) => {
         static $NAME: $crate::LocalKey<$t> = {
-            fn __init() -> $t { $e }
+            fn __init() -> $t {
+                $e
+            }
             fn __key() -> ::std::any::TypeId {
                 struct __A;
                 ::std::any::TypeId::of::<__A>()
@@ -137,5 +133,5 @@ macro_rules! coroutine_local {
                 __key: __key,
             }
         };
-    )
+    };
 }

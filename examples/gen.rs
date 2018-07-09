@@ -2,9 +2,9 @@ extern crate generator;
 #[macro_use]
 extern crate may;
 
-use may::coroutine;
 use coroutine::yield_now;
 use generator::Gn;
+use may::coroutine;
 
 fn main() {
     coroutine::scope(|scope| {

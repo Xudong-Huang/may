@@ -1,6 +1,6 @@
 use std::ptr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
 
 // heap based wrapper for a type
 pub trait Wrapped {

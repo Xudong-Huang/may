@@ -1,14 +1,15 @@
-use std::{self, io};
-use std::time::Duration;
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
-use io::AsIoData;
-use net::UdpSocket;
-use yield_now::yield_with;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
+use std::time::Duration;
+use std::{self, io};
+
 use super::super::{co_io_result, IoData};
 use coroutine_impl::{CoroutineImpl, EventSource};
+use io::AsIoData;
+use net::UdpSocket;
+use scheduler::get_scheduler;
+use sync::delay_drop::DelayDrop;
+use yield_now::yield_with;
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     io_data: &'a IoData,

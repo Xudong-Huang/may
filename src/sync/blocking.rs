@@ -1,9 +1,10 @@
-use std::sync::Arc;
-use std::time::Duration;
-use std::sync::{Condvar, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use park::{Park, ParkError};
+use std::sync::Arc;
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
+
 use coroutine_impl::is_coroutine;
+use park::{Park, ParkError};
 
 #[derive(Debug)]
 pub struct ThreadPark {

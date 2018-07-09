@@ -1,13 +1,13 @@
 //! compatible with std::sync::condvar except for both thread and coroutine
 //! please ref the doc from std::sync::condvar
-use std::sync::Arc;
-use std::time::Duration;
-use std::sync::{LockResult, PoisonError};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::sync::{LockResult, PoisonError};
+use std::time::Duration;
 
+use cancel::trigger_cancel_panic;
 use may_queue::spsc;
 use park::ParkError;
-use cancel::trigger_cancel_panic;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex, MutexGuard};
@@ -183,10 +183,10 @@ impl Default for Condvar {
 
 #[cfg(test)]
 mod tests {
-    use std::u32;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
     use std::time::Duration;
+    use std::u32;
     use sync::mpsc::channel;
     use sync::{Condvar, Mutex};
 
@@ -264,7 +264,8 @@ mod tests {
             let _g = m2.lock().unwrap();
             c2.notify_one();
         });
-        let (g, timeout_res) = c.wait_timeout(g, Duration::from_millis(u32::MAX as u64))
+        let (g, timeout_res) = c
+            .wait_timeout(g, Duration::from_millis(u32::MAX as u64))
             .unwrap();
         assert!(!timeout_res.timed_out());
         drop(g);

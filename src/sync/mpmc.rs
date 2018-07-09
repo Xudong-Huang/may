@@ -6,12 +6,13 @@
 //! would not see that the same data any more
 
 use std::fmt;
-use std::sync::Arc;
-use std::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
-use crossbeam::sync::SegQueue;
+use std::sync::Arc;
+use std::time::Duration;
+
 use super::Semphore;
+use crossbeam::sync::SegQueue;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -293,11 +294,11 @@ impl<T> fmt::Debug for Receiver<T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::env;
+    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
     use std::thread;
     use std::time::Duration;
-    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
-    use super::*;
 
     pub fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
