@@ -1,17 +1,17 @@
 //! compatible with std::sync::mutex except for both thread and coroutine
 //! please ref the doc from std::sync::mutex
-use std::fmt;
-use std::sync::Arc;
+use super::blocking::SyncBlocker;
+use super::mpsc_list;
+use super::poison;
+use cancel::trigger_cancel_panic;
+use park::ParkError;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{fence, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::sync::{LockResult, TryLockError, TryLockResult};
-use park::ParkError;
-use cancel::trigger_cancel_panic;
-use super::poison;
-use super::mpsc_list;
-use super::blocking::SyncBlocker;
 
 pub struct Mutex<T: ?Sized> {
     // the waiting blocker list
@@ -114,7 +114,8 @@ impl<T: ?Sized> Mutex<T> {
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
         if self.cnt.load(Ordering::Relaxed) == 0 {
-            match self.cnt
+            match self
+                .cnt
                 .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
             {
                 Ok(_) => Ok(MutexGuard::new(self)?),
@@ -149,10 +150,6 @@ impl<T: ?Sized> Mutex<T> {
     where
         T: Sized,
     {
-        // TODO: wait for stable remove the unsafe signature
-        #[cfg(not(nightly))]
-        let data = unsafe { self.data.into_inner() };
-        #[cfg(nightly)]
         let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
@@ -242,12 +239,12 @@ pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Fla
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use sync::Condvar;
-    use sync::mpsc::channel;
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use sync::mpsc::channel;
+    use sync::Condvar;
 
     struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
     unsafe impl<T: Send> Send for Packet<T> {}
@@ -483,9 +480,9 @@ mod tests {
 
     #[test]
     fn test_mutex_canceled() {
+        use sleep::sleep;
         use std::mem::drop;
         use std::time::Duration;
-        use sleep::sleep;
 
         let mutex1 = Arc::new(Mutex::new(0));
         let mutex2 = mutex1.clone();
@@ -518,9 +515,9 @@ mod tests {
 
     #[test]
     fn test_mutex_canceled_by_other_wait() {
+        use sleep::sleep;
         use std::mem::drop;
         use std::time::Duration;
-        use sleep::sleep;
 
         let mutex1 = Arc::new(Mutex::new(0));
         let mutex2 = mutex1.clone();

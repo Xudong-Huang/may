@@ -1,20 +1,20 @@
 //! compatible with std::sync::rwlock except for both thread and coroutine
 //! please ref the doc from std::sync::rwlock
-use std::fmt;
-use std::sync::Arc;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
-use park::ParkError;
-use may_queue::mpsc_list;
 use cancel::trigger_cancel_panic;
+use may_queue::mpsc_list;
+use park::ParkError;
 
-use super::poison;
-use super::mutex::{self, Mutex};
 use super::blocking::SyncBlocker;
+use super::mutex::{self, Mutex};
+use super::poison;
 
 /// A reader-writer lock
 ///
@@ -109,7 +109,8 @@ impl<T: ?Sized> RwLock<T> {
 
     fn try_lock(&self) -> TryLockResult<()> {
         if self.cnt.load(Ordering::Acquire) == 0 {
-            match self.cnt
+            match self
+                .cnt
                 .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed)
             {
                 Ok(_) => Ok(()),
@@ -226,10 +227,6 @@ impl<T: ?Sized> RwLock<T> {
     {
         // We know statically that there are no outstanding references to
         // `self` so there's no need to lock the inner lock.
-        // TODO: wait for stable remove the unsafe signature
-        #[cfg(not(nightly))]
-        let data = unsafe { self.data.into_inner() };
-        #[cfg(nightly)]
         let data = self.data.into_inner();
         poison::map_result(self.poison.borrow(), |_| data)
     }
@@ -329,9 +326,9 @@ impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
-    use std::sync::{Arc, TryLockError};
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, TryLockError};
+    use std::thread;
     use sync::mpsc::channel;
     use sync::{Condvar, Mutex, RwLock};
 
