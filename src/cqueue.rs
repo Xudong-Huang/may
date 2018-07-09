@@ -57,7 +57,9 @@ impl Event {
     /// continue the select coroutine with it's bottom half
     /// when `poll` got a Normal event, should always call it first
     fn continue_bottom(&mut self) {
-        self.co.take().map(run_coroutine);
+        if let Some(co) = self.co.take() {
+            run_coroutine(co);
+        }
     }
 }
 
@@ -113,10 +115,9 @@ impl<'a> EventSource for EventSender<'a> {
             kind: EventKind::Normal,
             co: Some(co),
         });
-        self.cqueue
-            .to_wake
-            .take(Ordering::Acquire)
-            .map(|w| w.unpark());
+        if let Some(w) = self.cqueue.to_wake.take(Ordering::Acquire) {
+            w.unpark();
+        }
     }
 
     fn yield_back(&self, _cancel: &'static Cancel) {
@@ -135,10 +136,9 @@ impl<'a> Drop for EventSender<'a> {
             co: None,
         });
         self.cqueue.cnt.fetch_sub(1, Ordering::Relaxed);
-        self.cqueue
-            .to_wake
-            .take(Ordering::Acquire)
-            .map(|w| w.unpark());
+        if let Some(w) = self.cqueue.to_wake.take(Ordering::Acquire) {
+            w.unpark();
+        }
     }
 }
 
@@ -170,7 +170,7 @@ impl Cqueue {
     {
         let sender = EventSender {
             id: self.total,
-            token: token,
+            token,
             extra: 0,
             cqueue: self,
         };
@@ -181,7 +181,7 @@ impl Cqueue {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
         me.total += 1;
         me.selectors.push(Some(h));
-        Selector { co: co }
+        Selector { co }
     }
 
     /// register a select coroutine with the cqueue
@@ -256,7 +256,9 @@ impl Cqueue {
                     cur.park(timeout).ok();
                 }
                 Some(mut ev) => {
-                    self.to_wake.take(Ordering::Relaxed).map(|w| w.unpark());
+                    if let Some(w) = self.to_wake.take(Ordering::Relaxed) {
+                        w.unpark();
+                    }
                     cur.park(timeout).ok();
                     run_ev!(ev);
                 }

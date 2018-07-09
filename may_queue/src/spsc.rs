@@ -136,6 +136,12 @@ impl<T> Queue<T> {
     }
 }
 
+impl<T> Default for Queue<T> {
+    fn default() -> Self {
+        Queue::new()
+    }
+}
+
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty

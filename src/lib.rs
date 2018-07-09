@@ -20,6 +20,7 @@
 //!
 
 // #![deny(missing_docs)]
+#![allow(unused_extern_crates)]
 #![cfg_attr(nightly, feature(specialization))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
 
@@ -35,7 +36,6 @@ extern crate crossbeam;
 extern crate generator;
 #[doc(hidden)]
 extern crate may_queue;
-#[allow(unused_extern_crates)]
 #[doc(hidden)]
 extern crate smallvec;
 #[cfg(test)]

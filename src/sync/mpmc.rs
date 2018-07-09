@@ -64,9 +64,9 @@ impl<T> InnerQueue<T> {
         }
 
         match self.queue.try_pop() {
-            Some(data) => return Ok(data),
+            Some(data) => Ok(data),
             None => match self.tx_ports.load(Ordering::Acquire) {
-                0 => return Err(RecvTimeoutError::Disconnected),
+                0 => Err(RecvTimeoutError::Disconnected),
                 _n => unreachable!("mpmc recv found no data"),
             },
         }
@@ -167,7 +167,7 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 impl<T> Sender<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Sender<T> {
-        Sender { inner: inner }
+        Sender { inner }
     }
 
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
@@ -205,7 +205,7 @@ impl<T> fmt::Debug for Sender<T> {
 
 impl<T> Receiver<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Receiver<T> {
-        Receiver { inner: inner }
+        Receiver { inner }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
@@ -215,7 +215,7 @@ impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.inner.recv(None) {
             Err(RecvTimeoutError::Timeout) => unreachable!("mpmc recv timeout"),
-            data => return data.map_err(|_| RecvError),
+            data => data.map_err(|_| RecvError),
         }
     }
 

@@ -62,9 +62,9 @@ impl TcpStreamConnect {
                         s.set_nonblocking(true)?;
                         add_socket(&s).map(|_io| TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
-                            addr: addr,
+                            addr,
                             stream: s,
-                            timeout: timeout,
+                            timeout,
                             can_drop: DelayDrop::new(),
                         })
                     })

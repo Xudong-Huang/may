@@ -34,7 +34,7 @@ pub fn sleep(dur: Duration) {
         return thread::sleep(dur);
     }
 
-    let sleeper = Sleep { dur: dur };
+    let sleeper = Sleep { dur };
     yield_with(&sleeper);
     // consume the timeout error
     get_co_para();

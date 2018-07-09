@@ -23,7 +23,7 @@ fn dur_to_ns(dur: Duration) -> u64 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
     dur.as_secs()
         .saturating_mul(NANOS_PER_SEC)
-        .saturating_add(dur.subsec_nanos() as u64)
+        .saturating_add(u64::from(dur.subsec_nanos()))
 }
 
 #[inline]
@@ -69,11 +69,8 @@ impl<T> IntervalEntry<T> {
         F: Fn(T),
     {
         let p = |v: &TimeoutData<T>| v.time <= now;
-        loop {
-            match self.list.pop_if(&p) {
-                Some(timeout) => f(timeout.data),
-                None => break,
-            }
+        while let Some(timeout) = self.list.pop_if(&p) {
+            f(timeout.data);
         }
         self.list.peek().map(|t| t.time)
     }
@@ -134,15 +131,12 @@ impl<T> TimeOutList<T> {
         let time = now() + interval; // TODO: deal with overflow?
                                      //println!("add timer = {:?}", time);
 
-        let timeout = TimeoutData {
-            time: time,
-            data: data,
-        };
+        let timeout = TimeoutData { time, data };
 
         let interval_list = {
             // use the read lock protect
             let interval_map_r = self.interval_map.read().unwrap();
-            (*interval_map_r).get(&interval).map(|l| l.clone())
+            (*interval_map_r).get(&interval).cloned()
             // drop the read lock here
         };
 
@@ -151,8 +145,8 @@ impl<T> TimeOutList<T> {
             if is_head {
                 // install the interval list to the binary heap
                 self.install_timer_bh(IntervalEntry {
-                    time: time,
-                    interval: interval,
+                    time,
+                    interval,
                     list: interval_list,
                 });
             }
@@ -168,8 +162,8 @@ impl<T> TimeOutList<T> {
             if is_head {
                 // this rarely happens
                 self.install_timer_bh(IntervalEntry {
-                    time: time,
-                    interval: interval,
+                    time,
+                    interval,
                     list: interval_list.clone(),
                 });
             }
@@ -184,8 +178,8 @@ impl<T> TimeOutList<T> {
 
         // install the new interval list to the binary heap
         self.install_timer_bh(IntervalEntry {
-            time: time,
-            interval: interval,
+            time,
+            interval,
             list: interval_list,
         });
 
@@ -271,14 +265,18 @@ impl<T> TimerThread<T> {
         let (h, is_recal) = self.timer_list.add_timer(dur, data);
         // wake up the timer thread if it's a new queue
         if is_recal {
-            self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+            if let Some(t) = self.wakeup.take(Ordering::Relaxed) {
+                t.unpark();
+            }
         }
         h
     }
 
     pub fn del_timer(&self, handle: TimeoutHandle<T>) {
         self.remove_list.push(handle);
-        self.wakeup.take_fast(Ordering::Relaxed).map(|t| t.unpark());
+        if let Some(t) = self.wakeup.take_fast(Ordering::Relaxed) {
+            t.unpark();
+        }
     }
 
     // the timer thread function
@@ -293,7 +291,9 @@ impl<T> TimerThread<T> {
             self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
 
             if !self.remove_list.is_empty() {
-                self.wakeup.take(Ordering::Relaxed).map(|t| t.unpark());
+                if let Some(t) = self.wakeup.take(Ordering::Relaxed) {
+                    t.unpark();
+                }
             }
 
             match self.timer_list.schedule_timer(now(), f) {

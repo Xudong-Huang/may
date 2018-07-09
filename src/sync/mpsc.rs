@@ -38,9 +38,9 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        self.to_wake
-            .take_fast(Ordering::Acquire)
-            .map(|w| w.unpark());
+        if let Some(w) = self.to_wake.take_fast(Ordering::Acquire) {
+            w.unpark();
+        }
         Ok(())
     }
 
@@ -60,9 +60,9 @@ impl<T> InnerQueue<T> {
             }
             data => {
                 // no need to park, contention with send
-                self.to_wake
-                    .take_fast(Ordering::Relaxed)
-                    .map(|w| w.unpark());
+                if let Some(w) = self.to_wake.take_fast(Ordering::Relaxed) {
+                    w.unpark();
+                }
                 cur.park(dur).ok();
                 return data;
             }
@@ -154,7 +154,7 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 impl<T> Sender<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Sender<T> {
-        Sender { inner: inner }
+        Sender { inner }
     }
 
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
@@ -187,7 +187,7 @@ impl<T> fmt::Debug for Sender<T> {
 
 impl<T> Receiver<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Receiver<T> {
-        Receiver { inner: inner }
+        Receiver { inner }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {

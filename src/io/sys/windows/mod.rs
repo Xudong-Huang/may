@@ -56,11 +56,7 @@ pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
 #[inline]
 fn co_io_result(io: &EventData) -> io::Result<usize> {
     match get_co_para() {
-        Some(err) => {
-            return Err(err);
-        }
-        None => {
-            return Ok(io.get_io_size());
-        }
+        Some(err) => Err(err),
+        None => Ok(io.get_io_size()),
     }
 }

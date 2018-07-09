@@ -33,10 +33,9 @@ fn filter_cancel_panic() {
     use std::panic;
     let old = panic::take_hook();
     ::std::panic::set_hook(Box::new(move |info| {
-        match info.payload().downcast_ref::<Error>() {
+        if let Some(&Error::Cancel) = info.payload().downcast_ref::<Error>() {
             // this is not an error at all, ignore it
-            Some(_e @ &Error::Cancel) => return,
-            _ => {}
+            return;
         }
         old(info);
     }));
@@ -49,12 +48,13 @@ static mut SCHED: *const Scheduler = 0 as *const _;
 fn init_scheduler() {
     let workers = config().get_workers();
     let mut io_workers = config().get_io_workers();
-    let mut run_on_io = true;
-    if io_workers == 0 {
+    let run_on_io = if io_workers == 0 {
         // running all the coroutines on normal worker thread
         io_workers = 1;
-        run_on_io = false;
-    }
+        false
+    } else {
+        true
+    };
     let b: Box<Scheduler> = Scheduler::new(io_workers, run_on_io);
     unsafe {
         SCHED = Box::into_raw(b);
@@ -76,11 +76,11 @@ fn init_scheduler() {
         // timer function
         let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
             // just re-push the co to the visit list
-            co.take_fast(Ordering::Relaxed).map(|mut c| {
+            if let Some(mut c) = co.take_fast(Ordering::Relaxed) {
                 // set the timeout result for the coroutine
                 set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                 s.schedule(c);
-            });
+            }
         };
 
         s.timer_thread.run(&timer_event_handler);
@@ -146,7 +146,9 @@ impl Scheduler {
 
             // do a re-check
             if !self.ready_list.is_empty() {
-                self.wait_list.pop().map(|t| t.unpark());
+                if let Some(t) = self.wait_list.pop() {
+                    t.unpark();
+                }
             }
 
             // thread::park_timeout(Duration::from_millis(100));
@@ -159,7 +161,9 @@ impl Scheduler {
     pub fn schedule(&self, co: CoroutineImpl) {
         self.ready_list.push(co);
         // signal one waiting thread if any
-        self.wait_list.pop().map(|t| t.unpark());
+        if let Some(t) = self.wait_list.pop() {
+            t.unpark();
+        }
     }
 
     #[inline]

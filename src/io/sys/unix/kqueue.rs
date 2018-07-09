@@ -155,7 +155,7 @@ impl Selector {
                 unsafe {
                     // tell the timer handler not to cancel the io
                     // it's not always true that you can really remove the timer entry
-                    h.get_data().data.event_data = ptr::null_mut();
+                    h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
                 }
                 h.remove()
             });
@@ -234,7 +234,7 @@ impl Selector {
                 // when cancel an IO. what if the timer expired at the same time?
                 // because we run this func in the user space, so the timer handler
                 // will not got the coroutine
-                h.get_data().data.event_data = ptr::null_mut();
+                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
             }
         });
 

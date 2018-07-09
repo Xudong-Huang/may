@@ -25,8 +25,8 @@ impl CoroutineLocal {
     /// create coroutine local storage
     pub fn new(co: Coroutine, join: Arc<UnsafeCell<Join>>) -> Box<Self> {
         Box::new(CoroutineLocal {
-            co: co,
-            join: join,
+            co,
+            join,
             local_data: RefCell::new(HashMap::default()),
         })
     }

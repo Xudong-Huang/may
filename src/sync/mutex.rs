@@ -89,13 +89,11 @@ impl<T: ?Sized> Mutex<T> {
                         // register
                         cur.set_release();
                         // re-check unpark status
-                        if cur.is_unparked() {
-                            if cur.take_release() {
-                                if b_ignore {
-                                    break;
-                                }
-                                self.unlock();
+                        if cur.is_unparked() && cur.take_release() {
+                            if b_ignore {
+                                break;
                             }
+                            self.unlock();
                         }
                     }
                     // we ignore the cancel, just to wait the actual event

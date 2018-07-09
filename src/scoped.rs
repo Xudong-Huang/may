@@ -169,7 +169,7 @@ impl<'a> Scope<'a> {
         ScopedJoinHandle {
             inner: my_handle,
             packet: my_packet,
-            co: co,
+            co,
         }
     }
 

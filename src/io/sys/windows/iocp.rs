@@ -37,7 +37,7 @@ impl EventData {
     pub fn new(handle: HANDLE) -> EventData {
         EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
-            handle: handle,
+            handle,
             timer: None,
             co: None,
         }
@@ -86,7 +86,7 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let timeout = timeout.map(|t| ns_to_dur(t));
+        let timeout = timeout.map(ns_to_dur);
         // info!("select; timeout={:?}", timeout);
         let n = match self.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
@@ -118,7 +118,7 @@ impl Selector {
                     // tell the timer function not to cancel the io
                     // it's not always true that you can really remove the timer entry
                     // it's safe in multi-thread env because it only access its own data
-                    h.get_data().data.event_data = ptr::null_mut();
+                    h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
                 }
                 // NOT SAFE for multi-thread!!
                 h.remove()
@@ -147,7 +147,7 @@ impl Selector {
                         // convert the ntstatus to winerr
                         let mut size: u32 = 0;
                         let o = overlapped as *const _ as *mut _;
-                        GetOverlappedResult(data.handle, o, &mut size, FALSE as i32);
+                        GetOverlappedResult(data.handle, o, &mut size, i32::from(FALSE));
                     }
                     set_co_para(&mut co, io::Error::last_os_error());
                 }

@@ -19,9 +19,9 @@ impl<'a> PipeWrite<'a> {
         let handle = s.as_raw_handle();
         PipeWrite {
             io_data: EventData::new(handle),
-            buf: buf,
+            buf,
             pipe: unsafe { FromRawHandle::from_raw_handle(handle) },
-            timeout: timeout,
+            timeout,
         }
     }
 

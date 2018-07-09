@@ -23,9 +23,9 @@ impl<'a> SocketRead<'a> {
         let socket = s.as_raw_socket();
         SocketRead {
             io_data: EventData::new(socket as HANDLE),
-            buf: buf,
+            buf,
             socket: unsafe { FromRawSocket::from_raw_socket(socket) },
-            timeout: timeout,
+            timeout,
             can_drop: DelayDrop::new(),
         }
     }

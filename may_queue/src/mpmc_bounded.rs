@@ -85,7 +85,7 @@ impl<T: Send> State<T> {
             .collect::<Vec<_>>();
         State {
             pad0: [0; 64],
-            buffer: buffer,
+            buffer,
             mask: capacity - 1,
             pad1: [0; 64],
             enqueue_pos: AtomicUsize::new(0),

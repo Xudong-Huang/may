@@ -53,16 +53,22 @@ impl Condvar {
         let cur = SyncBlocker::current();
 
         // we can't cancel panic here!!
-        cancel.as_ref().map(|c| c.disable_cancel());
+        if let Some(c) = cancel.as_ref() {
+            c.disable_cancel();
+        }
         self.to_wake.lock().unwrap().push(cur.clone());
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
-        cancel.as_ref().map(|c| c.enable_cancel());
+        if let Some(c) = cancel.as_ref() {
+            c.enable_cancel();
+        }
 
         // wait until coming back
         let ret = cur.park(dur);
         // disable cancel panic
-        cancel.as_ref().map(|c| c.disable_cancel());
+        if let Some(c) = cancel.as_ref() {
+            c.disable_cancel();
+        }
         // don't run the guard destructor
         ::std::mem::forget(lock.lock());
 
@@ -77,15 +83,15 @@ impl Condvar {
                 // register
                 cur.set_release();
                 // re-check unpark status
-                if cur.is_unparked() {
-                    if cur.take_release() {
-                        self.notify_one();
-                    }
+                if cur.is_unparked() && cur.take_release() {
+                    self.notify_one();
                 }
             }
         }
         // enable cancel panic
-        cancel.as_ref().map(|c| c.enable_cancel());
+        if let Some(c) = cancel.as_ref() {
+            c.enable_cancel();
+        }
 
         ret
     }
@@ -142,13 +148,21 @@ impl Condvar {
     }
 
     pub fn notify_one(&self) {
+        // NOTICE: the following code would not drop the lock!
+        // if let Some(w) = self.to_wake.lock().unwrap().pop() {
+        // bellow logic is the correct
+        // let g = self.to_wake.lock().unwrap();
+        // let w = g.pop();
+        // drop(g);
+
         let w = self.to_wake.lock().unwrap().pop();
-        w.map(|w| {
+
+        if let Some(w) = w {
             w.unpark();
             if w.take_release() {
                 self.notify_one();
             }
-        });
+        }
     }
 
     pub fn notify_all(&self) {

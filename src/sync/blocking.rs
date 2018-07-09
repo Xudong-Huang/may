@@ -73,7 +73,7 @@ impl Blocker {
             Parker::Thread(park)
         };
 
-        Blocker { parker: parker }
+        Blocker { parker }
     }
 
     /// get the internal shared blocker
@@ -117,7 +117,7 @@ impl SyncBlocker {
         Arc::new(SyncBlocker {
             unparked: AtomicBool::new(false),
             release: AtomicBool::new(false),
-            blocker: blocker,
+            blocker,
         })
     }
 

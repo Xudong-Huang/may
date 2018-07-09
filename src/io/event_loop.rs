@@ -25,7 +25,7 @@ impl EventLoop {
             schedule_io_on_worker
         };
 
-        Selector::new(io_workers, schedule_policy).map(|selector| EventLoop { selector: selector })
+        Selector::new(io_workers, schedule_policy).map(|selector| EventLoop { selector })
     }
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever

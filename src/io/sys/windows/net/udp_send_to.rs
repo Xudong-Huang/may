@@ -29,9 +29,9 @@ impl<'a> UdpSendTo<'a> {
             .fold(Err(err), |prev, addr| prev.or_else(|_| Ok(addr)))
             .map(|addr| UdpSendTo {
                 io_data: EventData::new(socket.as_raw_socket() as HANDLE),
-                buf: buf,
+                buf,
                 socket: socket.inner(),
-                addr: addr,
+                addr,
                 timeout: socket.write_timeout().unwrap(),
             })
     }

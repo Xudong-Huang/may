@@ -95,10 +95,8 @@ impl Semphore {
                     // register
                     cur.set_release();
                     // re-check unpark status
-                    if cur.is_unparked() {
-                        if cur.take_release() {
-                            self.post();
-                        }
+                    if cur.is_unparked() && cur.take_release() {
+                        self.post();
                     }
                 }
 

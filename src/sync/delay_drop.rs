@@ -16,7 +16,7 @@ impl DelayDrop {
         }
     }
 
-    pub fn delay_drop<'a>(&'a self) -> DropGuard<'a> {
+    pub fn delay_drop(&self) -> DropGuard {
         self.can_drop.1.store(true, Ordering::Release);
         DropGuard(self)
     }

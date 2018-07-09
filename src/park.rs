@@ -121,24 +121,24 @@ impl Park {
     #[inline]
     fn remove_timeout_handle(&self) {
         let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.timeout_handle.take().map(|h| {
+        if let Some(h) = me.timeout_handle.take() {
             if h.is_link() {
                 get_scheduler().del_timer(h);
             }
             // when timeout the node is unlinked
             // just drop it to release memory
-        });
+        }
     }
 
     #[inline]
     fn wake_up(&self, b_sync: bool) {
-        self.wait_co.take_fast(Ordering::Acquire).map(|co| {
+        if let Some(co) = self.wait_co.take_fast(Ordering::Acquire) {
             if b_sync {
                 run_coroutine(co);
             } else {
                 get_scheduler().schedule(co);
             }
-        });
+        }
     }
 
     /// park current coroutine with specified timeout
@@ -189,7 +189,7 @@ impl Park {
         Ok(())
     }
 
-    fn delay_drop<'a>(&'a self) -> DropGuard<'a> {
+    fn delay_drop(&self) -> DropGuard {
         self.wait_kernel.store(true, Ordering::Release);
         DropGuard(self)
     }

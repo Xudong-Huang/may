@@ -33,11 +33,17 @@ unsafe impl<T: Sync> Sync for Entry<T> {}
 impl<T> Entry<T> {
     // get the internal data mut ref
     // must make sure it's not popped by the consumer
-    pub unsafe fn get_data(&self) -> &mut T {
-        (*self.node).value.as_mut().unwrap()
+    #[inline]
+    pub unsafe fn with_mut_data<F>(&self, f: F)
+    where
+        F: FnOnce(&mut T),
+    {
+        let data = (*self.node).value.as_mut().expect("Node value is None");
+        f(data);
     }
 
     /// judge if the node is still linked in the list
+    #[inline]
     pub fn is_link(&self) -> bool {
         let node = unsafe { &mut *self.node };
         node.refs & !REF_COUNT_MASK != 0
@@ -150,7 +156,7 @@ impl<T> Queue<T> {
             (*prev).next.store(node, Ordering::Release);
             let tail = *self.tail.get();
             let is_head = tail == prev;
-            (Entry { node: node }, is_head)
+            (Entry { node }, is_head)
         }
     }
 
@@ -293,6 +299,12 @@ impl<T> Queue<T> {
 
             Some(ret)
         }
+    }
+}
+
+impl<T> Default for Queue<T> {
+    fn default() -> Self {
+        Queue::new()
     }
 }
 

@@ -29,7 +29,7 @@ impl Join {
         Join {
             to_wake: AtomicOption::none(),
             state: AtomicBool::new(true),
-            panic: panic,
+            panic,
         }
     }
 
@@ -41,7 +41,9 @@ impl Join {
 
     pub fn trigger(&mut self) {
         self.state.store(false, Ordering::Release);
-        self.to_wake.take(Ordering::Acquire).map(|w| w.unpark());
+        if let Some(w) = self.to_wake.take(Ordering::Acquire) {
+            w.unpark();
+        }
     }
 
     fn wait(&mut self) {
@@ -52,10 +54,11 @@ impl Join {
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
-            } else {
+            } else if let Some(w) = self.to_wake.take(Ordering::Acquire) {
                 // it's already triggered
-                self.to_wake.take(Ordering::Acquire).map(|w| w.unpark());
+                w.unpark();
             }
+
             cur.park(None).ok();
         }
     }
@@ -80,10 +83,10 @@ pub fn make_join_handle<T>(
     panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
 ) -> JoinHandle<T> {
     JoinHandle {
-        co: co,
-        join: join,
-        packet: packet,
-        panic: panic,
+        co,
+        join,
+        packet,
+        panic,
     }
 }
 

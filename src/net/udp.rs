@@ -23,7 +23,7 @@ impl UdpSocket {
         s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| UdpSocket {
-            io: io,
+            io,
             sys: s,
             ctx: io_impl::IoContext::new(),
             read_timeout: None,
@@ -36,7 +36,7 @@ impl UdpSocket {
     }
 
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<UdpSocket> {
-        net::UdpSocket::bind(addr).and_then(|s| UdpSocket::new(s))
+        net::UdpSocket::bind(addr).and_then(UdpSocket::new)
     }
 
     pub fn connect<A: ToSocketAddrs>(&self, addr: A) -> io::Result<()> {

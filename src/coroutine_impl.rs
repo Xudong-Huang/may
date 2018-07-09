@@ -114,7 +114,7 @@ impl Coroutine {
     fn new(name: Option<String>) -> Coroutine {
         Coroutine {
             inner: Arc::new(Inner {
-                name: name,
+                name,
                 park: Park::new(),
                 cancel: Cancel::new(),
             }),
@@ -186,6 +186,7 @@ impl fmt::Debug for Coroutine {
 /// [`spawn`]: ./struct.Builder.html#method.spawn
 /// [naming-coroutines]: ./index.html#naming-coroutine
 /// [stack-size]: ./index.html#stack-siz
+#[derive(Default)]
 pub struct Builder {
     // A name for the coroutine-to-be, for identification in panic messages
     name: Option<String>,
@@ -232,7 +233,7 @@ impl Builder {
 
         let done = &DONE as &EventSource as *const _ as *mut EventSource;
         let Builder { name, stack_size } = self;
-        let stack_size = stack_size.unwrap_or(config().get_stack_size());
+        let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(UnsafeCell::new(None));
         let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
@@ -445,7 +446,9 @@ pub fn run_coroutine(mut co: CoroutineImpl) {
             let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
             let join = unsafe { &mut *local.get_join().get() };
             // set the panic data
-            co.get_panic_data().map(|panic| join.set_panic_data(panic));
+            if let Some(panic) = co.get_panic_data() {
+                join.set_panic_data(panic);
+            }
             // trigger the join here
             join.trigger();
             Done::drop_coroutine(co);

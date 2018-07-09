@@ -12,10 +12,9 @@ pub struct CoroutinePool {
 
 impl CoroutinePool {
     fn create_dummy_coroutine() -> CoroutineImpl {
-        let co = Gn::new_opt(config().get_stack_size(), move || {
+        Gn::new_opt(config().get_stack_size(), move || {
             unreachable!("dummy coroutine should never be called");
-        });
-        co
+        })
     }
 
     pub fn new() -> Self {
@@ -26,7 +25,7 @@ impl CoroutinePool {
             pool.push(co).unwrap();
         }
 
-        CoroutinePool { pool: pool }
+        CoroutinePool { pool }
     }
 
     /// get a raw coroutine from the pool

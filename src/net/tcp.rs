@@ -28,7 +28,7 @@ impl TcpStream {
         s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| TcpStream {
-            io: io,
+            io,
             sys: s,
             ctx: io_impl::IoContext::new(),
             read_timeout: None,
@@ -149,7 +149,7 @@ impl TcpStream {
     // convert std::net::TcpStream to Self without add_socket
     pub(crate) fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
-            io: io,
+            io,
             sys: s,
             ctx: io_impl::IoContext::new(),
             read_timeout: None,
@@ -253,7 +253,7 @@ impl TcpListener {
         s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| TcpListener {
-            io: io,
+            io,
             ctx: io_impl::IoContext::new(),
             sys: s,
         })

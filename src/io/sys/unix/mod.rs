@@ -145,7 +145,7 @@ impl EventData {
             unsafe {
                 // tell the timer function not to cancel the io
                 // it's not always true that you can really remove the timer entry
-                h.get_data().data.event_data = ptr::null_mut();
+                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
             }
             h.remove()
         });

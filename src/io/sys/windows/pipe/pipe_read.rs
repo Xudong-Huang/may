@@ -23,9 +23,9 @@ impl<'a> PipeRead<'a> {
         let handle = s.as_raw_handle();
         PipeRead {
             io_data: EventData::new(handle),
-            buf: buf,
+            buf,
             pipe: unsafe { FromRawHandle::from_raw_handle(handle) },
-            timeout: timeout,
+            timeout,
             can_drop: DelayDrop::new(),
         }
     }
