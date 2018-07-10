@@ -300,7 +300,7 @@ impl TcpListener {
 
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpListener> {
-        self.sys.try_clone().and_then(|s| TcpListener::new(s))
+        self.sys.try_clone().and_then(TcpListener::new)
     }
 
     // windows doesn't support add dup handler to IOCP

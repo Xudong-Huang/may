@@ -47,6 +47,7 @@ fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     if ptr.is_null() {
         LOCALMAP.with(|data| f(data))
     } else {
+        #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
         let local = unsafe { &*(ptr as *mut CoroutineLocal) };
         let data = &local.local_data;
         f(data)

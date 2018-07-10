@@ -30,7 +30,8 @@ pub use self::iocp::{EventData, Selector, SysEvent};
 pub struct IoData;
 
 impl IoData {
-    pub fn new<T>(_t: T) -> Self {
+    pub fn new<T>(t: T) -> Self {
+        drop(t); // unused
         IoData
     }
 
