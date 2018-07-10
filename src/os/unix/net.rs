@@ -72,7 +72,7 @@ impl UnixStream {
 
         let mut c = net_impl::UnixStreamConnect::new(path)?;
 
-        if c.is_connected()? {
+        if c.check_connected()? {
             return c.done();
         }
 
@@ -518,7 +518,7 @@ impl UnixListener {
     ///     }
     /// }
     /// ```
-    pub fn incoming<'a>(&'a self) -> Incoming<'a> {
+    pub fn incoming(&self) -> Incoming {
         Incoming { listener: self }
     }
 }

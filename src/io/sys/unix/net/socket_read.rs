@@ -22,8 +22,8 @@ impl<'a> SocketRead<'a> {
     pub fn new<T: AsIoData>(s: &'a T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
         SocketRead {
             io_data: s.as_io_data(),
-            buf: buf,
-            timeout: timeout,
+            buf,
+            timeout,
             can_drop: DelayDrop::new(),
         }
     }

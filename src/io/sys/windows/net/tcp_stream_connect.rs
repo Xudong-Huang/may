@@ -72,7 +72,7 @@ impl TcpStreamConnect {
     }
 
     #[inline]
-    pub fn is_connected(&mut self) -> io::Result<bool> {
+    pub fn check_connected(&mut self) -> io::Result<bool> {
         // always try overvlappend version
         Ok(false)
     }

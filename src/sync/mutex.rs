@@ -64,7 +64,7 @@ impl<T: ?Sized> Mutex<T> {
         if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
         }
         loop {
             match cur.park(None) {
@@ -124,7 +124,7 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
-    fn unpark_one(&self, w: Arc<SyncBlocker>) {
+    fn unpark_one(&self, w: &SyncBlocker) {
         w.unpark();
         if w.take_release() {
             self.unlock();
@@ -135,7 +135,7 @@ impl<T: ?Sized> Mutex<T> {
         if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
         }
     }
 

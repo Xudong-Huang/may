@@ -44,15 +44,15 @@ pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
 #[inline]
 fn del_socket(io: &IoData) {
     // transfer the io to the selector
-    get_scheduler().get_selector().del_fd(io.clone());
+    get_scheduler().get_selector().del_fd(io);
 }
 
 // deal with the io result
 #[inline]
 fn co_io_result() -> io::Result<()> {
     match get_co_para() {
-        Some(err) => return Err(err),
-        None => return Ok(()),
+        Some(err) => Err(err),
+        None => Ok(()),
     }
 }
 
@@ -119,7 +119,7 @@ unsafe impl Sync for EventData {}
 impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
-            fd: fd,
+            fd,
             io_flag: AtomicBool::new(false),
             timer: RefCell::new(None),
             co: AtomicOption::none(),

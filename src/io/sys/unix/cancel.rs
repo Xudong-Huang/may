@@ -24,10 +24,10 @@ impl CancelIo for CancelIoImpl {
     }
 
     unsafe fn cancel(&self) {
-        self.0.take(Ordering::Acquire).map(|e| {
-            e.co
-                .take(Ordering::Acquire)
-                .map(|co| get_scheduler().schedule(co));
-        });
+        if let Some(e) = self.0.take(Ordering::Acquire) {
+            if let Some(co) = e.co.take(Ordering::Acquire) {
+                get_scheduler().schedule(co);
+            }
+        }
     }
 }

@@ -49,6 +49,12 @@ pub struct CancelImpl<T: CancelIo> {
     co: AtomicOption<Arc<AtomicOption<CoroutineImpl>>>,
 }
 
+impl<T: CancelIo> Default for CancelImpl<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // real io cancel impl is in io module
 impl<T: CancelIo> CancelImpl<T> {
     pub fn new() -> Self {

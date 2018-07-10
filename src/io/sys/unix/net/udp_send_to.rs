@@ -24,9 +24,9 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
     pub fn new(socket: &'a UdpSocket, buf: &'a [u8], addr: A) -> io::Result<Self> {
         Ok(UdpSendTo {
             io_data: socket.as_io_data(),
-            buf: buf,
+            buf,
             socket: socket.inner(),
-            addr: addr,
+            addr,
             timeout: socket.write_timeout().unwrap(),
             can_drop: DelayDrop::new(),
         })

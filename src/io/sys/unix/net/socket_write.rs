@@ -21,8 +21,8 @@ impl<'a> SocketWrite<'a> {
     pub fn new<T: AsIoData>(s: &'a T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
         SocketWrite {
             io_data: s.as_io_data(),
-            buf: buf,
-            timeout: timeout,
+            buf,
+            timeout,
             can_drop: DelayDrop::new(),
         }
     }

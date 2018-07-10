@@ -83,7 +83,7 @@ impl<T: ?Sized> RwLock<T> {
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
         }
         match cur.park(None) {
             Ok(_) => Ok(()),
@@ -129,11 +129,11 @@ impl<T: ?Sized> RwLock<T> {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(w));
+                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
         }
     }
 
-    fn unpark_one(&self, w: Arc<SyncBlocker>) {
+    fn unpark_one(&self, w: &SyncBlocker) {
         w.unpark();
         if w.take_release() {
             self.unlock();

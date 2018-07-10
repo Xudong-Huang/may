@@ -31,7 +31,7 @@ impl UnixStreamConnect {
         add_socket(&socket).map(|io| UnixStreamConnect {
             io_data: io,
             stream: socket,
-            path: path,
+            path,
             can_drop: DelayDrop::new(),
             is_connected: false,
         })
@@ -39,7 +39,7 @@ impl UnixStreamConnect {
 
     #[inline]
     // return ture if it's connected
-    pub fn is_connected(&mut self) -> io::Result<bool> {
+    pub fn check_connected(&mut self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system
         match self.stream.connect(&self.path) {

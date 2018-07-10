@@ -24,7 +24,7 @@ impl<'a> UdpRecvFrom<'a> {
     pub fn new(socket: &'a UdpSocket, buf: &'a mut [u8]) -> Self {
         UdpRecvFrom {
             io_data: socket.as_io_data(),
-            buf: buf,
+            buf,
             socket: socket.inner(),
             timeout: socket.read_timeout().unwrap(),
             can_drop: DelayDrop::new(),

@@ -49,7 +49,7 @@ impl TcpStream {
 
         let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
 
-        if c.is_connected()? {
+        if c.check_connected()? {
             return c.done();
         }
 
@@ -66,7 +66,7 @@ impl TcpStream {
 
         let mut c = net_impl::TcpStreamConnect::new(addr, Some(timeout))?;
 
-        if c.is_connected()? {
+        if c.check_connected()? {
             return c.done();
         }
 
@@ -84,7 +84,7 @@ impl TcpStream {
 
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
-        let s = self.sys.try_clone().and_then(|s| TcpStream::new(s))?;
+        let s = self.sys.try_clone().and_then(TcpStream::new)?;
         s.set_read_timeout(self.read_timeout).unwrap();
         s.set_write_timeout(self.write_timeout).unwrap();
         Ok(s)

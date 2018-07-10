@@ -24,9 +24,9 @@ impl<'a> UnixSendTo<'a> {
     pub fn new(socket: &'a UnixDatagram, buf: &'a [u8], path: &'a Path) -> io::Result<Self> {
         Ok(UnixSendTo {
             io_data: socket.0.as_io_data(),
-            buf: buf,
+            buf,
             socket: socket.0.inner(),
-            path: path,
+            path,
             timeout: socket.write_timeout().unwrap(),
             can_drop: DelayDrop::new(),
         })

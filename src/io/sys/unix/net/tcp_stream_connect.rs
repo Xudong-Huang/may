@@ -43,9 +43,9 @@ impl TcpStreamConnect {
 
                 add_socket(&stream).map(|io| TcpStreamConnect {
                     io_data: io,
-                    stream: stream,
-                    timeout: timeout,
-                    addr: addr,
+                    stream,
+                    timeout,
+                    addr,
                     can_drop: DelayDrop::new(),
                     is_connected: false,
                 })
@@ -54,7 +54,7 @@ impl TcpStreamConnect {
 
     #[inline]
     // return ture if it's connected
-    pub fn is_connected(&mut self) -> io::Result<bool> {
+    pub fn check_connected(&mut self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system
         match self.stream.connect(&self.addr.into()) {

@@ -24,7 +24,7 @@ impl<'a> UnixRecvFrom<'a> {
     pub fn new(socket: &'a UnixDatagram, buf: &'a mut [u8]) -> Self {
         UnixRecvFrom {
             io_data: socket.0.as_io_data(),
-            buf: buf,
+            buf,
             socket: socket.0.inner(),
             timeout: socket.0.read_timeout().unwrap(),
             can_drop: DelayDrop::new(),
