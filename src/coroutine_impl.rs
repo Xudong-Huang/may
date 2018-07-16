@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use cancel::Cancel;
 use config::config;
-use generator::{get_local_data, Generator, Gn};
+use generator::{Generator, Gn};
 use join::{make_join_handle, Join, JoinHandle};
+use local::get_co_local_data;
 use local::CoroutineLocal;
 use park::Park;
 use scheduler::get_scheduler;
@@ -386,12 +387,14 @@ where
     Builder::new().spawn(f).unwrap()
 }
 
-/// Gets a handle to the thread that invokes it.
+/// Gets a handle to the coroutine that invokes it.
+/// it will panic if you call it in a thead context
 #[inline]
 pub fn current() -> Coroutine {
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-    let local = unsafe { &*(get_local_data() as *mut CoroutineLocal) };
-    local.get_co().clone()
+    match get_co_local_data() {
+        None => panic!("no current coroutine, did you call `current()` in thread context?"),
+        Some(local) => unsafe { local.as_ref() }.get_co().clone(),
+    }
 }
 
 /// if current context is coroutine
@@ -400,15 +403,17 @@ pub fn is_coroutine() -> bool {
     // we never call this function in a pure generator context
     // so we can sure that this function is called
     // either in a thread context or in a coroutine context
-    !get_local_data().is_null()
+    get_co_local_data().is_some()
 }
 
 /// get current coroutine cancel registration
+/// panic in a thread context
 #[inline]
 pub fn current_cancel_data() -> &'static Cancel {
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-    let local = unsafe { &*(get_local_data() as *mut CoroutineLocal) };
-    &local.get_co().inner.cancel
+    match get_co_local_data() {
+        None => panic!("no cancel data, did you call `current_cancel_data()` in thread context?"),
+        Some(local) => &(unsafe { &*local.as_ptr() }.get_co().inner.cancel),
+    }
 }
 
 #[inline]

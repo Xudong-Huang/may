@@ -2,6 +2,7 @@ use std::any::TypeId;
 use std::cell::{RefCell, UnsafeCell};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
+use std::ptr::NonNull;
 use std::sync::Arc;
 
 use coroutine_impl::Coroutine;
@@ -42,15 +43,17 @@ impl CoroutineLocal {
     }
 }
 
-fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
+#[inline]
+pub fn get_co_local_data() -> Option<NonNull<CoroutineLocal>> {
     let ptr = get_local_data();
-    if ptr.is_null() {
-        LOCALMAP.with(|data| f(data))
-    } else {
-        #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
-        let local = unsafe { &*(ptr as *mut CoroutineLocal) };
-        let data = &local.local_data;
-        f(data)
+    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    NonNull::new(ptr as *mut CoroutineLocal)
+}
+
+fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
+    match get_co_local_data() {
+        Some(v) => f(&(unsafe { v.as_ref() }.local_data)),
+        None => LOCALMAP.with(|data| f(data)),
     }
 }
 
