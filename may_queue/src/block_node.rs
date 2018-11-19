@@ -53,7 +53,7 @@ impl<T> BlockNode<T> {
     #[inline]
     pub fn set(&self, index: usize, v: T) {
         unsafe {
-            let data = self.data.ptr().offset((index & BLOCK_MASK) as isize);
+            let data = self.data.ptr().add(index & BLOCK_MASK);
             ptr::write(data, v);
         }
     }
@@ -63,7 +63,7 @@ impl<T> BlockNode<T> {
     #[inline]
     pub fn get(&self, index: usize) -> T {
         unsafe {
-            let data = self.data.ptr().offset((index & BLOCK_MASK) as isize);
+            let data = self.data.ptr().add(index & BLOCK_MASK);
             ptr::read(data)
         }
     }
@@ -74,7 +74,7 @@ impl<T> BlockNode<T> {
     #[inline]
     pub unsafe fn bulk_get<V: Extend<T>>(&self, start: usize, end: usize, vec: &mut V) -> usize {
         let size = end.wrapping_sub(start);
-        let mut p_data = self.data.ptr().offset((start & BLOCK_MASK) as isize);
+        let mut p_data = self.data.ptr().add(start & BLOCK_MASK);
         // vec.reserve(size);
         for _i in 0..size {
             vec.extend(Some(ptr::read(p_data)));

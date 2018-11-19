@@ -58,7 +58,7 @@ impl Done {
         // assert!(co.is_done(), "unfinished coroutine detected");
         // just consume the coroutine
         // destroy the local storage
-        #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+        #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
         let local = unsafe { Box::from_raw(co.get_local_data() as *mut CoroutineLocal) };
         let name = local.get_co().name();
 
@@ -418,7 +418,7 @@ pub fn current_cancel_data() -> &'static Cancel {
 
 #[inline]
 pub fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
     let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
     &local.get_co().inner.cancel
 }
@@ -452,7 +452,7 @@ pub fn run_coroutine(mut co: CoroutineImpl) {
         Some(ev) => ev.subscribe(co),
         None => {
             // panic happened here
-            #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+            #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
             let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
             let join = unsafe { &mut *local.get_join().get() };
             // set the panic data

@@ -44,7 +44,7 @@ impl EventData {
     }
 
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(mut_from_ref))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::mut_from_ref))]
     pub fn get_overlapped(&self) -> &mut OVERLAPPED {
         unsafe { &mut *self.overlapped.get() }
     }

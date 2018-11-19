@@ -46,7 +46,7 @@ impl CoroutineLocal {
 #[inline]
 pub fn get_co_local_data() -> Option<NonNull<CoroutineLocal>> {
     let ptr = get_local_data();
-    #[cfg_attr(feature = "cargo-clippy", allow(cast_ptr_alignment))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
     NonNull::new(ptr as *mut CoroutineLocal)
 }
 
