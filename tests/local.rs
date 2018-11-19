@@ -24,8 +24,9 @@ fn coroutine_local() {
         FOO.with(|f| {
             assert_eq!(*f, 9);
         });
-    }).join()
-        .unwrap();
+    })
+    .join()
+    .unwrap();
 }
 
 #[test]

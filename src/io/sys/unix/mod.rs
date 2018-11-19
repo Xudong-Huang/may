@@ -2,17 +2,15 @@
 #[path = "epoll.rs"]
 mod select;
 
-#[cfg(
-    any(
-        target_os = "bitrig",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    )
-)]
+#[cfg(any(
+    target_os = "bitrig",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "ios",
+    target_os = "macos",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 #[path = "kqueue.rs"]
 mod select;
 

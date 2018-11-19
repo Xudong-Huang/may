@@ -331,7 +331,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.lock().unwrap();
             panic!("test panic in inner thread to poison mutex");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -354,7 +355,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.lock().unwrap();
             panic!("test panic in inner thread to poison mutex");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
@@ -423,7 +425,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let lock = arc2.lock().unwrap();
             assert_eq!(*lock, 2);
-        }).join();
+        })
+        .join();
         assert!(arc.lock().is_err());
         assert!(arc.is_poisoned());
     }
@@ -459,7 +462,8 @@ mod tests {
             }
             let _u = Unwinder { i: arc2 };
             panic!();
-        }).join();
+        })
+        .join();
         let lock = arc.lock().unwrap();
         assert_eq!(*lock, 2);
     }

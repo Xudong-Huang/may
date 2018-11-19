@@ -50,8 +50,9 @@ fn cqueue_in_coroutine() {
                 }
             }
         });
-    }).join()
-        .unwrap();
+    })
+    .join()
+    .unwrap();
     println!("cqueue finished");
 }
 

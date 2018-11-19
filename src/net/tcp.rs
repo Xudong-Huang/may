@@ -160,7 +160,9 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+        if self
+            .ctx
+            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             #[cold]
@@ -183,7 +185,9 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+        if self
+            .ctx
+            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             #[cold]
@@ -269,7 +273,9 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if self.ctx.check_nonblocking(|b| self.sys.set_nonblocking(b))?
+        if self
+            .ctx
+            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             #[cold]

@@ -544,7 +544,8 @@ mod tests {
             let (tx, rx) = channel::<i32>();
             drop(tx);
             rx.recv().unwrap();
-        }).join();
+        })
+        .join();
         // What is our res?
         assert!(res.is_err());
     }
@@ -624,7 +625,8 @@ mod tests {
         });
         let res = thread::spawn(move || {
             assert!(*rx.recv().unwrap() == 10);
-        }).join();
+        })
+        .join();
         assert!(res.is_err());
     }
 
@@ -648,7 +650,8 @@ mod tests {
             });
             let _ = thread::spawn(move || {
                 tx.send(1).unwrap();
-            }).join();
+            })
+            .join();
         }
     }
 
@@ -659,7 +662,8 @@ mod tests {
             thread::spawn(move || {
                 let res = thread::spawn(move || {
                     rx.recv().unwrap();
-                }).join();
+                })
+                .join();
                 assert!(res.is_err());
             });
             let _t = thread::spawn(move || {

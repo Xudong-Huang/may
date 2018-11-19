@@ -87,6 +87,7 @@ fn main() {
                 Err(e) => println!("err = {:?}", e),
             }
         }
-    }).join()
-        .unwrap();
+    })
+    .join()
+    .unwrap();
 }

@@ -372,7 +372,8 @@ mod tests {
         let _: Result<(), _> = thread::spawn(move || {
             let _lock = arc2.write().unwrap();
             panic!();
-        }).join();
+        })
+        .join();
         assert!(arc.read().is_err());
     }
 
@@ -384,7 +385,8 @@ mod tests {
         let _: Result<(), _> = thread::spawn(move || {
             let _lock = arc2.write().unwrap();
             panic!();
-        }).join();
+        })
+        .join();
         assert!(arc.write().is_err());
         assert!(arc.is_poisoned());
     }
@@ -396,7 +398,8 @@ mod tests {
         let _: Result<(), _> = thread::spawn(move || {
             let _lock = arc2.read().unwrap();
             panic!();
-        }).join();
+        })
+        .join();
         let lock = arc.read().unwrap();
         assert_eq!(*lock, 1);
     }
@@ -407,7 +410,8 @@ mod tests {
         let _: Result<(), _> = thread::spawn(move || {
             let _lock = arc2.read().unwrap();
             panic!()
-        }).join();
+        })
+        .join();
         let lock = arc.write().unwrap();
         assert_eq!(*lock, 1);
     }
@@ -466,7 +470,8 @@ mod tests {
             }
             let _u = Unwinder { i: arc2 };
             panic!();
-        }).join();
+        })
+        .join();
         let lock = arc.read().unwrap();
         assert_eq!(*lock, 2);
     }
@@ -532,7 +537,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.write().unwrap();
             panic!("test panic in inner thread to poison RwLock");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
@@ -555,7 +561,8 @@ mod tests {
         let _ = thread::spawn(move || {
             let _lock = m2.write().unwrap();
             panic!("test panic in inner thread to poison RwLock");
-        }).join();
+        })
+        .join();
 
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
