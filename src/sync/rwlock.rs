@@ -106,10 +106,10 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     fn try_lock(&self) -> TryLockResult<()> {
-        if self.cnt.load(Ordering::Acquire) == 0 {
+        if self.cnt.load(Ordering::SeqCst) == 0 {
             match self
                 .cnt
-                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed)
+                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
             {
                 Ok(_) => Ok(()),
                 Err(_) => {

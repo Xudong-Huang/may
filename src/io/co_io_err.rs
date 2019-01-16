@@ -43,6 +43,6 @@ impl<T> error::Error for Error<T> {
     }
 
     fn cause(&self) -> Option<&error::Error> {
-        self.err.cause()
+        self.err.source()
     }
 }

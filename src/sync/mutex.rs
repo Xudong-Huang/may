@@ -61,7 +61,7 @@ impl<T: ?Sized> Mutex<T> {
         // register blocker first
         self.to_wake.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
-        if self.cnt.fetch_add(1, Ordering::Relaxed) == 0 {
+        if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
                 .pop()
                 .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
@@ -111,10 +111,10 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
-        if self.cnt.load(Ordering::Relaxed) == 0 {
+        if self.cnt.load(Ordering::SeqCst) == 0 {
             match self
                 .cnt
-                .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
             {
                 Ok(_) => Ok(MutexGuard::new(self)?),
                 Err(_) => Err(TryLockError::WouldBlock),
@@ -132,7 +132,7 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     fn unlock(&self) {
-        if self.cnt.fetch_sub(1, Ordering::Relaxed) > 1 {
+        if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
                 .pop()
                 .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));

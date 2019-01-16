@@ -2,7 +2,21 @@ use std::cell::UnsafeCell;
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
+use self::PopResult::*;
 use yield_now::yield_now;
+
+/// A result of the `pop` function.
+enum PopResult<T> {
+    /// Some data has been popped
+    Data(T),
+    /// The queue is empty
+    Empty,
+    /// The queue is in an inconsistent state. Popping data should succeed, but
+    /// some pushers have yet to make enough progress in order allow a pop to
+    /// succeed. It is recommended that a pop() occur "in the near future" in
+    /// order to see if the sender has made progress or not
+    Inconsistent,
+}
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
@@ -26,8 +40,8 @@ pub struct Queue<T> {
     tail: UnsafeCell<*mut Node<T>>,
 }
 
-unsafe impl<T> Send for Queue<T> {}
-unsafe impl<T> Sync for Queue<T> {}
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Sync> Sync for Queue<T> {}
 
 impl<T> Queue<T> {
     /// Creates a new queue that is safe to share among multiple producers and
@@ -57,41 +71,41 @@ impl<T> Queue<T> {
         self.head.load(Ordering::Acquire) == tail
     }
 
-    /// Pops some data from this queue.
-    pub fn pop(&self) -> Option<T> {
+    fn raw_pop(&self) -> PopResult<T> {
         unsafe {
             let tail = *self.tail.get();
+            let next = (*tail).next.load(Ordering::Acquire);
 
-            // the list is empty
+            if !next.is_null() {
+                *self.tail.get() = next;
+                assert!((*tail).value.is_none());
+                assert!((*next).value.is_some());
+                let ret = (*next).value.take().unwrap();
+                let _: Box<Node<T>> = Box::from_raw(tail);
+                return Data(ret);
+            }
+
             if self.head.load(Ordering::Acquire) == tail {
-                return None;
+                Empty
+            } else {
+                Inconsistent
             }
+        }
+    }
 
-            // spin until tail next become non-null
-            let mut next;
-            let mut i = 0;
-            loop {
-                next = (*tail).next.load(Ordering::Acquire);
-                if !next.is_null() {
-                    break;
+    /// Pops some data from this queue.
+    pub fn pop(&self) -> Option<T> {
+        match self.raw_pop() {
+            Empty => None,
+            Data(ret) => Some(ret),
+            Inconsistent => loop {
+                yield_now();
+                match self.raw_pop() {
+                    Data(ret) => return Some(ret),
+                    Empty => panic!("inconsistent => empty"),
+                    Inconsistent => {}
                 }
-                i += 1;
-                if i > 100 {
-                    yield_now();
-                    i = 0;
-                }
-            }
-
-            assert!((*tail).value.is_none());
-            assert!((*next).value.is_some());
-            // we tack the next value, this is why use option to host the value
-            let ret = (*next).value.take().unwrap();
-            let _: Box<Node<T>> = Box::from_raw(tail);
-
-            // move the tail to next
-            *self.tail.get() = next;
-
-            Some(ret)
+            },
         }
     }
 }

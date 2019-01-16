@@ -127,11 +127,11 @@ impl Semphore {
     pub fn try_wait(&self) -> bool {
         // we not register ourself at all
         // just manipulate the cnt is enough
-        let mut cnt = self.cnt.load(Ordering::Acquire);
+        let mut cnt = self.cnt.load(Ordering::SeqCst);
         while cnt > 0 {
             match self
                 .cnt
-                .compare_exchange(cnt, cnt - 1, Ordering::SeqCst, Ordering::Relaxed)
+                .compare_exchange(cnt, cnt - 1, Ordering::SeqCst, Ordering::SeqCst)
             {
                 Ok(_) => return true,
                 Err(x) => cnt = x,
@@ -154,7 +154,7 @@ impl Semphore {
 
     /// return the current semphore value
     pub fn get_value(&self) -> usize {
-        let cnt = self.cnt.load(Ordering::Acquire);
+        let cnt = self.cnt.load(Ordering::SeqCst);
         if cnt > 0 {
             return cnt as usize;
         }
@@ -164,7 +164,7 @@ impl Semphore {
 
 impl fmt::Debug for Semphore {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let cnt = self.cnt.load(Ordering::Acquire);
+        let cnt = self.cnt.load(Ordering::SeqCst);
         write!(f, "Semphore {{ cnt: {} }}", cnt)
     }
 }
