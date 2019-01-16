@@ -1,5 +1,6 @@
 #![cfg_attr(nightly, feature(core_intrinsics))]
 #![cfg_attr(all(nightly, test), feature(test))]
+#![cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ref_to_mut))]
 
 mod block_node;
 
