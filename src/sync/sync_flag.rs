@@ -66,16 +66,13 @@ impl SyncFlag {
     }
 
     #[inline]
-    fn wakeup_one(&self) {
-        self.to_wake.try_pop().map_or_else(
-            || panic!("got null blocker!"),
-            |w| {
-                w.unpark();
-                if w.take_release() {
-                    self.fire();
-                }
-            },
-        );
+    fn wakeup_all(&self) {
+        while let Some(w) = self.to_wake.try_pop() {
+            w.unpark();
+            if w.take_release() {
+                self.fire();
+            }
+        }
     }
 
     // return false if timeout
@@ -90,7 +87,7 @@ impl SyncFlag {
         self.to_wake.push(cur.clone());
         // dec the cnt, if it's positive, unpark one waiter
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 0 {
-            self.wakeup_one();
+            self.wakeup_all();
         }
 
         match cur.park(dur) {
@@ -136,12 +133,7 @@ impl SyncFlag {
         self.cnt.store(std::isize::MAX, Ordering::SeqCst);
 
         // try to wakeup all waiters
-        while let Some(w) = self.to_wake.try_pop() {
-            w.unpark();
-            if w.take_release() {
-                self.fire();
-            }
-        }
+        self.wakeup_all();
     }
 
     /// return the current SyncFlag value
