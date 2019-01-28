@@ -1,6 +1,6 @@
 use std;
 use std::fmt;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use block_node::*;
 
@@ -10,16 +10,16 @@ pub struct Queue<T> {
     // keep a cache line align
     _pad0: [u8; 64],
     // use for pop
-    head: *mut BlockNode<T>,
+    head: AtomicPtr<BlockNode<T>>,
     // used to track the pop number
-    pop_index: usize,
+    pop_index: AtomicUsize,
     // -----------------------------------------
     // keep a cache line align
     _pad1: [u8; 64],
     // use for push
-    tail: *mut BlockNode<T>,
+    tail: AtomicPtr<BlockNode<T>>,
     // used to track the push number
-    push_index: usize,
+    push_index: AtomicUsize,
     // keep a cache line align
     _pad2: [u8; 64],
 }
@@ -32,10 +32,10 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let init_block = BlockNode::<T>::new();
         Queue {
-            head: init_block,
-            tail: init_block,
-            push_index: 0,
-            pop_index: 0,
+            head: AtomicPtr::new(init_block),
+            tail: AtomicPtr::new(init_block),
+            push_index: AtomicUsize::new(0),
+            pop_index: AtomicUsize::new(0),
             _pad0: [0; 64],
             _pad1: [0; 64],
             _pad2: [0; 64],
@@ -43,50 +43,47 @@ impl<T> Queue<T> {
     }
     /// push a value to the queue
     pub fn push(&self, v: T) {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        let tail = unsafe { &mut *self.tail };
+        let tail = unsafe { &mut *self.tail.load(Ordering::Relaxed) };
+        let push_index = self.push_index.load(Ordering::Relaxed);
         // store the data
-        tail.set(self.push_index, v);
+        tail.set(push_index, v);
 
         // alloc new block node if the tail is full
-        let new_index = self.push_index.wrapping_add(1);
+        let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new();
             tail.next.store(new_tail, Ordering::Release);
-            me.tail = new_tail;
+            self.tail.store(new_tail, Ordering::Relaxed);
         }
 
         // commit the push
-        me.push_index = new_index;
+        self.push_index.store(new_index, Ordering::Relaxed);
     }
 
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let mut index = self.pop_index;
-        // prevent release version wrong optimization!! use a volatile read
-        let push_index = unsafe { std::ptr::read_volatile(&self.push_index) };
+        let index = self.pop_index.load(Ordering::Relaxed);
+        let push_index = self.push_index.load(Ordering::Relaxed);
         if index == push_index {
             return None;
         }
 
-        // fake self as &mut
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        let head = unsafe { &mut *self.head };
+        let head = unsafe { &mut *self.head.load(Ordering::Relaxed) };
 
         // get the data
         let v = head.get(index);
 
-        index = index.wrapping_add(1);
+        let new_index = index.wrapping_add(1);
         // we need to free the old head if it's get empty
-        if index & BLOCK_MASK == 0 {
+        if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Acquire);
             assert!(!new_head.is_null());
-            let _unused_head = unsafe { Box::from_raw(self.head) };
-            me.head = new_head;
+            let _unused_head = unsafe { Box::from_raw(head) };
+            self.head.store(new_head, Ordering::Relaxed);
         }
 
         // commit the pop
-        me.pop_index = index;
+        self.pop_index.store(new_index, Ordering::Relaxed);
 
         Some(v)
     }
@@ -94,38 +91,37 @@ impl<T> Queue<T> {
     /// get the size of queue
     #[inline]
     pub fn size(&self) -> usize {
-        self.push_index.wrapping_sub(self.pop_index)
+        let pop_index = self.pop_index.load(Ordering::Relaxed);
+        let push_index = self.push_index.load(Ordering::Relaxed);
+        push_index.wrapping_sub(pop_index)
     }
 
     // here the max bulk pop should be within a block node
     pub fn bulk_pop_expect<V: Extend<T>>(&self, expect: usize, vec: &mut V) -> usize {
-        let mut index = self.pop_index;
-        // prevent release version wrong optimization!! use a volatile read
-        let push_index = unsafe { std::ptr::read_volatile(&self.push_index) };
+        let index = self.pop_index.load(Ordering::Relaxed);
+        let push_index = self.push_index.load(Ordering::Relaxed);
         if index == push_index {
             return 0;
         }
 
-        // fake self as &mut
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        let head = unsafe { &mut *self.head };
+        let head = unsafe { &mut *self.head.load(Ordering::Relaxed) };
 
         // only pop within a block
         let end = bulk_end(index, push_index, expect);
         let size = unsafe { head.bulk_get(index, end, vec) };
 
-        index = end;
+        let new_index = end;
 
         // free the old block node
-        if index & BLOCK_MASK == 0 {
+        if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Acquire);
             assert!(!new_head.is_null());
-            let _unused_head = unsafe { Box::from_raw(self.head) };
-            me.head = new_head;
+            let _unused_head = unsafe { Box::from_raw(head) };
+            self.head.store(new_head, Ordering::Relaxed);
         }
 
         // commit the pop
-        me.pop_index = index;
+        self.pop_index.store(new_index, Ordering::Relaxed);
 
         size
     }
@@ -146,10 +142,12 @@ impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
         while self.pop().is_some() {}
-        assert_eq!(self.head, self.tail);
+        let head = self.head.load(Ordering::Relaxed);
+        let tail = self.tail.load(Ordering::Relaxed);
+        assert_eq!(head, tail);
 
         unsafe {
-            let _unused_block = Box::from_raw(self.head);
+            let _unused_block = Box::from_raw(head);
         }
     }
 }
@@ -163,7 +161,7 @@ impl<T> fmt::Debug for Queue<T> {
             unsafe { std::intrinsics::type_name::<T>() },
             self.head,
             self.tail,
-            self.push_index - self.pop_index
+            self.size()
         )
     }
 
@@ -174,7 +172,7 @@ impl<T> fmt::Debug for Queue<T> {
             "Queue<T> {{ head: {:?}, tail: {:?}, size: {:?} }}",
             self.head,
             self.tail,
-            self.push_index - self.pop_index
+            self.size()
         )
     }
 }

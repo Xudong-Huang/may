@@ -10,7 +10,7 @@ use generator::get_local_data;
 use join::Join;
 
 // thread local map storage
-thread_local!{static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
+thread_local! {static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
 
 /// coroutine local storage
 pub struct CoroutineLocal {

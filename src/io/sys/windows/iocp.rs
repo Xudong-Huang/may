@@ -44,9 +44,8 @@ impl EventData {
     }
 
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::mut_from_ref))]
-    pub fn get_overlapped(&self) -> &mut OVERLAPPED {
-        unsafe { &mut *self.overlapped.get() }
+    pub fn get_overlapped(&mut self) -> *mut OVERLAPPED {
+        self.overlapped.get()
     }
 
     pub fn timer_data(&self) -> TimerData {
@@ -56,7 +55,7 @@ impl EventData {
     }
 
     pub fn get_io_size(&self) -> usize {
-        let ol = self.get_overlapped();
+        let ol = unsafe { &*self.overlapped.get() };
         ol.InternalHigh as usize
     }
 }
@@ -132,7 +131,7 @@ impl Selector {
             // check the status
             match overlapped.Internal as u32 {
                 ERROR_OPERATION_ABORTED | STATUS_CANCELLED_U32 => {
-                    info!("coroutine timeout");
+                    warn!("coroutine timeout, stat=0x{:x}", overlapped.Internal);
                     set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                     // timer data is popped already
                 }
@@ -194,7 +193,7 @@ impl Selector {
     }
 }
 
-unsafe fn cancel_io(handle: HANDLE, overlapped: &mut OVERLAPPED) -> io::Result<()> {
+unsafe fn cancel_io(handle: HANDLE, overlapped: *mut OVERLAPPED) -> io::Result<()> {
     let ret = CancelIoEx(handle, overlapped);
     if ret == 0 {
         Err(io::Error::last_os_error())
