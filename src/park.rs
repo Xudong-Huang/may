@@ -25,7 +25,7 @@ pub struct Park {
     // the low bit used as flag, and higher bits used as flag to check the kernel delay drop
     state: AtomicUsize,
     // control how to deal with the cancellation
-    check_cancel: bool,
+    check_cancel: AtomicBool,
     // if cancel happened
     is_canceled: AtomicBool,
     // timeout settings
@@ -41,7 +41,7 @@ impl Park {
         Park {
             wait_co: Arc::new(AtomicOption::none()),
             state: AtomicUsize::new(0),
-            check_cancel: true,
+            check_cancel: true.into(),
             is_canceled: AtomicBool::new(false),
             timeout: None,
             timeout_handle: None,
@@ -51,8 +51,7 @@ impl Park {
 
     // ignore cancel, if true, caller have to do the check instead
     pub fn ignore_cancel(&self, ignore: bool) {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.check_cancel = !ignore;
+        self.check_cancel.store(!ignore, Ordering::Relaxed);
     }
 
     // set the timeout duration of the parking
@@ -255,7 +254,7 @@ impl EventSource for Park {
         self.is_canceled
             .store(cancel.is_canceled(), Ordering::Relaxed);
 
-        if self.check_cancel {
+        if self.check_cancel.load(Ordering::Relaxed) {
             cancel.check_cancel();
         }
     }

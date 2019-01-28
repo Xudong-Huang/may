@@ -58,8 +58,7 @@ impl Done {
         // assert!(co.is_done(), "unfinished coroutine detected");
         // just consume the coroutine
         // destroy the local storage
-        #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
-        let local = unsafe { Box::from_raw(co.get_local_data() as *mut CoroutineLocal) };
+        let local = unsafe { Box::from_raw(get_co_local(&co)) };
         let name = local.get_co().name();
 
         // recycle the coroutine
@@ -91,6 +90,12 @@ impl EventSource for Done {
 /// coroutines are static generator
 /// the para type is EventResult, the result type is EventSubscriber
 pub type CoroutineImpl = Generator<'static, EventResult, EventSubscriber>;
+
+#[inline]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
+fn get_co_local(co: &CoroutineImpl) -> *mut CoroutineLocal {
+    co.get_local_data() as *mut CoroutineLocal
+}
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine
@@ -418,8 +423,7 @@ pub fn current_cancel_data() -> &'static Cancel {
 
 #[inline]
 pub fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
-    let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
+    let local = unsafe { &*get_co_local(co) };
     &local.get_co().inner.cancel
 }
 
@@ -452,8 +456,7 @@ pub fn run_coroutine(mut co: CoroutineImpl) {
         Some(ev) => ev.subscribe(co),
         None => {
             // panic happened here
-            #[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
-            let local = unsafe { &*(co.get_local_data() as *mut CoroutineLocal) };
+            let local = unsafe { &mut *get_co_local(&co) };
             let join = unsafe { &mut *local.get_join().get() };
             // set the panic data
             if let Some(panic) = co.get_panic_data() {
