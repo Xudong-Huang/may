@@ -8,7 +8,7 @@ use generator::Error;
 use io::cancel::CancelIoImpl;
 use scheduler::get_scheduler;
 use sync::AtomicOption;
-use yield_now::set_co_para;
+use yield_now::{get_co_para, set_co_para};
 
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe
@@ -88,6 +88,9 @@ impl<T: CancelIo> CancelImpl<T> {
     // panic if cancel was set
     pub fn check_cancel(&self) {
         if self.state.load(Ordering::Acquire) == 1 {
+            // before panic clear the last coroutine error
+            // this would affect future new coroutine that reuse the instance
+            get_co_para();
             trigger_cancel_panic();
         }
     }
