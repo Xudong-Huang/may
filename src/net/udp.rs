@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use io as io_impl;
 use io::net as net_impl;
+use sync::atomic_dur::AtomicDuration;
 use yield_now::yield_with;
 
 #[derive(Debug)]
@@ -11,8 +12,8 @@ pub struct UdpSocket {
     io: io_impl::IoData,
     sys: net::UdpSocket,
     ctx: io_impl::IoContext,
-    read_timeout: Option<Duration>,
-    write_timeout: Option<Duration>,
+    read_timeout: AtomicDuration,
+    write_timeout: AtomicDuration,
 }
 
 impl UdpSocket {
@@ -26,8 +27,8 @@ impl UdpSocket {
             io,
             sys: s,
             ctx: io_impl::IoContext::new(),
-            read_timeout: None,
-            write_timeout: None,
+            read_timeout: AtomicDuration::new(None),
+            write_timeout: AtomicDuration::new(None),
         })
     }
 
@@ -67,8 +68,8 @@ impl UdpSocket {
             io: io_impl::IoData::new(0),
             sys: s,
             ctx: io_impl::IoContext::new(),
-            read_timeout: self.read_timeout,
-            write_timeout: self.write_timeout,
+            read_timeout: AtomicDuration::new(self.read_timeout.get()),
+            write_timeout: AtomicDuration::new(self.write_timeout.get()),
         })
     }
 
@@ -133,7 +134,7 @@ impl UdpSocket {
             ret => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
+        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
         yield_with(&writer);
         writer.done()
     }
@@ -155,7 +156,7 @@ impl UdpSocket {
             ret => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
+        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
         yield_with(&reader);
         reader.done()
     }
@@ -167,24 +168,22 @@ impl UdpSocket {
 
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_read_timeout(dur)?;
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.read_timeout = dur;
+        self.read_timeout.swap(dur);
         Ok(())
     }
 
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_write_timeout(dur)?;
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.write_timeout = dur;
+        self.write_timeout.swap(dur);
         Ok(())
     }
 
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
-        Ok(self.read_timeout)
+        Ok(self.read_timeout.get())
     }
 
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
-        Ok(self.write_timeout)
+        Ok(self.write_timeout.get())
     }
 
     pub fn broadcast(&self) -> io::Result<bool> {

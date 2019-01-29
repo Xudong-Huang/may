@@ -8,6 +8,7 @@ use std::time::Duration;
 use cancel::Cancel;
 use coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
 use scheduler::get_scheduler;
+use sync::atomic_dur::AtomicDuration;
 use sync::AtomicOption;
 use timeout_list::TimeoutHandle;
 use yield_now::{get_co_para, yield_now, yield_with};
@@ -30,7 +31,7 @@ pub struct Park {
     // if cancel happened
     is_canceled: AtomicBool,
     // timeout settings in ms, 0 is none (park forever)
-    timeout: AtomicUsize,
+    timeout: AtomicDuration,
     // timer handle, can be null
     timeout_handle: AtomicPtr<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
     // a flag if kernel is entered
@@ -45,7 +46,7 @@ impl Park {
             state: AtomicUsize::new(0),
             check_cancel: true.into(),
             is_canceled: AtomicBool::new(false),
-            timeout: AtomicUsize::new(0),
+            timeout: AtomicDuration::new(None),
             timeout_handle: AtomicPtr::new(ptr::null_mut()),
             wait_kernel: AtomicBool::new(false),
         }
@@ -54,20 +55,6 @@ impl Park {
     // ignore cancel, if true, caller have to do the check instead
     pub fn ignore_cancel(&self, ignore: bool) {
         self.check_cancel.store(!ignore, Ordering::Relaxed);
-    }
-
-    // set the timeout duration of the parking
-    #[inline]
-    fn set_timeout(&self, dur: Option<Duration>) -> Option<Duration> {
-        let timeout = match dur {
-            None => 0,
-            Some(d) => d.as_millis() as usize,
-        };
-
-        match self.timeout.swap(timeout, Ordering::Relaxed) {
-            0 => None,
-            d => Some(Duration::from_millis(d as u64)),
-        }
     }
 
     #[inline]
@@ -170,7 +157,7 @@ impl Park {
     /// if timeout happens, return Err(ParkError::Timeout)
     /// if cancellation detected, return Err(ParkError::Canceled)
     pub fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
-        self.set_timeout(dur);
+        self.timeout.swap(dur);
 
         // if the state is not set, need to wait
         if !self.check_park() {
@@ -248,7 +235,8 @@ impl EventSource for Park {
         // if we share the same park, the previous timer may wake up it by false
         // if we not deleted the timer in time
         let timeout_handle = self
-            .set_timeout(None)
+            .timeout
+            .swap(None)
             .map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
         self.set_timeout_handle(timeout_handle);
 

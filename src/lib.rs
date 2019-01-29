@@ -21,7 +21,6 @@
 
 // #![deny(missing_docs)]
 #![allow(unused_extern_crates)]
-#![cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ref_to_mut))]
 #![cfg_attr(nightly, feature(specialization))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
 
