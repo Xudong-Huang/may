@@ -86,8 +86,8 @@ impl TcpStream {
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
         let s = self.sys.try_clone().and_then(TcpStream::new)?;
-        s.set_read_timeout(self.read_timeout).unwrap();
-        s.set_write_timeout(self.write_timeout).unwrap();
+        s.set_read_timeout(self.read_timeout.get()).unwrap();
+        s.set_write_timeout(self.write_timeout.get()).unwrap();
         Ok(s)
     }
 
