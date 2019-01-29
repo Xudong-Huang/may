@@ -404,7 +404,7 @@ pub fn current() -> Coroutine {
 
 /// if current context is coroutine
 #[inline]
-pub fn is_coroutine() -> bool {
+pub(crate) fn is_coroutine() -> bool {
     // we never call this function in a pure generator context
     // so we can sure that this function is called
     // either in a thread context or in a coroutine context
@@ -414,7 +414,7 @@ pub fn is_coroutine() -> bool {
 /// get current coroutine cancel registration
 /// panic in a thread context
 #[inline]
-pub fn current_cancel_data() -> &'static Cancel {
+pub(crate) fn current_cancel_data() -> &'static Cancel {
     match get_co_local_data() {
         None => panic!("no cancel data, did you call `current_cancel_data()` in thread context?"),
         Some(local) => &(unsafe { &*local.as_ptr() }.get_co().inner.cancel),
@@ -422,7 +422,7 @@ pub fn current_cancel_data() -> &'static Cancel {
 }
 
 #[inline]
-pub fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
+pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
     let local = unsafe { &*get_co_local(co) };
     &local.get_co().inner.cancel
 }
@@ -451,7 +451,7 @@ pub fn park_timeout(dur: Duration) {
 
 /// run the coroutine
 #[inline]
-pub fn run_coroutine(mut co: CoroutineImpl) {
+pub(crate) fn run_coroutine(mut co: CoroutineImpl) {
     match co.resume() {
         Some(ev) => ev.subscribe(co),
         None => {
