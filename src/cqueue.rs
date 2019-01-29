@@ -1,5 +1,5 @@
 use std::panic;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,6 +8,7 @@ use coroutine_impl::{current_cancel_data, run_coroutine, Coroutine, CoroutineImp
 use join::JoinHandle;
 use may_queue::mpsc_list;
 use scoped::spawn_unsafe;
+use sync::Mutex;
 use sync::{AtomicOption, Blocker};
 use yield_now::yield_with;
 
@@ -85,7 +86,7 @@ pub struct EventSender<'a> {
     // associated token, passed from `add`
     token: usize,
     // the select coroutine can use it to pass extra data to the caller
-    extra: usize,
+    extra: AtomicUsize,
     // the mpsc event queue to collect the events
     cqueue: &'a Cqueue,
 }
@@ -100,8 +101,7 @@ impl<'a> EventSender<'a> {
     pub fn send(&self, extra: usize) {
         let cancel = current_cancel_data();
         cancel.check_cancel();
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.extra = extra;
+        self.extra.store(extra, Ordering::Relaxed);
         yield_with(self);
     }
 }
@@ -111,7 +111,7 @@ impl<'a> EventSource for EventSender<'a> {
         self.cqueue.ev_queue.push(Event {
             id: self.id,
             token: self.token,
-            extra: self.extra,
+            extra: self.extra.load(Ordering::Relaxed),
             kind: EventKind::Normal,
             co: Some(co),
         });
@@ -131,7 +131,7 @@ impl<'a> Drop for EventSender<'a> {
         self.cqueue.ev_queue.push(Event {
             id: self.id,
             token: self.token,
-            extra: self.extra,
+            extra: self.extra.load(Ordering::Relaxed),
             kind: EventKind::Done,
             co: None,
         });
@@ -151,11 +151,11 @@ pub struct Cqueue {
     // track how many coroutines left
     cnt: AtomicUsize,
     // store the select coroutine handles
-    selectors: Vec<Option<JoinHandle<()>>>,
+    selectors: Mutex<Vec<Option<JoinHandle<()>>>>,
     // total created select coroutines
-    total: usize,
+    total: AtomicUsize,
     // panic status
-    is_panicking: bool,
+    is_panicking: AtomicBool,
 }
 
 unsafe impl Sync for Cqueue {}
@@ -169,25 +169,24 @@ impl Cqueue {
         F: FnOnce(EventSender) + Send + 'a,
     {
         let sender = EventSender {
-            id: self.total,
+            id: self.total.load(Ordering::Relaxed),
             token,
-            extra: 0,
+            extra: 0.into(),
             cqueue: self,
         };
         let h = unsafe { spawn_unsafe(move || f(sender)) };
         let co = h.coroutine().clone();
         self.cnt.fetch_add(1, Ordering::Relaxed);
 
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.total += 1;
-        me.selectors.push(Some(h));
+        self.total.fetch_add(1, Ordering::Relaxed);
+        self.selectors.lock().unwrap().push(Some(h));
         Selector { co }
     }
 
     /// register a select coroutine with the cqueue
     /// should use `cqueue_add` and `cqueue_add_oneshot` macros to
     /// create select coroutines correctly
-    pub unsafe fn add<'a, F>(&self, token: usize, f: F) -> Selector
+    pub fn add<'a, F>(&self, token: usize, f: F) -> Selector
     where
         F: FnOnce(EventSender) + Send + 'a,
     {
@@ -197,13 +196,12 @@ impl Cqueue {
     // when the select coroutine is done, check the panic status
     // if it's panicked, re throw the panic data
     fn check_panic(&self, id: usize) {
-        if self.is_panicking {
+        if self.is_panicking.load(Ordering::Relaxed) {
             return;
         }
 
         use generator::Error;
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        match me.selectors[id]
+        match self.selectors.lock().unwrap()[id]
             .take()
             .expect("join handler not set")
             .join()
@@ -216,7 +214,7 @@ impl Cqueue {
                         return;
                     }
                 }
-                me.is_panicking = true;
+                self.is_panicking.store(true, Ordering::Relaxed);
                 panic::resume_unwind(panic);
             }
         }
@@ -279,6 +277,8 @@ impl Drop for Cqueue {
     fn drop(&mut self) {
         // first cancel all the select coroutines if they are running
         self.selectors
+            .lock()
+            .unwrap()
             .iter()
             .map(|j| j.as_ref())
             .fold((), |_, join| match join {
@@ -314,9 +314,9 @@ where
         ev_queue: mpsc_list::Queue::new(),
         to_wake: AtomicOption::none(),
         cnt: AtomicUsize::new(0),
-        selectors: Vec::new(),
-        total: 0,
-        is_panicking: false,
+        selectors: Mutex::new(Vec::new()),
+        total: AtomicUsize::new(0),
+        is_panicking: AtomicBool::new(false),
     };
     f(&cqueue)
 }
