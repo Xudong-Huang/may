@@ -1,6 +1,7 @@
 use std::fmt;
 use std::io::ErrorKind;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,9 +29,10 @@ pub struct Park {
     check_cancel: AtomicBool,
     // if cancel happened
     is_canceled: AtomicBool,
-    // timeout settings
-    timeout: Option<Duration>,
-    timeout_handle: Option<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
+    // timeout settings in ms, 0 is none (park forever)
+    timeout: AtomicUsize,
+    // timer handle, can be null
+    timeout_handle: AtomicPtr<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
     // a flag if kernel is entered
     wait_kernel: AtomicBool,
 }
@@ -43,8 +45,8 @@ impl Park {
             state: AtomicUsize::new(0),
             check_cancel: true.into(),
             is_canceled: AtomicBool::new(false),
-            timeout: None,
-            timeout_handle: None,
+            timeout: AtomicUsize::new(0),
+            timeout_handle: AtomicPtr::new(ptr::null_mut()),
             wait_kernel: AtomicBool::new(false),
         }
     }
@@ -56,9 +58,34 @@ impl Park {
 
     // set the timeout duration of the parking
     #[inline]
-    fn set_timeout(&self, dur: Option<Duration>) {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.timeout = dur;
+    fn set_timeout(&self, dur: Option<Duration>) -> Option<Duration> {
+        let timeout = match dur {
+            None => 0,
+            Some(d) => d.as_millis() as usize,
+        };
+
+        match self.timeout.swap(timeout, Ordering::Relaxed) {
+            0 => None,
+            d => Some(Duration::from_millis(d as u64)),
+        }
+    }
+
+    #[inline]
+    fn set_timeout_handle(
+        &self,
+        handle: Option<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
+    ) -> Option<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>> {
+        let ptr = match handle {
+            None => ptr::null_mut(),
+            Some(h) => h.into_ptr(),
+        };
+
+        let old_ptr = self.timeout_handle.swap(ptr, Ordering::Relaxed);
+        if old_ptr.is_null() {
+            None
+        } else {
+            unsafe { Some(TimeoutHandle::from_ptr(ptr)) }
+        }
     }
 
     // return true if need park the coroutine
@@ -119,8 +146,7 @@ impl Park {
     // remove the timeout handle after return back to user space
     #[inline]
     fn remove_timeout_handle(&self) {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        if let Some(h) = me.timeout_handle.take() {
+        if let Some(h) = self.set_timeout_handle(None) {
             if h.is_link() {
                 get_scheduler().del_timer(h);
             }
@@ -211,6 +237,7 @@ impl Drop for Park {
         while self.state.load(Ordering::Acquire) & 0x02 == 0x02 {
             yield_now();
         }
+        self.set_timeout_handle(None);
     }
 }
 
@@ -220,10 +247,10 @@ impl EventSource for Park {
         let cancel = co_cancel_data(&co);
         // if we share the same park, the previous timer may wake up it by false
         // if we not deleted the timer in time
-        self.timeout_handle = self
-            .timeout
-            .take()
+        let timeout_handle = self
+            .set_timeout(None)
             .map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
+        self.set_timeout_handle(timeout_handle);
 
         let _g = self.delay_drop();
 
