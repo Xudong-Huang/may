@@ -24,9 +24,7 @@ impl<T> Node<T> {
     }
 }
 
-pub struct Entry<T> {
-    node: *mut Node<T>,
-}
+pub struct Entry<T>(ptr::NonNull<Node<T>>);
 
 unsafe impl<T: Sync> Sync for Entry<T> {}
 
@@ -38,22 +36,35 @@ impl<T> Entry<T> {
     where
         F: FnOnce(&mut T),
     {
-        let data = (*self.node).value.as_mut().expect("Node value is None");
+        let node = &mut *self.0.as_ptr();
+        let data = node.value.as_mut().expect("Node value is None");
         f(data);
     }
 
     /// judge if the node is still linked in the list
     #[inline]
     pub fn is_link(&self) -> bool {
-        let node = unsafe { &mut *self.node };
+        let node = unsafe { &mut *self.0.as_ptr() };
         node.refs & !REF_COUNT_MASK != 0
+    }
+
+    #[inline]
+    pub fn into_ptr(self) -> *mut Self {
+        let ret = self.0.as_ptr() as *mut Self;
+        ::std::mem::forget(self);
+        ret
+    }
+
+    #[inline]
+    pub unsafe fn from_ptr(ptr: *mut Self) -> Self {
+        Entry(ptr::NonNull::new_unchecked(ptr as *mut Node<T>))
     }
 
     // remove the entry from it's list and return the contained value
     // it's only safe for the consumer that call pop()
-    pub fn remove(self) -> Option<T> {
+    pub fn remove(mut self) -> Option<T> {
         unsafe {
-            let node = &mut *self.node;
+            let node = self.0.as_mut();
 
             // when the link bit is cleared, next and prev is no longer valid
             if node.refs & !REF_COUNT_MASK == 0 {
@@ -109,7 +120,7 @@ impl<T> Drop for Entry<T> {
     // running in a coroutine is a kind of sequential operation, so it can safely drop there after
     // returning from "kernel"
     fn drop(&mut self) {
-        let node = unsafe { &mut *self.node };
+        let node = unsafe { self.0.as_mut() };
         // dec the ref count of node
         node.refs -= 1;
         if node.refs == 0 {
@@ -156,7 +167,7 @@ impl<T> Queue<T> {
             (*prev).next.store(node, Ordering::Release);
             let tail = *self.tail.get();
             let is_head = tail == prev;
-            (Entry { node }, is_head)
+            (Entry(ptr::NonNull::new_unchecked(node)), is_head)
         }
     }
 
