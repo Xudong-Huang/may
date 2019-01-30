@@ -34,7 +34,7 @@ pub fn ns_to_dur(ns: u64) -> Duration {
 #[allow(dead_code)]
 #[inline]
 pub fn ns_to_ms(ns: u64) -> u64 {
-    (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI as u64
+    (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI
 }
 
 // get the current wall clock in ns
