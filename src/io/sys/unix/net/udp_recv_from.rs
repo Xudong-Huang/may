@@ -65,7 +65,7 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Relaxed) {
+        if self.io_data.io_flag.load(Ordering::Acquire) {
             return self.io_data.schedule();
         }
 

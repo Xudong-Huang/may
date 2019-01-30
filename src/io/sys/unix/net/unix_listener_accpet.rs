@@ -61,7 +61,7 @@ impl<'a> EventSource for UnixListenerAccept<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event happened
-        if self.io_data.io_flag.load(Ordering::Relaxed) {
+        if self.io_data.io_flag.load(Ordering::Acquire) {
             return self.io_data.schedule();
         }
 

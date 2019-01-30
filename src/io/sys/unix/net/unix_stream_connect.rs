@@ -102,7 +102,7 @@ impl EventSource for UnixStreamConnect {
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Relaxed) {
+        if io_data.io_flag.load(Ordering::Acquire) {
             return io_data.schedule();
         }
 
