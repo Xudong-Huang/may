@@ -1,6 +1,6 @@
 [package]
 name = "may_queue"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 license = "LGPL-2.1"
 repository = "https://github.com/Xudong-Huang/may.git"
