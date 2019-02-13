@@ -1,3 +1,13 @@
+## v0.3.5
+
+`MAY` 0.3.5 use crossbeam work stealing deque for scheduler
+
+* remove clippy warnings
+* optimize some code
+* fix cancel tricky bug
+* add syn_flag primitive
+* scheduler update support work stealing (#49)
+
 ## v0.3.0
 
 `MAY` 0.3.0 improve performance and add some new features
