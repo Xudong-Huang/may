@@ -25,7 +25,6 @@ fn yield_bench(b: &mut Bencher) {
 
 #[bench]
 fn spawn_bench(b: &mut Bencher) {
-    may::config().set_workers(4);
     b.iter(|| {
         let total_work = 1000;
         let threads = 2;
@@ -50,7 +49,7 @@ fn spawn_bench(b: &mut Bencher) {
 
 #[bench]
 fn spawn_bench_1(b: &mut Bencher) {
-    may::config().set_workers(4);
+    may::config().set_pool_capacity(10000);
     b.iter(|| {
         let total_work = 1000;
         let threads = 2;
@@ -73,7 +72,7 @@ fn spawn_bench_1(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench(b: &mut Bencher) {
-    may::config().set_workers(4).set_pool_capacity(10000);
+    may::config().set_pool_capacity(10000);
     b.iter(|| {
         let threads = 5;
         let mut vec = Vec::with_capacity(threads);
@@ -97,7 +96,7 @@ fn smoke_bench(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_1(b: &mut Bencher) {
-    may::config().set_workers(4).set_pool_capacity(10000);
+    may::config().set_pool_capacity(10000);
     b.iter(|| {
         let threads = 5;
         let mut vec = Vec::with_capacity(threads);
@@ -121,7 +120,7 @@ fn smoke_bench_1(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_2(b: &mut Bencher) {
-    may::config().set_workers(4);
+    may::config().set_pool_capacity(10000);
     b.iter(|| {
         scope(|s| {
             // create a main coroutine, let it spawn 10 sub coroutine
@@ -145,7 +144,6 @@ fn smoke_bench_2(b: &mut Bencher) {
 
 #[bench]
 fn smoke_bench_3(b: &mut Bencher) {
-    may::config().set_workers(4);
     b.iter(|| {
         let mut vec = Vec::with_capacity(100);
         // create a main coroutine, let it spawn 10 sub coroutine

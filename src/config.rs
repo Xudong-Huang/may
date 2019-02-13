@@ -3,16 +3,15 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-// default configs
-const DEFAULT_WORKERS: usize = 2;
-const DEFAULT_IO_WORKERS: usize = 2;
+use num_cpus;
+
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
 const DEFAULT_STACK_SIZE: usize = 0x1000;
 const DEFAULT_POOL_CAPACITY: usize = 100;
 
-static WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_WORKERS);
-static IO_WORKERS: AtomicUsize = AtomicUsize::new(DEFAULT_IO_WORKERS);
+static WORKERS: AtomicUsize = AtomicUsize::new(0);
+static IO_WORKERS: AtomicUsize = AtomicUsize::new(0);
 static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
 static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
 
@@ -34,17 +33,19 @@ impl Config {
     /// the minimum worker thread is 1, if you pass 0 to it, will use internal default
     pub fn set_workers(&self, workers: usize) -> &Self {
         info!("set workers={:?}", workers);
-        WORKERS.store(workers, Ordering::Release);
+        WORKERS.store(workers, Ordering::Relaxed);
         self
     }
 
     /// get the normal workers number
     pub fn get_workers(&self) -> usize {
-        let workers = WORKERS.load(Ordering::Acquire);
+        let workers = WORKERS.load(Ordering::Relaxed);
         if workers != 0 {
             workers
         } else {
-            DEFAULT_WORKERS
+            let num = num_cpus::get();
+            WORKERS.store(num, Ordering::Relaxed);
+            num
         }
     }
 
@@ -53,13 +54,20 @@ impl Config {
     /// if you pass in 0, all the coroutines would be scheduled on worker thread
     pub fn set_io_workers(&self, workers: usize) -> &Self {
         info!("set io workers={:?}", workers);
-        IO_WORKERS.store(workers, Ordering::Release);
+        IO_WORKERS.store(workers, Ordering::Relaxed);
         self
     }
 
     /// get the io workers number
     pub fn get_io_workers(&self) -> usize {
-        IO_WORKERS.load(Ordering::Acquire)
+        let workers = IO_WORKERS.load(Ordering::Relaxed);
+        if workers != 0 {
+            workers
+        } else {
+            let num = num_cpus::get();
+            IO_WORKERS.store(num, Ordering::Relaxed);
+            num
+        }
     }
 
     /// set cached coroutine pool number

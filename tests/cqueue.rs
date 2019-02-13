@@ -8,7 +8,6 @@ use std::time::Duration;
 
 #[test]
 fn cqueue_drop() {
-    may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
         for token in 0..10 {
@@ -29,7 +28,6 @@ fn cqueue_drop() {
 
 #[test]
 fn cqueue_in_coroutine() {
-    may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     go!(move || {
         cqueue::scope(|cqueue| {
@@ -59,7 +57,6 @@ fn cqueue_in_coroutine() {
 #[test]
 #[should_panic]
 fn cqueue_panic() {
-    may::config().set_workers(4);
     let v = (0..10).map(|x| x * x).collect::<Vec<usize>>();
     cqueue::scope(|cqueue| {
         for token in 0..10 {

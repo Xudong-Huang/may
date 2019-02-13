@@ -1,6 +1,6 @@
 [package]
 name = "may"
-version = "0.3.4"
+version = "0.3.5"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/Xudong-Huang/may.git"
@@ -27,10 +27,11 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 log = "0.4"
 time = "0.1"
 socket2 = { version = "0.3", features = ["unix"] }
+num_cpus = "1.10"
 smallvec = "0.6"
 generator = "0.6"
 crossbeam = "0.7"
-may_queue = { version = "0.1", path = "may_queue" }
+may_queue = { path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.13"
@@ -58,3 +59,4 @@ lto = true
 rustc_version = "0.2"
 
 [workspace]
+members = ["may_queue"]

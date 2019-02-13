@@ -37,6 +37,8 @@ extern crate generator;
 #[doc(hidden)]
 extern crate may_queue;
 #[doc(hidden)]
+extern crate num_cpus;
+#[doc(hidden)]
 extern crate smallvec;
 #[cfg(test)]
 #[doc(hidden)]

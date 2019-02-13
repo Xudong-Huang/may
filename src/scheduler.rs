@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::io;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Once, ONCE_INIT};
@@ -6,8 +7,9 @@ use std::time::Duration;
 
 use config::config;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
-use crossbeam::channel;
+use crossbeam::deque;
 use io::{EventLoop, Selector};
+use may_queue::mpmc_bounded::Queue as WaitList;
 use pool::CoroutinePool;
 use sync::AtomicOption;
 use timeout_list;
@@ -20,6 +22,9 @@ use std::intrinsics::likely;
 fn likely(e: bool) -> bool {
     e
 }
+
+// thread id, only workers are normal ones
+thread_local! {static WORKER_ID: RefCell<usize> = RefCell::new(!1);}
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
@@ -54,17 +59,17 @@ fn init_scheduler() {
     } else {
         true
     };
-    let b: Box<Scheduler> = Scheduler::new(io_workers, run_on_io);
+    let b: Box<Scheduler> = Scheduler::new(workers, io_workers, run_on_io);
     unsafe {
         SCHED = Box::into_raw(b);
     }
 
     // run the workers in background
-    for _id in 0..workers {
+    for id in 0..workers {
         thread::spawn(move || {
             filter_cancel_panic();
             let s = unsafe { &*SCHED };
-            s.run();
+            s.run(id);
         });
     }
 
@@ -104,7 +109,6 @@ pub fn get_scheduler() -> &'static Scheduler {
             return &*SCHED;
         }
     }
-
     static ONCE: Once = ONCE_INIT;
     ONCE.call_once(init_scheduler);
     unsafe { &*SCHED }
@@ -113,35 +117,93 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
-    rx: channel::Receiver<CoroutineImpl>,
-    tx: channel::Sender<CoroutineImpl>,
+    global_queue: deque::Injector<CoroutineImpl>,
+    local_queues: Vec<deque::Worker<CoroutineImpl>>,
+    wait_list: WaitList<thread::Thread>,
     timer_thread: TimerThread,
 }
 
 impl Scheduler {
-    pub fn new(io_workers: usize, run_on_io: bool) -> Box<Self> {
-        let (tx, rx) = channel::unbounded();
+    pub fn new(workers: usize, io_workers: usize, run_on_io: bool) -> Box<Self> {
+        let mut local_queues = Vec::with_capacity(workers);
+        (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(io_workers, run_on_io).expect("can't create event_loop"),
-            tx,
-            rx,
+            global_queue: deque::Injector::new(),
+            local_queues,
             timer_thread: TimerThread::new(),
+            wait_list: WaitList::with_capacity(workers),
         })
     }
 
-    fn run(&self) {
-        for co in &self.rx {
-            run_coroutine(co);
+    fn run(&self, id: usize) {
+        WORKER_ID.with(|worker_id| *worker_id.borrow_mut() = id);
+        let local = &self.local_queues[id];
+        let mut stealers = Vec::new();
+        for (i, worker) in self.local_queues.iter().enumerate() {
+            if i != id {
+                stealers.push(worker.stealer());
+            }
+        }
+        stealers.rotate_left(id);
+
+        loop {
+            // Pop a task from the local queue, if not empty.
+            let co = local.pop().or_else(|| {
+                // Otherwise, we need to look for a task elsewhere.
+                ::std::iter::repeat_with(|| {
+                    // Try stealing a batch of tasks from the global queue.
+                    self.global_queue
+                        .steal_batch_and_pop(local)
+                        // Or try stealing a task from one of the other threads.
+                        .or_else(|| stealers.iter().map(|s| s.steal()).collect())
+                })
+                // Loop while no task was stolen and any steal operation needs to be retried.
+                .find(|s| !s.is_retry())
+                // Extract the stolen task, if there is one.
+                .and_then(|s| s.success())
+            });
+
+            if let Some(co) = co {
+                run_coroutine(co);
+            } else {
+                // first register thread handle
+                let mut handle = thread::current();
+                while let Err(h) = self.wait_list.push(handle) {
+                    handle = h;
+                }
+                // do a re-check
+                if !self.global_queue.is_empty() {
+                    if let Some(t) = self.wait_list.pop() {
+                        t.unpark();
+                    }
+                }
+
+                // thread::park_timeout(Duration::from_millis(100));
+                thread::park();
+            }
         }
     }
 
     /// put the coroutine to ready list so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        self.tx
-            .send(co)
-            .expect("failed to send coroutine to scheduler");
+        // push to global queue
+        // TODO: for worker thread just push to it's own
+        WORKER_ID.with(|worker_id| {
+            let id = *worker_id.borrow();
+            if id == !1 {
+                self.global_queue.push(co);
+            } else {
+                self.local_queues[id].push(co);
+            }
+        });
+
+        // signal one waiting thread if any
+        if let Some(t) = self.wait_list.pop() {
+            t.unpark();
+        }
     }
 
     #[inline]

@@ -32,9 +32,9 @@
 // This queue is copy pasted from old rust stdlib.
 
 use std::cell::UnsafeCell;
-use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+use std::sync::Arc;
 
 use crossbeam::utils::CachePadded;
 

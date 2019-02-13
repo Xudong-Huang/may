@@ -17,7 +17,6 @@ impl<T> SyncCell<T> {
 
 // sum ten data resources
 fn main() {
-    may::config().set_workers(4);
     let mut gv = vec![];
     let total = SyncCell(0);
 
