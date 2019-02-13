@@ -83,7 +83,7 @@ fn init_scheduler() {
             if let Some(mut c) = co.take_fast(Ordering::Relaxed) {
                 // set the timeout result for the coroutine
                 set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-                s.schedule(c);
+                s.schedule_global(c);
             }
         };
 
@@ -186,20 +186,23 @@ impl Scheduler {
         }
     }
 
-    /// put the coroutine to ready list so that next time it can be scheduled
+    /// put the coroutine to correct queue so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        // push to global queue
-        // TODO: for worker thread just push to it's own
         WORKER_ID.with(|worker_id| {
             let id = *worker_id.borrow();
             if id == !1 {
-                self.global_queue.push(co);
+                self.schedule_global(co);
             } else {
                 self.local_queues[id].push(co);
             }
         });
+    }
 
+    /// put the coroutine to global queue so that next time it can be scheduled
+    #[inline]
+    pub fn schedule_global(&self, co: CoroutineImpl) {
+        self.global_queue.push(co);
         // signal one waiting thread if any
         if let Some(t) = self.wait_list.pop() {
             t.unpark();

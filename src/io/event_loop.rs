@@ -14,7 +14,7 @@ fn schedule_io_default(co: CoroutineImpl) {
 }
 
 fn schedule_io_on_worker(co: CoroutineImpl) {
-    get_scheduler().schedule(co);
+    get_scheduler().schedule_global(co);
 }
 
 impl EventLoop {

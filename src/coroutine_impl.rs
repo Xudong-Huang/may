@@ -279,7 +279,7 @@ impl Builder {
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
         // put the coroutine to ready list
-        sched.schedule(co);
+        sched.schedule_global(co);
         Ok(make_join_handle(handle, join, packet, panic))
     }
 
