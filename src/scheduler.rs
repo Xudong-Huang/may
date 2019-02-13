@@ -6,9 +6,8 @@ use std::time::Duration;
 
 use config::config;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
-use crossbeam::queue::SegQueue as mpmc;
+use crossbeam::channel;
 use io::{EventLoop, Selector};
-use may_queue::mpmc_bounded::Queue as WaitList;
 use pool::CoroutinePool;
 use sync::AtomicOption;
 use timeout_list;
@@ -114,56 +113,35 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
-    ready_list: mpmc<CoroutineImpl>,
-    wait_list: WaitList<thread::Thread>,
+    rx: channel::Receiver<CoroutineImpl>,
+    tx: channel::Sender<CoroutineImpl>,
     timer_thread: TimerThread,
 }
 
 impl Scheduler {
     pub fn new(io_workers: usize, run_on_io: bool) -> Box<Self> {
+        let (tx, rx) = channel::unbounded();
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(io_workers, run_on_io).expect("can't create event_loop"),
-            ready_list: mpmc::new(),
+            tx,
+            rx,
             timer_thread: TimerThread::new(),
-            wait_list: WaitList::with_capacity(256), // workers: workers,
         })
     }
 
     fn run(&self) {
-        loop {
-            // steal from the ready list
-            if let Ok(co) = self.ready_list.pop() {
-                run_coroutine(co);
-                continue;
-            }
-
-            // first register thread handle
-            let mut handle = thread::current();
-            while let Err(h) = self.wait_list.push(handle) {
-                handle = h;
-            }
-
-            // do a re-check
-            if !self.ready_list.is_empty() {
-                if let Some(t) = self.wait_list.pop() {
-                    t.unpark();
-                }
-            }
-
-            // thread::park_timeout(Duration::from_millis(100));
-            thread::park();
+        for co in &self.rx {
+            run_coroutine(co);
         }
     }
 
     /// put the coroutine to ready list so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        self.ready_list.push(co);
-        // signal one waiting thread if any
-        if let Some(t) = self.wait_list.pop() {
-            t.unpark();
-        }
+        self.tx
+            .send(co)
+            .expect("failed to send coroutine to scheduler");
     }
 
     #[inline]
