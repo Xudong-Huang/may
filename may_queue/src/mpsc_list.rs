@@ -3,6 +3,8 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::thread;
 
+use crossbeam::utils::CachePadded;
+
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
     value: Option<T>,
@@ -21,7 +23,7 @@ impl<T> Node<T> {
 /// may be safely shared so long as it is guaranteed that there is only one
 /// popper at a time (many pushers are allowed).
 pub struct Queue<T> {
-    head: AtomicPtr<Node<T>>,
+    head: CachePadded<AtomicPtr<Node<T>>>,
     tail: UnsafeCell<*mut Node<T>>,
 }
 
@@ -34,7 +36,7 @@ impl<T> Queue<T> {
     pub fn new() -> Queue<T> {
         let stub = unsafe { Node::new(None) };
         Queue {
-            head: AtomicPtr::new(stub),
+            head: AtomicPtr::new(stub).into(),
             tail: UnsafeCell::new(stub),
         }
     }

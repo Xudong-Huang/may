@@ -3,6 +3,8 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::thread;
 
+use crossbeam::utils::CachePadded;
+
 struct Node<T> {
     prev: *mut Node<T>,
     next: AtomicPtr<Node<T>>,
@@ -136,7 +138,7 @@ unsafe impl<T: Send> Send for Entry<T> {}
 /// may be safely shared so long as it is guaranteed that there is only one
 /// popper at a time (many pushers are allowed).
 pub struct Queue<T> {
-    head: AtomicPtr<Node<T>>,
+    head: CachePadded<AtomicPtr<Node<T>>>,
     tail: UnsafeCell<*mut Node<T>>,
 }
 
@@ -151,7 +153,7 @@ impl<T> Queue<T> {
         // there is no handle for the node, so it's ref should be 1 now
         unsafe { &mut *stub }.refs = 1;
         Queue {
-            head: AtomicPtr::new(stub),
+            head: AtomicPtr::new(stub).into(),
             tail: UnsafeCell::new(stub),
         }
     }

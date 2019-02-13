@@ -1,26 +1,21 @@
-use std::fmt;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use block_node::*;
+use crossbeam::utils::CachePadded;
 
 /// spsc queue
+#[derive(Debug)]
 pub struct Queue<T> {
     // ----------------------------------------
-    // keep a cache line align
-    _pad0: [u8; 64],
     // use for pop
-    head: AtomicPtr<BlockNode<T>>,
+    head: CachePadded<AtomicPtr<BlockNode<T>>>,
     // used to track the pop number
     pop_index: AtomicUsize,
     // -----------------------------------------
-    // keep a cache line align
-    _pad1: [u8; 64],
     // use for push
-    tail: AtomicPtr<BlockNode<T>>,
+    tail: CachePadded<AtomicPtr<BlockNode<T>>>,
     // used to track the push number
     push_index: AtomicUsize,
-    // keep a cache line align
-    _pad2: [u8; 64],
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
@@ -31,13 +26,10 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let init_block = BlockNode::<T>::new();
         Queue {
-            head: AtomicPtr::new(init_block),
-            tail: AtomicPtr::new(init_block),
+            head: AtomicPtr::new(init_block).into(),
+            tail: AtomicPtr::new(init_block).into(),
             push_index: AtomicUsize::new(0),
             pop_index: AtomicUsize::new(0),
-            _pad0: [0; 64],
-            _pad1: [0; 64],
-            _pad2: [0; 64],
         }
     }
     /// push a value to the queue
@@ -148,31 +140,6 @@ impl<T> Drop for Queue<T> {
         unsafe {
             let _unused_block = Box::from_raw(head);
         }
-    }
-}
-
-impl<T> fmt::Debug for Queue<T> {
-    #[cfg(nightly)]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Queue<{}> {{ head: {:?}, tail: {:?}, size: {:?} }}",
-            unsafe { std::intrinsics::type_name::<T>() },
-            self.head,
-            self.tail,
-            self.size()
-        )
-    }
-
-    #[cfg(not(nightly))]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Queue<T> {{ head: {:?}, tail: {:?}, size: {:?} }}",
-            self.head,
-            self.tail,
-            self.size()
-        )
     }
 }
 

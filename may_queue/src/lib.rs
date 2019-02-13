@@ -1,5 +1,6 @@
-#![cfg_attr(nightly, feature(core_intrinsics))]
 #![cfg_attr(all(nightly, test), feature(test))]
+
+extern crate crossbeam;
 
 mod block_node;
 

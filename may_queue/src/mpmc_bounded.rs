@@ -33,9 +33,10 @@
 
 use std::cell::UnsafeCell;
 use std::sync::Arc;
-
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+
+use crossbeam::utils::CachePadded;
 
 struct Node<T> {
     sequence: AtomicUsize,
@@ -46,14 +47,10 @@ unsafe impl<T: Send> Send for Node<T> {}
 unsafe impl<T: Sync> Sync for Node<T> {}
 
 struct State<T> {
-    pad0: [u8; 64],
+    enqueue_pos: CachePadded<AtomicUsize>,
     buffer: Vec<UnsafeCell<Node<T>>>,
+    dequeue_pos: CachePadded<AtomicUsize>,
     mask: usize,
-    pad1: [u8; 64],
-    enqueue_pos: AtomicUsize,
-    pad2: [u8; 64],
-    dequeue_pos: AtomicUsize,
-    pad3: [u8; 64],
 }
 
 unsafe impl<T: Send> Send for State<T> {}
@@ -84,14 +81,10 @@ impl<T: Send> State<T> {
             })
             .collect::<Vec<_>>();
         State {
-            pad0: [0; 64],
             buffer,
             mask: capacity - 1,
-            pad1: [0; 64],
-            enqueue_pos: AtomicUsize::new(0),
-            pad2: [0; 64],
-            dequeue_pos: AtomicUsize::new(0),
-            pad3: [0; 64],
+            enqueue_pos: AtomicUsize::new(0).into(),
+            dequeue_pos: AtomicUsize::new(0).into(),
         }
     }
 
