@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::blocking::SyncBlocker;
 use cancel::trigger_cancel_panic;
-use crossbeam::sync::SegQueue;
+use crossbeam::queue::SegQueue;
 use park::ParkError;
 
 /// Semphore primitive
@@ -59,15 +59,15 @@ impl Semphore {
 
     #[inline]
     fn wakeup_one(&self) {
-        self.to_wake.try_pop().map_or_else(
-            || panic!("got null blocker!"),
-            |w| {
+        self.to_wake
+            .pop()
+            .map(|w| {
                 w.unpark();
                 if w.take_release() {
                     self.post();
                 }
-            },
-        );
+            })
+            .expect("got null blocker!");
     }
 
     // return false if timeout

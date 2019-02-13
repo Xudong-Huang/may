@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::blocking::SyncBlocker;
 use cancel::trigger_cancel_panic;
-use crossbeam::sync::SegQueue;
+use crossbeam::queue::SegQueue;
 use park::ParkError;
 
 /// SyncFlag primitive
@@ -67,7 +67,7 @@ impl SyncFlag {
 
     #[inline]
     fn wakeup_all(&self) {
-        while let Some(w) = self.to_wake.try_pop() {
+        while let Ok(w) = self.to_wake.pop() {
             w.unpark();
             if w.take_release() {
                 self.fire();

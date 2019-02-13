@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::Semphore;
-use crossbeam::sync::SegQueue;
+use crossbeam::queue::SegQueue;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -63,9 +63,9 @@ impl<T> InnerQueue<T> {
             }
         }
 
-        match self.queue.try_pop() {
-            Some(data) => Ok(data),
-            None => match self.tx_ports.load(Ordering::Acquire) {
+        match self.queue.pop() {
+            Ok(data) => Ok(data),
+            Err(_) => match self.tx_ports.load(Ordering::Acquire) {
                 0 => Err(RecvTimeoutError::Disconnected),
                 _n => unreachable!("mpmc recv found no data"),
             },
@@ -80,9 +80,9 @@ impl<T> InnerQueue<T> {
             };
         }
 
-        match self.queue.try_pop() {
-            Some(data) => Ok(data),
-            None => match self.tx_ports.load(Ordering::Acquire) {
+        match self.queue.pop() {
+            Ok(data) => Ok(data),
+            Err(_) => match self.tx_ports.load(Ordering::Acquire) {
                 0 => Err(TryRecvError::Disconnected),
                 _ => unreachable!("mpmc try_recv found no data"),
             },
@@ -115,7 +115,7 @@ impl<T> InnerQueue<T> {
         match self.rx_ports.fetch_sub(1, Ordering::SeqCst) {
             1 => {
                 // there is no receiver any more, clear the data
-                while let Some(_) = self.queue.try_pop() {}
+                while let Ok(_) = self.queue.pop() {}
             }
             n if n > 1 => return,
             n => panic!("bad number of rx_ports left {}", n),

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use config::config;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
-use crossbeam::sync::SegQueue as mpmc;
+use crossbeam::queue::SegQueue as mpmc;
 use io::{EventLoop, Selector};
 use may_queue::mpmc_bounded::Queue as WaitList;
 use pool::CoroutinePool;
@@ -133,7 +133,7 @@ impl Scheduler {
     fn run(&self) {
         loop {
             // steal from the ready list
-            if let Some(co) = self.ready_list.try_pop() {
+            if let Ok(co) = self.ready_list.pop() {
                 run_coroutine(co);
                 continue;
             }
