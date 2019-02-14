@@ -8,6 +8,7 @@ use std::time::Duration;
 use config::config;
 use coroutine_impl::{run_coroutine, CoroutineImpl};
 use crossbeam::deque;
+use crossbeam::utils::Backoff;
 use io::{EventLoop, Selector};
 use may_queue::mpmc_bounded::Queue as WaitList;
 use pool::CoroutinePool;
@@ -148,31 +149,44 @@ impl Scheduler {
         }
         stealers.rotate_left(id);
 
+        fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
+            let backoff = Backoff::new();
+            loop {
+                match global.steal_batch_and_pop(local) {
+                    deque::Steal::Success(t) => return Some(t),
+                    deque::Steal::Empty => return None,
+                    deque::Steal::Retry => backoff.snooze(),
+                }
+            }
+        };
+
+        fn steal_local<T>(stealer: &deque::Stealer<T>) -> Option<T> {
+            let backoff = Backoff::new();
+            loop {
+                match stealer.steal() {
+                    deque::Steal::Success(t) => return Some(t),
+                    deque::Steal::Empty => return None,
+                    deque::Steal::Retry => backoff.snooze(),
+                }
+            }
+        }
+
         loop {
-            // Pop a task from the local queue, if not empty.
+            // Pop a task from the local queue
             let co = local.pop().or_else(|| {
-                // Otherwise, we need to look for a task elsewhere.
-                ::std::iter::repeat_with(|| {
-                    // Try stealing a batch of tasks from the global queue.
-                    self.global_queue
-                        .steal_batch_and_pop(local)
-                        // Or try stealing a task from one of the other threads.
-                        .or_else(|| stealers.iter().map(|s| s.steal()).collect())
+                // Try stealing a batch of tasks from the global queue.
+                steal_global(&self.global_queue, local).or_else(|| {
+                    // Try stealing a of task from other local queues.
+                    stealers.iter().map(steal_local).find_map(|r| r)
                 })
-                // Loop while no task was stolen and any steal operation needs to be retried.
-                .find(|s| !s.is_retry())
-                // Extract the stolen task, if there is one.
-                .and_then(|s| s.success())
             });
 
             if let Some(co) = co {
                 run_coroutine(co);
             } else {
                 // first register thread handle
-                let mut handle = thread::current();
-                while let Err(h) = self.wait_list.push(handle) {
-                    handle = h;
-                }
+                self.wait_list.push(thread::current()).ok();
+
                 // do a re-check
                 if !self.global_queue.is_empty() {
                     if let Some(t) = self.wait_list.pop() {
