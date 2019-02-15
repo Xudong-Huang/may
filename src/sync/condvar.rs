@@ -14,6 +14,7 @@ use super::mutex::{self, Mutex, MutexGuard};
 
 /// A type indicating whether a timed wait on a condition variable returned
 /// due to a time out or not.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WaitTimeoutResult(bool);
 
 impl WaitTimeoutResult {
@@ -56,7 +57,11 @@ impl Condvar {
         if let Some(c) = cancel.as_ref() {
             c.disable_cancel();
         }
-        self.to_wake.lock().unwrap().push(cur.clone());
+
+        let g = self.to_wake.lock().unwrap();
+        g.push(cur.clone());
+        drop(g);
+
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
         if let Some(c) = cancel.as_ref() {
@@ -88,6 +93,11 @@ impl Condvar {
                 }
             }
         }
+
+        // drop the parker here without panic!
+        // it may paniced in the drop of Park
+        drop(cur);
+
         // enable cancel panic
         if let Some(c) = cancel.as_ref() {
             c.enable_cancel();
@@ -150,12 +160,10 @@ impl Condvar {
     pub fn notify_one(&self) {
         // NOTICE: the following code would not drop the lock!
         // if let Some(w) = self.to_wake.lock().unwrap().pop() {
-        // bellow logic is the correct
-        // let g = self.to_wake.lock().unwrap();
-        // let w = g.pop();
-        // drop(g);
 
-        let w = self.to_wake.lock().unwrap().pop();
+        let g = self.to_wake.lock().unwrap();
+        let w = g.pop();
+        drop(g);
 
         if let Some(w) = w {
             w.unpark();
@@ -346,8 +354,17 @@ mod tests {
             unsafe { vec[i].coroutine().cancel() };
         }
 
+        // note that cancel and notify has contention here
+        // which could cause some coroutine can't get any signal
+        // if the cancelled coroutine unparked successfully
+        // make sure every coroutine get the correct signal
+        // ::coroutine::sleep(::std::time::Duration::from_millis(1));
+        // or use `notify_all()` to make sure all the coroutines
+        // get a signal
+
+        cond.notify_all();
         for _ in 0..N - M {
-            cond.notify_one();
+            // cond.notify_one();
             rx.recv().unwrap();
         }
 
