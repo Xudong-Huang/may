@@ -26,10 +26,8 @@ pub struct Park {
     // when odd means the Park no need to block
     // the low bit used as flag, and higher bits used as flag to check the kernel delay drop
     state: AtomicUsize,
-    // control how to deal with the cancellation
+    // control how to deal with the cancellation, usually init one time
     check_cancel: AtomicBool,
-    // if cancel happened
-    is_canceled: AtomicBool,
     // timeout settings in ms, 0 is none (park forever)
     timeout: AtomicDuration,
     // timer handle, can be null
@@ -45,7 +43,6 @@ impl Park {
             wait_co: Arc::new(AtomicOption::none()),
             state: AtomicUsize::new(0),
             check_cancel: true.into(),
-            is_canceled: AtomicBool::new(false),
             timeout: AtomicDuration::new(None),
             timeout_handle: AtomicPtr::new(ptr::null_mut()),
             wait_kernel: AtomicBool::new(false),
@@ -171,7 +168,7 @@ impl Park {
             }
         } else {
             // should clear the generation
-            self.state.fetch_and(!0x02, Ordering::Relaxed);
+            self.state.fetch_and(!0x02, Ordering::Release);
         }
 
         // what if the state is set before yield?
@@ -184,11 +181,6 @@ impl Park {
 
         // let _gen = self.state.load(Ordering::Acquire);
         // println!("unparked gen={}, self={:p}", gen, self);
-
-        // after return back, we should check if it's timeout or canceled
-        if self.is_canceled.load(Ordering::Relaxed) {
-            return Err(ParkError::Canceled);
-        }
 
         if let Some(err) = get_co_para() {
             match err.kind() {
@@ -264,10 +256,6 @@ impl EventSource for Park {
     fn yield_back(&self, cancel: &'static Cancel) {
         // we would inc the generation by 2 to another generation
         self.state.fetch_add(0x02, Ordering::Release);
-
-        // should deal with cancel that happened just before the kernel
-        self.is_canceled
-            .store(cancel.is_canceled(), Ordering::Relaxed);
 
         if self.check_cancel.load(Ordering::Relaxed) {
             cancel.check_cancel();
