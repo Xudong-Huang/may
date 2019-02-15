@@ -2,7 +2,7 @@ use std::thread;
 
 use coroutine_impl::{current_cancel_data, is_coroutine};
 use coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
-use generator::{co_get_yield, co_yield_with};
+use generator::{co_get_yield, co_set_para, co_yield_with};
 use scheduler::get_scheduler;
 
 struct Yield {}
@@ -24,6 +24,10 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     // if cancel detected in user space
     // no need to get into kernel any more
     if cancel.is_canceled() {
+        co_set_para(::std::io::Error::new(
+            ::std::io::ErrorKind::Other,
+            "Canceled",
+        ));
         return resource.yield_back(cancel);
     }
 
