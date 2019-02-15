@@ -31,7 +31,7 @@ num_cpus = "1.10"
 smallvec = "0.6"
 generator = "0.6"
 crossbeam = "0.7"
-may_queue = { path = "may_queue" }
+may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.13"
