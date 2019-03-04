@@ -1,5 +1,5 @@
 use std::cell::UnsafeCell;
-use std::os::windows::io::AsRawSocket;
+use std::os::windows::io::{AsRawHandle, AsRawSocket};
 use std::time::Duration;
 use std::{io, ptr};
 
@@ -171,11 +171,18 @@ impl Selector {
             .unwrap();
     }
 
-    // register file handle to the iocp
+    // register socket handle to the iocp
     #[inline]
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle
         self.port.add_socket(t.as_raw_socket() as usize, t)
+    }
+
+    // register file handle to the iocp
+    #[inline]
+    pub fn add_handle<T: AsRawHandle + ?Sized>(&self, t: &T) -> io::Result<()> {
+        // the token para is not used, just pass the handle
+        self.port.add_handle(t.as_raw_handle() as usize, t)
     }
 
     // register the io request to the timeout list

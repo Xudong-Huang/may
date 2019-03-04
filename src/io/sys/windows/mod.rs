@@ -14,12 +14,13 @@ macro_rules! co_try {
 
 pub mod cancel;
 pub mod co_io;
+pub mod fs;
 mod iocp;
 pub mod net;
 mod pipe;
 
 use scheduler::get_scheduler;
-use std::os::windows::io::AsRawSocket;
+use std::os::windows::io::{AsRawHandle, AsRawSocket};
 use std::{fmt, io};
 use yield_now::get_co_para;
 
@@ -51,6 +52,12 @@ unsafe impl Send for IoData {}
 #[inline]
 pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_socket(t).map(|_| IoData)
+}
+
+// register the socket to the system selector
+#[inline]
+pub fn add_file<T: AsRawHandle + ?Sized>(t: &T) -> io::Result<IoData> {
+    get_scheduler().get_selector().add_handle(t).map(|_| IoData)
 }
 
 // deal with the io result

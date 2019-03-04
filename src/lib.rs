@@ -75,6 +75,7 @@ mod yield_now;
 
 pub mod coroutine;
 pub mod cqueue;
+pub mod fs;
 pub mod io;
 pub mod net;
 pub mod os;
