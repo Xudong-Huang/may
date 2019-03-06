@@ -2,6 +2,7 @@ use std::io;
 use std::net::TcpStream as SysTcpStream;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, EventData, IoData};
@@ -92,10 +93,10 @@ impl EventSource for TcpStreamConnect {
         let cancel = co_cancel_data(&co);
         s.get_selector()
             .add_io_timer(&mut self.io_data, self.timeout);
-        self.io_data.co = Some(co);
+        self.io_data.co.swap(co, Ordering::Release);
 
         // call the overlapped connect API
-        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+        co_try!(s, self.io_data.co.take(Ordering::AcqRel), unsafe {
             self.stream
                 .connect_overlapped(&self.addr, &[], self.io_data.get_overlapped())
         });

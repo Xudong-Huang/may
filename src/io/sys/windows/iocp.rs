@@ -1,10 +1,12 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::{AsRawHandle, AsRawSocket};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::{io, ptr};
 
 use coroutine_impl::CoroutineImpl;
 use miow::iocp::{CompletionPort, CompletionStatus};
+use sync::AtomicOption;
 use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use winapi::shared::ntdef::*;
 use winapi::shared::ntstatus::STATUS_CANCELLED;
@@ -30,7 +32,7 @@ pub struct EventData {
     overlapped: UnsafeCell<OVERLAPPED>,
     pub handle: HANDLE,
     pub timer: Option<TimerHandle>,
-    pub co: Option<CoroutineImpl>,
+    pub co: AtomicOption<CoroutineImpl>,
 }
 
 impl EventData {
@@ -39,7 +41,7 @@ impl EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
             handle,
             timer: None,
-            co: None,
+            co: AtomicOption::none(),
         }
     }
 
@@ -107,7 +109,14 @@ impl Selector {
             // it's unsafe to ref any local stack value!
             // if cancel not take the coroutine, then it's possible that
             // the coroutine will never come back because there is no event
-            let mut co = data.co.take().expect("can't get co in selector");
+            let mut co = match data.co.take(Ordering::AcqRel) {
+                Some(c) => c,
+                // the co may be take in the subscribe
+                None => {
+                    error!("can't get co in selector");
+                    continue;
+                }
+            };
             co.prefetch();
 
             // it's safe to remove the timer since we are

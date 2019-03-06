@@ -42,6 +42,7 @@ miow = "0.3"
 winapi = "0.3"
 
 [dev-dependencies]
+rand = "0.6"
 bytes = "0.4"
 serde = "1.0"
 docopt = "1.0"

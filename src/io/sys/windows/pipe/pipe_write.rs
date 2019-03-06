@@ -1,5 +1,6 @@
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -39,9 +40,9 @@ impl<'a> EventSource for PipeWrite<'a> {
         s.get_selector()
             .add_io_timer(&mut self.io_data, self.timeout);
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.swap(co, Ordering::Release);
         // call the overlapped write API
-        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+        co_try!(s, self.io_data.co.take(Ordering::AcqRel), unsafe {
             self.pipe
                 .write_overlapped(self.buf, self.io_data.get_overlapped())
         });

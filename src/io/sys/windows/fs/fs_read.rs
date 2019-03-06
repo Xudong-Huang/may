@@ -1,10 +1,12 @@
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
+use std::sync::atomic::Ordering;
 
 use super::super::{co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use io::cancel::CancelIoData;
 use miow::pipe::NamedPipe;
+use miow::Overlapped;
 use scheduler::get_scheduler;
 use sync::delay_drop::DelayDrop;
 
@@ -16,10 +18,13 @@ pub struct FileRead<'a> {
 }
 
 impl<'a> FileRead<'a> {
-    pub fn new<T: AsRawHandle>(f: &T, buf: &'a mut [u8]) -> Self {
+    pub fn new<T: AsRawHandle>(f: &T, offset: u64, buf: &'a mut [u8]) -> Self {
         let handle = f.as_raw_handle();
+        let mut io_data = EventData::new(handle);
+        let overlapped = unsafe { Overlapped::from_raw(io_data.get_overlapped()) };
+        overlapped.set_offset(offset);
         FileRead {
-            io_data: EventData::new(handle),
+            io_data,
             buf,
             file: unsafe { FromRawHandle::from_raw_handle(handle) },
             can_drop: DelayDrop::new(),
@@ -41,10 +46,10 @@ impl<'a> EventSource for FileRead<'a> {
         let _g = self.can_drop.delay_drop();
 
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.swap(co, Ordering::Release);
 
         // call the overlapped read API
-        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+        co_try!(s, self.io_data.co.take(Ordering::AcqRel), unsafe {
             self.file
                 .read_overlapped(self.buf, self.io_data.get_overlapped())
         });

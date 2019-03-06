@@ -3,7 +3,10 @@ macro_rules! co_try {
         match $e {
             Ok(val) => val,
             Err(err) => {
-                let mut co = $co;
+                let mut co = match $co {
+                    None => return,
+                    Some(co) => co,
+                };
                 ::yield_now::set_co_para(&mut co, err);
                 $s.schedule(co);
                 return;

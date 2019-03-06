@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
+use std::sync::atomic::Ordering;
 
 use super::super::{add_socket, co_io_result, EventData};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
@@ -66,10 +67,10 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         let cancel = co_cancel_data(&co);
         // we don't need to register the timeout here,
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.swap(co, Ordering::Release);
 
         // call the overlapped read API
-        co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
+        co_try!(s, self.io_data.co.take(Ordering::AcqRel), unsafe {
             self.socket
                 .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
         });
