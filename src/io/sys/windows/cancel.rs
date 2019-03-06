@@ -1,9 +1,8 @@
 use std::io;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
-use cancel::CancelIo;
-use sync::Mutex;
-// use scheduler::get_scheduler;
 use super::EventData;
+use cancel::CancelIo;
 
 pub struct CancelIoData {
     ev_data: *mut EventData,
@@ -34,30 +33,28 @@ impl CancelIoData {
     }
 }
 
-// windows must use Mutex to protect it's data
-// because it will not use the AtomicOption<CoroutineImpl> as a gate keeper
-pub struct CancelIoImpl(Mutex<Option<CancelIoData>>);
+pub struct CancelIoImpl(AtomicPtr<EventData>);
 
 impl CancelIo for CancelIoImpl {
     type Data = CancelIoData;
 
     fn new() -> Self {
-        CancelIoImpl(Mutex::new(None))
+        CancelIoImpl(AtomicPtr::default())
     }
 
     fn set(&self, data: CancelIoData) {
-        *self.0.lock().expect("failed to get CancelIo lock") = Some(data);
+        self.0.store(data.ev_data, Ordering::Release);
     }
 
     fn clear(&self) {
-        *self.0.lock().expect("failed to get CancelIo lock") = None;
+        self.0.store(::std::ptr::null_mut(), Ordering::Release);
     }
 
     unsafe fn cancel(&self) {
-        self.0
-            .lock()
-            .expect("failed to get CancelIo lock")
-            .take()
-            .map(|d| d.cancel());
+        let ptr = self.0.swap(::std::ptr::null_mut(), Ordering::AcqRel);
+        if !ptr.is_null() {
+            let io_data = CancelIoData { ev_data: ptr };
+            io_data.cancel().ok();
+        }
     }
 }
