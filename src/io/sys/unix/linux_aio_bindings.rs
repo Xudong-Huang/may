@@ -22,14 +22,13 @@ pub const RWF_SYNC: u32 = 4;
 //#define RWF_NOWAIT	((__force __kernel_rwf_t)0x00000008)
 pub const RWF_NOWAIT: u32 = 8;
 
-
 pub use libc::c_long;
 
 // Relevant symbols from the native bindings exposed via aio-bindings
-// pub use self::{aio_context_t, io_event, iocb, syscall, timespec, 
-//                        __NR_io_destroy, __NR_io_getevents, __NR_io_setup, __NR_io_submit, 
-//                        IOCB_CMD_PREAD, IOCB_CMD_PWRITE, IOCB_CMD_FSYNC, IOCB_CMD_FDSYNC, IOCB_FLAG_RESFD, 
-//                        RWF_DSYNC, RWF_SYNC};
+// pub use self::{aio_context_t, io_event, iocb, syscall, timespec,
+//                __NR_io_destroy, __NR_io_getevents, __NR_io_setup, __NR_io_submit,
+//                IOCB_CMD_PREAD, IOCB_CMD_PWRITE, IOCB_CMD_FSYNC, IOCB_CMD_FDSYNC, IOCB_FLAG_RESFD,
+//                RWF_DSYNC, RWF_SYNC};
 
 // -----------------------------------------------------------------------------------------------
 // Inline functions that wrap the kernel calls for the entry points corresponding to Linux

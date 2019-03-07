@@ -1,24 +1,27 @@
 use std::io;
 use std::ops::Deref;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 
-use super::super::{co_io_result, from_nix_error, IoData};
+use super::super::{co_io_result, from_nix_error};
+use super::{AsFileIo, FileIo};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::AsIoData;
 use nix::unistd::read;
 use sync::delay_drop::DelayDrop;
 use yield_now::yield_with;
 
 pub struct FileRead<'a> {
-    io_data: &'a IoData,
+    io_data: &'a FileIo,
     buf: &'a mut [u8],
+    file: RawFd,
     can_drop: DelayDrop,
 }
 
 impl<'a> FileRead<'a> {
-    pub fn new<T: AsIoData>(s: &'a T, _offset: u64, buf: &'a mut [u8]) -> Self {
+    pub fn new<T: AsFileIo + AsRawFd>(s: &'a T, _offset: u64, buf: &'a mut [u8]) -> Self {
         FileRead {
-            io_data: s.as_io_data(),
+            io_data: s.as_file_io(),
+            file: s.as_raw_fd(),
             buf,
             can_drop: DelayDrop::new(),
         }
@@ -33,7 +36,7 @@ impl<'a> FileRead<'a> {
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             // finish the read operation
-            match read(self.io_data.fd, self.buf).map_err(from_nix_error) {
+            match read(self.io_data.fd.as_raw_fd(), self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret => return ret,
             }
@@ -66,7 +69,7 @@ impl<'a> EventSource for FileRead<'a> {
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(self.io_data.io.deref().clone());
         // re-check the cancel status
         if cancel.is_canceled() {
             unsafe { cancel.cancel() };

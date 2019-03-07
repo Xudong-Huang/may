@@ -1,23 +1,26 @@
 use std::io;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 
-use super::super::{co_io_result, from_nix_error, IoData};
+use super::super::{co_io_result, from_nix_error};
+use super::{AsFileIo, FileIo};
 use coroutine_impl::{CoroutineImpl, EventSource};
-use io::AsIoData;
 use nix::unistd::write;
 use sync::delay_drop::DelayDrop;
 use yield_now::yield_with;
 
 pub struct FileWrite<'a> {
-    io_data: &'a IoData,
+    io_data: &'a FileIo,
     buf: &'a [u8],
+    file: RawFd,
     can_drop: DelayDrop,
 }
 
 impl<'a> FileWrite<'a> {
-    pub fn new<T: AsIoData>(s: &'a T, _offset: u64, buf: &'a [u8]) -> Self {
+    pub fn new<T: AsFileIo + AsRawFd>(s: &'a T, _offset: u64, buf: &'a [u8]) -> Self {
         FileWrite {
-            io_data: s.as_io_data(),
+            io_data: s.as_file_io(),
+            file: s.as_raw_fd(),
             buf,
             can_drop: DelayDrop::new(),
         }
@@ -31,7 +34,7 @@ impl<'a> FileWrite<'a> {
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
-            match write(self.io_data.fd, self.buf).map_err(from_nix_error) {
+            match write(self.io_data.fd.as_raw_fd(), self.buf).map_err(from_nix_error) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
                 ret => return ret,
             }

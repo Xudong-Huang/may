@@ -14,7 +14,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) use self::event_loop::EventLoop;
-pub(crate) use self::sys::{add_file, add_socket, cancel, net, IoData, Selector};
+pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 use coroutine_impl::is_coroutine;
 
 pub trait AsIoData {

@@ -16,7 +16,7 @@ use yield_now::yield_with;
 
 pub struct File {
     sys: StdFile,
-    io: io_impl::IoData,
+    io: fs_impl::FileIo,
     ctx: io_impl::IoContext,
     offset: u64,
 }
@@ -28,7 +28,7 @@ impl File {
             #[cold]
             {
                 return Ok(File {
-                    io: io_impl::IoData::new(&file),
+                    io: fs_impl::FileIo::new(None)?,
                     sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
@@ -36,8 +36,8 @@ impl File {
             }
         }
 
-        io_impl::add_file(&file).map(|io| File {
-            io,
+        Ok(File {
+            io: fs_impl::FileIo::new(Some(&file))?,
             sys: file,
             ctx: io_impl::IoContext::new(),
             offset: 0,
@@ -50,7 +50,7 @@ impl File {
             {
                 let file = StdFile::open(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(&file),
+                    io: fs_impl::FileIo::new(None)?,
                     sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
@@ -71,7 +71,7 @@ impl File {
             {
                 let file = options.open(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(&file),
+                    io: fs_impl::FileIo::new(None)?,
                     sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
@@ -89,7 +89,7 @@ impl File {
             {
                 let file = StdFile::create(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(&file),
+                    io: fs_impl::FileIo::new(None)?,
                     sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
@@ -211,9 +211,16 @@ impl Seek for File {
 }
 
 #[cfg(unix)]
-impl io_impl::AsIoData for File {
-    fn as_io_data(&self) -> &io_impl::IoData {
+impl fs_impl::AsFileIo for File {
+    fn as_file_io(&self) -> &fs_impl::FileIo {
         &self.io
+    }
+}
+
+#[cfg(unix)]
+impl ::std::os::unix::io::AsRawFd for File {
+    fn as_raw_fd(&self) -> ::std::os::unix::io::RawFd {
+        self.sys.as_raw_fd()
     }
 }
 
