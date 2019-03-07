@@ -8,14 +8,27 @@ use rustc_version::{version_meta, Channel};
 fn gen_linux_aio_bindings() {
     use std::env;
     use std::path::PathBuf;
+
+    let target = env::var("TARGET").expect("Cargo build scripts always have TARGET");
+
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
     // the resulting bindings.
-    let bindings = bindgen::Builder::default()
+    let mut bindings = bindgen::Builder::default()
         .trust_clang_mangling(false)
+        .clang_arg("-target")
+        .clang_arg(target);
+
+    if let Ok(sysroot) = env::var("SYSROOT") {
+        bindings = bindings
+            .clang_arg("--sysroot")
+            .clang_arg(sysroot);
+    }
+
+    let bindings = bindings
         // The input header we would like to generate
         // bindings for.
-        .header("linux_aio_wrapper.h")
+        .header("src/io/sys/unix/fs/linux/aio_wrapper.h")
         // Finish the builder and generate the bindings.
         .generate()
         // Unwrap the Result and panic on failure.

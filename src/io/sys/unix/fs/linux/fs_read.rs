@@ -3,9 +3,9 @@ use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::Ordering;
 
-use super::super::{co_io_result, from_nix_error};
 use super::{AsFileIo, FileIo};
 use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use io::sys::{co_io_result, from_nix_error};
 use nix::unistd::read;
 use sync::delay_drop::DelayDrop;
 use yield_now::yield_with;

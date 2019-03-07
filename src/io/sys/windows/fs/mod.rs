@@ -46,7 +46,7 @@ impl ::std::ops::Deref for FileIo {
 impl FileIo {
     pub fn new(file: Option<&File>) -> io::Result<FileIo> {
         if let Some(file) = file {
-            super::add_file(file).map(|io| FileIo(io))
+            super::add_file(file).map(FileIo)
         } else {
             Ok(FileIo(IoData::new(0)))
         }

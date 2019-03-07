@@ -2,9 +2,6 @@
 #[path = "epoll.rs"]
 mod select;
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
-mod linux_aio_bindings;
-
 #[cfg(any(
     target_os = "bitrig",
     target_os = "dragonfly",
