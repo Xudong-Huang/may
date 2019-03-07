@@ -28,7 +28,7 @@ impl File {
             #[cold]
             {
                 return Ok(File {
-                    io: io_impl::IoData::new(0),
+                    io: io_impl::IoData::new(&file),
                     sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
@@ -48,9 +48,10 @@ impl File {
         if !is_coroutine() {
             #[cold]
             {
+                let file = StdFile::open(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(0),
-                    sys: StdFile::open(path)?,
+                    io: io_impl::IoData::new(&file),
+                    sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
                 });
@@ -68,9 +69,10 @@ impl File {
         if !is_coroutine() {
             #[cold]
             {
+                let file = options.open(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(0),
-                    sys: options.open(path)?,
+                    io: io_impl::IoData::new(&file),
+                    sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
                 });
@@ -85,15 +87,16 @@ impl File {
         if !is_coroutine() {
             #[cold]
             {
+                let file = StdFile::create(path)?;
                 return Ok(File {
-                    io: io_impl::IoData::new(0),
-                    sys: StdFile::create(path)?,
+                    io: io_impl::IoData::new(&file),
+                    sys: file,
                     ctx: io_impl::IoContext::new(),
                     offset: 0,
                 });
             }
         }
-
+        dbg!(path.as_ref());
         let file = fs_impl::create(path)?;
         File::from(file)
     }
@@ -141,9 +144,13 @@ impl Read for File {
 
         self.io.reset();
 
-        let reader = fs_impl::FileRead::new(&self.sys, self.offset, buf);
-        yield_with(&reader);
-        match reader.done() {
+        let ret = {
+            let reader = fs_impl::FileRead::new(self, self.offset, buf);
+            yield_with(&reader);
+            reader.done()
+        };
+
+        match ret {
             Ok(len) => {
                 self.offset += len as u64;
                 Ok(len)
@@ -167,9 +174,12 @@ impl Write for File {
 
         self.io.reset();
 
-        let writer = fs_impl::FileWrite::new(&self.sys, self.offset, buf);
-        yield_with(&writer);
-        let len = writer.done()?;
+        let len = {
+            let writer = fs_impl::FileWrite::new(self, self.offset, buf);
+            yield_with(&writer);
+            writer.done()?
+        };
+
         self.offset += len as u64;
         Ok(len)
     }
@@ -198,6 +208,20 @@ impl Seek for File {
             }
         }
         Ok(self.offset)
+    }
+}
+
+#[cfg(unix)]
+impl io_impl::AsIoData for File {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        &self.io
+    }
+}
+
+#[cfg(windows)]
+impl ::std::os::windows::io::AsRawHandle for File {
+    fn as_raw_handle(&self) -> ::std::os::windows::io::RawHandle {
+        self.sys.as_raw_handle()
     }
 }
 
@@ -511,7 +535,7 @@ mod tests {
     #[cfg(not(windows))]
     fn file_try_clone() {
         let tmpdir = tmpdir();
-        let ret = go!(move || {
+        go!(move || {
             let mut f1 = check!(File::open_with_options(
                 OpenOptions::new().read(true).write(true).create(true),
                 &tmpdir.as_ref().join("test")

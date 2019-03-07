@@ -16,6 +16,7 @@ mod select;
 
 pub mod cancel;
 pub mod co_io;
+pub mod fs;
 pub mod net;
 
 use std::cell::RefCell;
@@ -37,6 +38,12 @@ pub use self::select::{Selector, SysEvent};
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_fd(IoData::new(t))
+}
+
+// register the socket to the system selector
+#[inline]
+pub fn add_file<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
+    add_socket(t)
 }
 
 #[inline]
