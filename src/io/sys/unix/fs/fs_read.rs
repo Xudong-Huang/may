@@ -16,7 +16,7 @@ pub struct FileRead<'a> {
 }
 
 impl<'a> FileRead<'a> {
-    pub fn new<T: AsIoData>(s: &'a T, offset: u64, buf: &'a mut [u8]) -> Self {
+    pub fn new<T: AsIoData>(s: &'a T, _offset: u64, buf: &'a mut [u8]) -> Self {
         FileRead {
             io_data: s.as_io_data(),
             buf,

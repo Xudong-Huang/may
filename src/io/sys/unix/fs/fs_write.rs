@@ -15,7 +15,7 @@ pub struct FileWrite<'a> {
 }
 
 impl<'a> FileWrite<'a> {
-    pub fn new<T: AsIoData>(s: &'a T, offset: u64, buf: &'a [u8]) -> Self {
+    pub fn new<T: AsIoData>(s: &'a T, _offset: u64, buf: &'a [u8]) -> Self {
         FileWrite {
             io_data: s.as_io_data(),
             buf,

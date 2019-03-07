@@ -59,5 +59,8 @@ lto = true
 [build-dependencies]
 rustc_version = "0.2"
 
+[target.'cfg(target_os = "linux")'.build-dependencies]
+bindgen = "0.48"
+
 [workspace]
 members = ["may_queue"]

@@ -96,7 +96,6 @@ impl File {
                 });
             }
         }
-        dbg!(path.as_ref());
         let file = fs_impl::create(path)?;
         File::from(file)
     }
