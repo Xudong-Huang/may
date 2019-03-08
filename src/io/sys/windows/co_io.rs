@@ -37,17 +37,9 @@ impl<T: AsRawHandle + IntoRawHandle> IntoRawHandle for CoIo<T> {
 
 impl<T: AsRawHandle> CoIo<T> {
     /// create `CoIo` instance from `T`
+    /// the handle must have OVERLAPPED flag when create
     pub fn new(io: T) -> io::Result<Self> {
-        use std::os::windows::io::{AsRawSocket, RawSocket};
-        struct CoHandle(RawHandle);
-        impl AsRawSocket for CoHandle {
-            fn as_raw_socket(&self) -> RawSocket {
-                self.0 as RawSocket
-            }
-        }
-
-        let handle = CoHandle(io.as_raw_handle());
-        io_impl::add_socket(&handle).map(|io_data| CoIo {
+        io_impl::sys::add_file(&io).map(|io_data| CoIo {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),

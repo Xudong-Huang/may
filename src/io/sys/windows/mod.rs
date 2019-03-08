@@ -57,7 +57,7 @@ pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_socket(t).map(|_| IoData)
 }
 
-// register the socket to the system selector
+// register the file to the system selector, must open wiht overlapped flag
 #[inline]
 pub fn add_file<T: AsRawHandle + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_handle(t).map(|_| IoData)
