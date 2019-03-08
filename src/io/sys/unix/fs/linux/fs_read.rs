@@ -56,17 +56,19 @@ impl<'a> EventSource for FileRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         // when exit the scope the `can_drop` will be set to true
         let _g = self.can_drop.delay_drop();
-
-        let cancel = co_cancel_data(&co);
         // after register the coroutine, it's possible that other thread run it immediately
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here
+
+        let cancel = co_cancel_data(&co);
+
         self.io_data.co.swap(co, Ordering::Release);
 
-        // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            return self.io_data.schedule();
-        }
+        // call the aio read API
+        co_try!(s, self.io_data.co.take(Ordering::AcqRel), unsafe {
+            self.file
+                .read_overlapped(self.buf, self.io_data.get_overlapped())
+        });
 
         // register the cancel io data
         cancel.set_io(self.io_data.io.deref().clone());

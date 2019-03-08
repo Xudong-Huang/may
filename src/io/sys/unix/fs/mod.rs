@@ -14,20 +14,34 @@ mod detail;
 #[path = "bsd/mod.rs"]
 mod detail;
 
+use nix::fcntl::OFlag::O_DIRECT;
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
+pub use self::detail::{FileIo, FileRead, FileWrite};
+
+pub trait AsFileIo {
+    fn as_file_io(&self) -> &FileIo;
+}
+
 pub fn open<P: AsRef<Path>>(path: P) -> io::Result<File> {
-    File::open(path)
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(O_DIRECT)
+        .open(path.as_ref())
 }
 
 pub fn create<P: AsRef<Path>>(path: P) -> io::Result<File> {
-    File::create(path)
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .custom_flags(O_DIRECT)
+        .open(path.as_ref())
 }
 
 pub fn open_with_options<P: AsRef<Path>>(options: &mut OpenOptions, path: P) -> io::Result<File> {
-    options.open(path.as_ref())
+    options.custom_flags(O_DIRECT).open(path.as_ref())
 }
-
-pub use self::detail::{AsFileIo, FileIo, FileRead, FileWrite};

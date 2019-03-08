@@ -20,9 +20,7 @@ fn gen_linux_aio_bindings() {
         .clang_arg(target);
 
     if let Ok(sysroot) = env::var("SYSROOT") {
-        bindings = bindings
-            .clang_arg("--sysroot")
-            .clang_arg(sysroot);
+        bindings = bindings.clang_arg("--sysroot").clang_arg(sysroot);
     }
 
     let bindings = bindings

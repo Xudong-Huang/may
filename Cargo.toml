@@ -36,6 +36,7 @@ may_queue = { version = "0.1", path = "may_queue" }
 [target.'cfg(unix)'.dependencies]
 nix = "0.13"
 libc = "0.2"
+memmap = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 miow = "0.3"
