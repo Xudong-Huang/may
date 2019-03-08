@@ -1,3 +1,4 @@
+#[cfg(not(nightly))]
 use std::cell::RefCell;
 use std::io;
 use std::sync::atomic::Ordering;
@@ -25,7 +26,35 @@ fn likely(e: bool) -> bool {
 }
 
 // thread id, only workers are normal ones
+#[cfg(not(nightly))]
 thread_local! {static WORKER_ID: RefCell<usize> = RefCell::new(!1);}
+#[cfg(nightly)]
+#[thread_local]
+static mut WORKER_ID: usize = !1;
+
+#[cfg(not(nightly))]
+#[inline]
+fn set_cur_worker_id(id: usize) {
+    WORKER_ID.with(|worker_id| *worker_id.borrow_mut() = id);
+}
+
+#[cfg(nightly)]
+#[inline]
+fn set_cur_worker_id(id: usize) {
+    unsafe { WORKER_ID = id };
+}
+
+#[cfg(not(nightly))]
+#[inline]
+fn get_cur_worker_id() -> usize {
+    WORKER_ID.with(|worker_id| *worker_id.borrow());
+}
+
+#[cfg(nightly)]
+#[inline]
+fn get_cur_worker_id() -> usize {
+    unsafe { WORKER_ID }
+}
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
@@ -139,7 +168,7 @@ impl Scheduler {
     }
 
     fn run(&self, id: usize) {
-        WORKER_ID.with(|worker_id| *worker_id.borrow_mut() = id);
+        set_cur_worker_id(id);
         let local = &self.local_queues[id];
         let mut stealers = Vec::new();
         for (i, worker) in self.local_queues.iter().enumerate() {
@@ -203,14 +232,12 @@ impl Scheduler {
     /// put the coroutine to correct queue so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        WORKER_ID.with(|worker_id| {
-            let id = *worker_id.borrow();
-            if id == !1 {
-                self.schedule_global(co);
-            } else {
-                self.local_queues[id].push(co);
-            }
-        });
+        let id = get_cur_worker_id();
+        if id == !1 {
+            self.schedule_global(co);
+        } else {
+            self.local_queues[id].push(co);
+        }
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
