@@ -46,6 +46,45 @@ macro_rules! go {
     }};
 }
 
+/// macro used to spawn a coroutine with options such as name, stack_size.
+///
+/// this macro is just a convenient wrapper for [`spawn`].
+/// However the supplied coroutine block is not wrapped in `unsafe` block
+///
+/// [`spawn`]: coroutine/fn.spawn.html
+#[macro_export]
+macro_rules! go_with {
+    // for stack_size
+    ($stack_size:expr, $func:expr) => {{
+        fn _go_check<F, T>(stack_size: usize, f: F) -> F
+        where
+            F: FnOnce() -> T + Send + 'static,
+            T: Send + 'static,
+        {
+            f
+        }
+        let f = _go_check($stack_size, $func);
+        let builder = $crate::coroutine::Builder::new().stack_size($stack_size);
+        unsafe { builder.spawn(f) }
+    }};
+
+    // for name and stack_size
+    ($name: expr, $stack_size:expr, $func:expr) => {{
+        fn _go_check<F, T>(name: &str, stack_size: usize, f: F) -> F
+        where
+            F: FnOnce() -> T + Send + 'static,
+            T: Send + 'static,
+        {
+            f
+        }
+        let f = _go_check($name, $stack_size, $func);
+        let builder = $crate::coroutine::Builder::new()
+            .name($name.to_owned())
+            .stack_size($stack_size);
+        unsafe { builder.spawn(f) }
+    }};
+}
+
 /// macro used to create the select coroutine
 /// that will run in a infinite loop, and generate
 /// as many events as possible

@@ -310,3 +310,40 @@ fn join_macro() {
     assert_eq!(rx1.try_recv().is_err(), true);
     assert_eq!(rx2.try_recv().is_err(), true);
 }
+
+#[test]
+fn go_with_macro() {
+    use may::sync::mpsc::channel;
+
+    let (tx1, rx1) = channel();
+    let (tx2, rx2) = channel();
+
+    go_with!(8192, move || {
+        tx1.send(coroutine::current().stack_size()).unwrap();
+    })
+    .unwrap()
+    .join()
+    .unwrap();
+
+    go_with!("test_task", 10240, move || {
+        let task = coroutine::current();
+        let msg = (
+            task.name().map(ToOwned::to_owned),
+            task.stack_size(),
+        );
+        tx2.send(msg).unwrap();
+    })
+    .unwrap()
+    .join()
+    .unwrap();
+
+    {
+        let x = rx1.recv().unwrap();
+        assert_eq!(x, 8192);
+    }
+    {
+        let (name, stack_size) = rx2.recv().unwrap();
+        assert_eq!(name, Some("test_task".to_owned()));
+        assert_eq!(stack_size, 10240);
+    }
+}
