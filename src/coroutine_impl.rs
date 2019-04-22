@@ -104,6 +104,7 @@ fn get_co_local(co: &CoroutineImpl) -> *mut CoroutineLocal {
 /// The internal representation of a `Coroutine` handle
 struct Inner {
     name: Option<String>,
+    stack_size: usize,
     park: Park,
     cancel: Cancel,
 }
@@ -118,14 +119,20 @@ unsafe impl Send for Coroutine {}
 
 impl Coroutine {
     // Used only internally to construct a coroutine object without spawning
-    fn new(name: Option<String>) -> Coroutine {
+    fn new(name: Option<String>, stack_size: usize) -> Coroutine {
         Coroutine {
             inner: Arc::new(Inner {
                 name,
+                stack_size,
                 park: Park::new(),
                 cancel: Cancel::new(),
             }),
         }
+    }
+
+    /// Gets the coroutine stack size.
+    pub fn stack_size(&self) -> usize {
+        self.inner.stack_size
     }
 
     /// Atomically makes the handle's token available if it is not already.
@@ -272,7 +279,7 @@ impl Builder {
             co = Gn::new_opt(stack_size, closure);
         }
 
-        let handle = Coroutine::new(name);
+        let handle = Coroutine::new(name, stack_size);
         // create the local storage
         let local = CoroutineLocal::new(handle.clone(), join.clone());
         // attache the local storage to the coroutine

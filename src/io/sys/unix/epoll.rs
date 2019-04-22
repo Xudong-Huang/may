@@ -156,7 +156,10 @@ impl Selector {
     #[inline]
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
         let mut info = EpollEvent::new(
-            EpollFlags::EPOLLIN | EpollFlags::EPOLLOUT | EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLET,
+            EpollFlags::EPOLLIN
+                | EpollFlags::EPOLLOUT
+                | EpollFlags::EPOLLRDHUP
+                | EpollFlags::EPOLLET,
             io_data.as_ref() as *const _ as _,
         );
 
