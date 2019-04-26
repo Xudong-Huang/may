@@ -81,8 +81,8 @@ impl<T> Queue<T> {
                     i = 0;
                 }
             }
-
-            assert!((*tail).value.is_none());
+            // value is not an atomic operation it may read out old shadow value
+            // assert!((*tail).value.is_none());
             assert!((*next).value.is_some());
             // we tack the next value, this is why use option to host the value
             let ret = (*next).value.take().unwrap();
