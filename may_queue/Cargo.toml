@@ -2,7 +2,7 @@
 name = "may_queue"
 version = "0.1.5"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
-license = "LGPL-2.1"
+license = "MIT/Apache-2.0"
 repository = "https://github.com/Xudong-Huang/may.git"
 homepage = "https://github.com/Xudong-Huang/may.git"
 documentation = "https://docs.rs/may_queue"
