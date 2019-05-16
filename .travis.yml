@@ -10,7 +10,7 @@ rust:
   - stable
   - nightly
 
-evn:
+env:
   - RUST_BACKTRACE=1
 
 script:
