@@ -327,10 +327,7 @@ fn go_with_macro() {
 
     go_with!("test_task", 10240, move || {
         let task = coroutine::current();
-        let msg = (
-            task.name().map(ToOwned::to_owned),
-            task.stack_size(),
-        );
+        let msg = (task.name().map(ToOwned::to_owned), task.stack_size());
         tx2.send(msg).unwrap();
     })
     .unwrap()
