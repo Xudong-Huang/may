@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use yield_now::yield_now;
+use crate::yield_now::yield_now;
 
 pub struct DropGuard<'a>(&'a DelayDrop);
 pub struct DelayDrop {

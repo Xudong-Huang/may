@@ -5,15 +5,15 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use cancel::Cancel;
-use config::config;
+use crate::cancel::Cancel;
+use crate::config::config;
 use generator::{Generator, Gn};
-use join::{make_join_handle, Join, JoinHandle};
-use local::get_co_local_data;
-use local::CoroutineLocal;
-use park::Park;
-use scheduler::get_scheduler;
-use sync::AtomicOption;
+use crate::join::{make_join_handle, Join, JoinHandle};
+use crate::local::get_co_local_data;
+use crate::local::CoroutineLocal;
+use crate::park::Park;
+use crate::scheduler::get_scheduler;
+use crate::sync::AtomicOption;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types

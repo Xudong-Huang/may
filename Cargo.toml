@@ -18,6 +18,7 @@ exclude = [
     "benches/**/*",
     "docs/**/*",
 ]
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "Xudong-Huang/may" }

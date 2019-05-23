@@ -3,12 +3,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use coroutine_impl::CoroutineImpl;
+use crate::coroutine_impl::CoroutineImpl;
 use generator::Error;
-use io::cancel::CancelIoImpl;
-use scheduler::get_scheduler;
-use sync::AtomicOption;
-use yield_now::{get_co_para, set_co_para};
+use crate::io::cancel::CancelIoImpl;
+use crate::scheduler::get_scheduler;
+use crate::sync::AtomicOption;
+use crate::yield_now::{get_co_para, set_co_para};
 
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe
@@ -31,7 +31,7 @@ pub fn trigger_cancel_panic() -> ! {
 pub trait CancelIo {
     type Data;
     fn new() -> Self;
-    fn set(&self, Self::Data);
+    fn set(&self, _: Self::Data);
     fn clear(&self);
     unsafe fn cancel(&self);
 }

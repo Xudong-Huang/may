@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use cancel::Cancel;
-use coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
-use scheduler::get_scheduler;
-use sync::atomic_dur::AtomicDuration;
-use sync::AtomicOption;
-use timeout_list::TimeoutHandle;
-use yield_now::{get_co_para, yield_now, yield_with};
+use crate::cancel::Cancel;
+use crate::coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
+use crate::scheduler::get_scheduler;
+use crate::sync::atomic_dur::AtomicDuration;
+use crate::sync::AtomicOption;
+use crate::timeout_list::TimeoutHandle;
+use crate::yield_now::{get_co_para, yield_now, yield_with};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ParkError {

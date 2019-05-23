@@ -1005,7 +1005,7 @@ mod tests {
 
     #[test]
     fn stress_mutli_recv() {
-        use sync::mpsc;
+        use crate::sync::mpsc;
         let (tx, rx) = channel();
         let (tx1, rx1) = mpsc::channel();
         let stress = stress_factor() + 100;

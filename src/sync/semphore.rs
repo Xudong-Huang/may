@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::blocking::SyncBlocker;
-use cancel::trigger_cancel_panic;
+use crate::cancel::trigger_cancel_panic;
 use crossbeam::queue::SegQueue;
-use park::ParkError;
+use crate::park::ParkError;
 
 /// Semphore primitive
 ///
@@ -175,7 +175,7 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
-    use sync::mpsc::channel;
+    use crate::sync::mpsc::channel;
 
     #[test]
     fn sanity_1() {
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_semphore_canceled() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let sem1 = Arc::new(Semphore::new(0));
         let sem2 = sem1.clone();
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_semphore_co_timeout() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let sem1 = Arc::new(Semphore::new(0));
         let sem2 = sem1.clone();
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_semphore_thread_timeout() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let sem1 = Arc::new(Semphore::new(0));
         let sem2 = sem1.clone();

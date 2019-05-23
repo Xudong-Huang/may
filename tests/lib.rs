@@ -4,7 +4,7 @@ extern crate generator;
 #[macro_use]
 extern crate may;
 
-use coroutine::yield_now;
+use crate::coroutine::yield_now;
 use generator::Gn;
 use may::coroutine;
 

@@ -11,7 +11,7 @@ use std::time::Duration;
 use may_queue::mpsc_list::Queue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutList;
-use sync::AtomicOption;
+use crate::sync::AtomicOption;
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;

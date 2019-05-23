@@ -31,8 +31,8 @@ impl Flag {
     #[inline]
     pub fn done(&self, guard: &Guard) {
         if !guard.panicking && thread::panicking() {
-            let is_canceled = if ::coroutine_impl::is_coroutine() {
-                let cancel = ::coroutine_impl::current_cancel_data();
+            let is_canceled = if crate::coroutine_impl::is_coroutine() {
+                let cancel = crate::coroutine_impl::current_cancel_data();
                 cancel.is_canceled()
             } else {
                 false

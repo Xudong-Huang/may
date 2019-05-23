@@ -8,10 +8,10 @@ use std::os::unix::net::{self, SocketAddr};
 use std::path::Path;
 use std::time::Duration;
 
-use coroutine_impl::is_coroutine;
-use io::sys::net as net_impl;
-use io::CoIo;
-use yield_now::yield_with;
+use crate::coroutine_impl::is_coroutine;
+use crate::io::sys::net as net_impl;
+use crate::io::CoIo;
+use crate::yield_now::yield_with;
 
 /// A Unix stream socket.
 ///

@@ -9,9 +9,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-use coroutine_impl::{spawn, Coroutine};
-use join::JoinHandle;
-use sync::AtomicOption;
+use crate::coroutine_impl::{spawn, Coroutine};
+use crate::join::JoinHandle;
+use crate::sync::AtomicOption;
 
 #[doc(hidden)]
 trait FnBox {

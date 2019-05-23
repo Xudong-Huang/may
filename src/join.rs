@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::Result;
 
-use coroutine_impl::Coroutine;
+use crate::coroutine_impl::Coroutine;
 use generator::Error;
-use sync::{AtomicOption, Blocker};
+use crate::sync::{AtomicOption, Blocker};
 
 pub struct Join {
     // the coroutine that waiting for this join handler

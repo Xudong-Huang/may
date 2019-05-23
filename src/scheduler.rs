@@ -5,16 +5,16 @@ use std::sync::{Arc, Once, ONCE_INIT};
 use std::thread;
 use std::time::Duration;
 
-use config::config;
-use coroutine_impl::{run_coroutine, CoroutineImpl};
+use crate::config::config;
+use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crossbeam::deque;
 use crossbeam::utils::Backoff;
-use io::{EventLoop, Selector};
+use crate::io::{EventLoop, Selector};
 use may_queue::mpmc_bounded::Queue as WaitList;
-use pool::CoroutinePool;
-use sync::AtomicOption;
-use timeout_list;
-use yield_now::set_co_para;
+use crate::pool::CoroutinePool;
+use crate::sync::AtomicOption;
+use crate::timeout_list;
+use crate::yield_now::set_co_para;
 
 #[cfg(nightly)]
 use std::intrinsics::likely;

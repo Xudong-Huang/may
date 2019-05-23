@@ -1,5 +1,5 @@
-use config::config;
-use coroutine_impl::CoroutineImpl;
+use crate::config::config;
+use crate::coroutine_impl::CoroutineImpl;
 use generator::Gn;
 use may_queue::mpmc_bounded::Queue;
 

@@ -16,7 +16,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 use self::PopResult::*;
-use yield_now::yield_now;
+use crate::yield_now::yield_now;
 
 /// A result of the `pop` function.
 enum PopResult<T> {

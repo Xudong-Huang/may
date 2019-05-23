@@ -4,12 +4,12 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
-use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::AsIoData;
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::AsIoData;
 use nix::unistd::read;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
-use yield_now::yield_with;
+use crate::scheduler::get_scheduler;
+use crate::sync::delay_drop::DelayDrop;
+use crate::yield_now::yield_with;
 
 pub struct SocketRead<'a> {
     io_data: &'a IoData,

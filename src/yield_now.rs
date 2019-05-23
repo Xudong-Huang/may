@@ -1,9 +1,9 @@
 use std::thread;
 
-use coroutine_impl::{current_cancel_data, is_coroutine};
-use coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
+use crate::coroutine_impl::{current_cancel_data, is_coroutine};
+use crate::coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
 use generator::{co_get_yield, co_set_para, co_yield_with};
-use scheduler::get_scheduler;
+use crate::scheduler::get_scheduler;
 
 struct Yield {}
 

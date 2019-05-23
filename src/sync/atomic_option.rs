@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub trait Wrapped {
     type Data;
     fn into_raw(self) -> *mut Self::Data;
-    unsafe fn from_raw(*mut Self::Data) -> Self;
+    unsafe fn from_raw(_: *mut Self::Data) -> Self;
 }
 
 impl<T> Wrapped for T {

@@ -5,9 +5,9 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-use coroutine_impl::Coroutine;
+use crate::coroutine_impl::Coroutine;
 use generator::get_local_data;
-use join::Join;
+use crate::join::Join;
 
 // thread local map storage
 thread_local! {static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
