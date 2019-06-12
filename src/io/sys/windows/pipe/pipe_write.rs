@@ -3,9 +3,9 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::scheduler::get_scheduler;
 use miow::pipe::NamedPipe;
-use scheduler::get_scheduler;
 
 pub struct PipeWrite<'a> {
     io_data: EventData,

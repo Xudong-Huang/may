@@ -3,15 +3,15 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 use std::{io, ptr};
 
-use coroutine_impl::CoroutineImpl;
+use crate::coroutine_impl::CoroutineImpl;
+use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
+use crate::yield_now::set_co_para;
 use miow::iocp::{CompletionPort, CompletionStatus};
-use timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use winapi::shared::ntdef::*;
 use winapi::shared::ntstatus::STATUS_CANCELLED;
 use winapi::shared::winerror::*;
 use winapi::um::ioapiset::{CancelIoEx, GetOverlappedResult};
 use winapi::um::minwinbase::OVERLAPPED;
-use yield_now::set_co_para;
 
 // the timeout data
 pub struct TimerData {

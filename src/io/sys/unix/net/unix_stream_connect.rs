@@ -5,14 +5,14 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::CoIo;
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::CoIo;
+use crate::os::unix::net::UnixStream;
+use crate::scheduler::get_scheduler;
+use crate::sync::delay_drop::DelayDrop;
+use crate::yield_now::yield_with;
 use libc;
-use os::unix::net::UnixStream;
-use scheduler::get_scheduler;
 use socket2::{Domain, SockAddr, Socket, Type};
-use sync::delay_drop::DelayDrop;
-use yield_now::yield_with;
 
 pub struct UnixStreamConnect {
     io_data: IoData,

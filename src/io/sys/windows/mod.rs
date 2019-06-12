@@ -4,7 +4,7 @@ macro_rules! co_try {
             Ok(val) => val,
             Err(err) => {
                 let mut co = $co;
-                ::yield_now::set_co_para(&mut co, err);
+                crate::yield_now::set_co_para(&mut co, err);
                 $s.schedule(co);
                 return;
             }
@@ -18,10 +18,10 @@ mod iocp;
 pub mod net;
 mod pipe;
 
-use scheduler::get_scheduler;
+use crate::scheduler::get_scheduler;
+use crate::yield_now::get_co_para;
 use std::os::windows::io::AsRawSocket;
 use std::{fmt, io};
-use yield_now::get_co_para;
 
 pub use self::iocp::{EventData, Selector, SysEvent};
 

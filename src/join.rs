@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::Result;
 
-use coroutine_impl::Coroutine;
+use crate::coroutine_impl::Coroutine;
+use crate::sync::{AtomicOption, Blocker};
 use generator::Error;
-use sync::{AtomicOption, Blocker};
 
 pub struct Join {
     // the coroutine that waiting for this join handler
@@ -20,12 +20,12 @@ pub struct Join {
     // this is the only place that could set the panic Error
     // we use to communicate with JoinHandle so that can return the panic info
     // this must be ready before the trigger
-    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
+    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
 }
 
 // this is the join resource type
 impl Join {
-    pub fn new(panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>) -> Self {
+    pub fn new(panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>) -> Self {
         Join {
             to_wake: AtomicOption::none(),
             state: AtomicBool::new(true),
@@ -34,7 +34,7 @@ impl Join {
     }
 
     // the the panic for the coroutine
-    pub fn set_panic_data(&mut self, panic: Box<Any + Send>) {
+    pub fn set_panic_data(&mut self, panic: Box<dyn Any + Send>) {
         let p = unsafe { &mut *self.panic.get() };
         *p = Some(panic);
     }
@@ -69,7 +69,7 @@ pub struct JoinHandle<T> {
     co: Coroutine,
     join: Arc<UnsafeCell<Join>>,
     packet: Arc<AtomicOption<T>>,
-    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
+    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
 }
 
 unsafe impl<T> Send for JoinHandle<T> {}
@@ -80,7 +80,7 @@ pub fn make_join_handle<T>(
     co: Coroutine,
     join: Arc<UnsafeCell<Join>>,
     packet: Arc<AtomicOption<T>>,
-    panic: Arc<UnsafeCell<Option<Box<Any + Send>>>>,
+    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
 ) -> JoinHandle<T> {
     JoinHandle {
         co,

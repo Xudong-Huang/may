@@ -4,10 +4,10 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::net::UdpSocket;
+use crate::scheduler::get_scheduler;
 use miow::net::UdpSocketExt;
-use net::UdpSocket;
-use scheduler::get_scheduler;
 use winapi::shared::ntdef::*;
 
 pub struct UdpSendTo<'a> {

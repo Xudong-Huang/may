@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::blocking::SyncBlocker;
-use cancel::trigger_cancel_panic;
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
-use park::ParkError;
 
 /// SyncFlag primitive
 ///
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_syncflag_canceled() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let flag1 = Arc::new(SyncFlag::new());
         let flag2 = flag1.clone();
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_syncflag_co_timeout() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let flag1 = Arc::new(SyncFlag::new());
         let flag2 = flag1.clone();
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_syncflag_thread_timeout() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
 
         let flag1 = Arc::new(SyncFlag::new());
         let flag2 = flag1.clone();

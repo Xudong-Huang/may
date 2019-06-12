@@ -42,7 +42,7 @@ impl<T> error::Error for Error<T> {
         self.err.description()
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         self.err.source()
     }
 }

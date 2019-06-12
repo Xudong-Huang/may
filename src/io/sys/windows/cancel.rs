@@ -1,7 +1,7 @@
 use std::io;
 
-use cancel::CancelIo;
-use sync::Mutex;
+use crate::cancel::CancelIo;
+use crate::sync::Mutex;
 // use scheduler::get_scheduler;
 use super::EventData;
 

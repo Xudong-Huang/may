@@ -5,12 +5,12 @@ use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::AsIoData;
-use os::unix::net::UnixDatagram;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
-use yield_now::yield_with;
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::AsIoData;
+use crate::os::unix::net::UnixDatagram;
+use crate::scheduler::get_scheduler;
+use crate::sync::delay_drop::DelayDrop;
+use crate::yield_now::yield_with;
 
 pub struct UnixRecvFrom<'a> {
     io_data: &'a IoData,

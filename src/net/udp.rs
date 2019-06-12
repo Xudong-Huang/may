@@ -2,10 +2,10 @@ use std::io;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
-use io as io_impl;
-use io::net as net_impl;
-use sync::atomic_dur::AtomicDuration;
-use yield_now::yield_with;
+use crate::io as io_impl;
+use crate::io::net as net_impl;
+use crate::sync::atomic_dur::AtomicDuration;
+use crate::yield_now::yield_with;
 
 #[derive(Debug)]
 pub struct UdpSocket {

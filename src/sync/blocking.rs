@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
-use coroutine_impl::is_coroutine;
-use park::{Park, ParkError};
+use crate::coroutine_impl::is_coroutine;
+use crate::park::{Park, ParkError};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "cargo-clippy", allow(clippy::mutex_atomic))]

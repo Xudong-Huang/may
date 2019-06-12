@@ -5,15 +5,15 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use cancel::Cancel;
-use config::config;
+use crate::cancel::Cancel;
+use crate::config::config;
+use crate::join::{make_join_handle, Join, JoinHandle};
+use crate::local::get_co_local_data;
+use crate::local::CoroutineLocal;
+use crate::park::Park;
+use crate::scheduler::get_scheduler;
+use crate::sync::AtomicOption;
 use generator::{Generator, Gn};
-use join::{make_join_handle, Join, JoinHandle};
-use local::get_co_local_data;
-use local::CoroutineLocal;
-use park::Park;
-use scheduler::get_scheduler;
-use sync::AtomicOption;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// Coroutine framework types
@@ -22,11 +22,11 @@ use sync::AtomicOption;
 pub type EventResult = io::Error;
 
 pub struct EventSubscriber {
-    resource: *mut EventSource,
+    resource: *mut dyn EventSource,
 }
 
 impl EventSubscriber {
-    pub fn new(r: *mut EventSource) -> Self {
+    pub fn new(r: *mut dyn EventSource) -> Self {
         EventSubscriber { resource: r }
     }
 
@@ -245,7 +245,7 @@ impl Builder {
         let _co = sched.pool.get();
         _co.prefetch();
 
-        let done = &DONE as &EventSource as *const _ as *mut EventSource;
+        let done = &DONE as &dyn EventSource as *const _ as *mut dyn EventSource;
         let Builder { name, stack_size } = self;
         let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
         // create a join resource, shared by waited coroutine and *this* coroutine

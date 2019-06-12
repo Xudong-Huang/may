@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::sync::{LockResult, PoisonError};
 use std::time::Duration;
 
-use cancel::trigger_cancel_panic;
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
 use may_queue::spsc;
-use park::ParkError;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex, MutexGuard};
@@ -45,8 +45,8 @@ impl Condvar {
         lock: &'a Mutex<T>,
         dur: Option<Duration>,
     ) -> Result<(), ParkError> {
-        let cancel = if ::coroutine_impl::is_coroutine() {
-            Some(::coroutine_impl::current_cancel_data())
+        let cancel = if crate::coroutine_impl::is_coroutine() {
+            Some(crate::coroutine_impl::current_cancel_data())
         } else {
             None
         };
@@ -205,12 +205,12 @@ impl Default for Condvar {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::mpsc::channel;
+    use crate::sync::{Condvar, Mutex};
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
     use std::u32;
-    use sync::mpsc::channel;
-    use sync::{Condvar, Mutex};
 
     #[test]
     fn smoke() {

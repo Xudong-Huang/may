@@ -25,12 +25,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::{fmt, io, ptr};
 
-use coroutine_impl::{run_coroutine, CoroutineImpl};
+use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
+use crate::scheduler::get_scheduler;
+use crate::sync::AtomicOption;
+use crate::timeout_list::{TimeOutList, TimeoutHandle};
+use crate::yield_now::{get_co_para, set_co_para};
 use nix;
-use scheduler::get_scheduler;
-use sync::AtomicOption;
-use timeout_list::{TimeOutList, TimeoutHandle};
-use yield_now::{get_co_para, set_co_para};
 
 pub use self::select::{Selector, SysEvent};
 

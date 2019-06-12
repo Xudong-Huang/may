@@ -3,9 +3,9 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::scheduler::get_scheduler;
 use miow::net::TcpStreamExt;
-use scheduler::get_scheduler;
 use winapi::shared::ntdef::*;
 
 pub struct SocketWrite<'a> {

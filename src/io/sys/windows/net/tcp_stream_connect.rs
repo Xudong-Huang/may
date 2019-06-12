@@ -5,12 +5,12 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, EventData, IoData};
-use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::cancel::CancelIoData;
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::cancel::CancelIoData;
+use crate::net::TcpStream;
+use crate::scheduler::get_scheduler;
+use crate::sync::delay_drop::DelayDrop;
 use miow::net::TcpStreamExt;
-use net::TcpStream;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
 use winapi::shared::ntdef::*;
 
 pub struct TcpStreamConnect {

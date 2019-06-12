@@ -3,11 +3,11 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use io::cancel::CancelIoData;
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::cancel::CancelIoData;
+use crate::scheduler::get_scheduler;
+use crate::sync::delay_drop::DelayDrop;
 use miow::pipe::NamedPipe;
-use scheduler::get_scheduler;
-use sync::delay_drop::DelayDrop;
 use winapi::shared::winerror::*;
 
 pub struct PipeRead<'a> {

@@ -8,9 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
-use cancel::trigger_cancel_panic;
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
 use may_queue::mpsc_list;
-use park::ParkError;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex};
@@ -316,11 +316,11 @@ impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::mpsc::channel;
+    use crate::sync::{Condvar, Mutex, RwLock};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, TryLockError};
     use std::thread;
-    use sync::mpsc::channel;
-    use sync::{Condvar, Mutex, RwLock};
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);

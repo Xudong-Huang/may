@@ -2,11 +2,11 @@ use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
-use coroutine_impl::is_coroutine;
-use io as io_impl;
-use io::net as net_impl;
-use sync::atomic_dur::AtomicDuration;
-use yield_now::yield_with;
+use crate::coroutine_impl::is_coroutine;
+use crate::io as io_impl;
+use crate::io::net as net_impl;
+use crate::sync::atomic_dur::AtomicDuration;
+use crate::yield_now::yield_with;
 
 // ===== TcpStream =====
 //

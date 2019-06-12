@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io, ptr};
 
-use coroutine_impl::CoroutineImpl;
+use crate::coroutine_impl::CoroutineImpl;
+use crate::timeout_list::{now, ns_to_dur};
 use libc;
 use may_queue::mpsc_list::Queue as mpsc;
 use smallvec::SmallVec;
-use timeout_list::{now, ns_to_dur};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
 

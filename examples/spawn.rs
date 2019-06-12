@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate may;
 
-use coroutine::yield_now;
+use crate::coroutine::yield_now;
 use may::coroutine;
 
 fn main() {

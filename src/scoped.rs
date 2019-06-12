@@ -9,29 +9,18 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-use coroutine_impl::{spawn, Coroutine};
-use join::JoinHandle;
-use sync::AtomicOption;
-
-#[doc(hidden)]
-trait FnBox {
-    fn call_box(self: Box<Self>);
-}
-
-impl<F: FnOnce()> FnBox for F {
-    fn call_box(self: Box<Self>) {
-        (*self)()
-    }
-}
+use crate::coroutine_impl::{spawn, Coroutine};
+use crate::join::JoinHandle;
+use crate::sync::AtomicOption;
 
 /// Like `coroutine::spawn`, but without the closure bounds.
 pub unsafe fn spawn_unsafe<'a, F>(f: F) -> JoinHandle<()>
 where
     F: FnOnce() + Send + 'a,
 {
-    let closure: Box<FnBox + 'a> = Box::new(f);
-    let closure: Box<FnBox + Send> = mem::transmute(closure);
-    spawn(move || closure.call_box())
+    let closure: Box<dyn FnOnce() + 'a> = Box::new(f);
+    let closure: Box<dyn FnOnce() + Send> = mem::transmute(closure);
+    spawn(move || closure())
 }
 
 pub struct Scope<'a> {
@@ -39,7 +28,7 @@ pub struct Scope<'a> {
 }
 
 struct DtorChain<'a> {
-    dtor: Box<FnBox + 'a>,
+    dtor: Box<dyn FnOnce() + 'a>,
     next: Option<Box<DtorChain<'a>>>,
 }
 
@@ -117,7 +106,7 @@ impl<'a> Scope<'a> {
                     return;
                 }
             };
-            dtor.call_box();
+            dtor();
         }
     }
 

@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use self::io_impl::co_io_err::Error;
 use self::io_impl::net as net_impl;
-use io as io_impl;
+use crate::io as io_impl;
+use crate::yield_now::yield_with;
 use libc;
-use yield_now::yield_with;
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {
@@ -223,8 +223,6 @@ mod tests {
 
     #[allow(dead_code)]
     fn compile_co_io() {
-        use std::os::unix::io::RawFd;
-
         #[derive(Debug)]
         struct Fd;
 

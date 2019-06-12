@@ -79,5 +79,5 @@ pub mod io;
 pub mod net;
 pub mod os;
 pub mod sync;
-pub use config::{config, Config};
-pub use local::LocalKey;
+pub use crate::config::{config, Config};
+pub use crate::local::LocalKey;

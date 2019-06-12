@@ -9,7 +9,7 @@ pub mod mpsc_list;
 pub mod mpsc_list_v1;
 pub mod spsc;
 
-pub use block_node::BLOCK_SIZE;
+pub use crate::block_node::BLOCK_SIZE;
 
 #[cfg(test)]
 mod test_queue {

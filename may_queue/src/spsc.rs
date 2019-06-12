@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
-use block_node::*;
+use crate::block_node::*;
 use crossbeam::utils::CachePadded;
 
 /// spsc queue
@@ -146,7 +146,7 @@ impl<T> Drop for Queue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use block_node::BLOCK_SIZE;
+    use crate::block_node::BLOCK_SIZE;
 
     #[test]
     fn queue_sanity() {
@@ -196,7 +196,7 @@ mod bench {
     use std::sync::Arc;
     use std::thread;
 
-    use test_queue::ScBlockPop;
+    use crate::test_queue::ScBlockPop;
 
     #[bench]
     fn bulk_pop_1p1c_bench(b: &mut Bencher) {

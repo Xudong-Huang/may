@@ -5,9 +5,9 @@ use std::hash::{BuildHasherDefault, Hasher};
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-use coroutine_impl::Coroutine;
+use crate::coroutine_impl::Coroutine;
+use crate::join::Join;
 use generator::get_local_data;
-use join::Join;
 
 // thread local map storage
 thread_local! {static LOCALMAP: LocalMap = RefCell::new(HashMap::default());}
@@ -57,7 +57,7 @@ fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     }
 }
 
-pub type LocalMap = RefCell<HashMap<TypeId, Box<Opaque>, BuildHasherDefault<IdHasher>>>;
+pub type LocalMap = RefCell<HashMap<TypeId, Box<dyn Opaque>, BuildHasherDefault<IdHasher>>>;
 
 pub trait Opaque {}
 impl<T> Opaque for T {}
@@ -138,7 +138,7 @@ impl<T: 'static> LocalKey<T> {
             let raw_pointer = {
                 let mut data = data.borrow_mut();
                 let entry = data.entry(key).or_insert_with(|| Box::new((self.__init)()));
-                &**entry as *const Opaque as *const T
+                &**entry as *const dyn Opaque as *const T
             };
             unsafe { f(&*raw_pointer) }
         })

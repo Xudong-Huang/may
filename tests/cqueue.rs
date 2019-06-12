@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate may;
 
-use cqueue::PollError::*;
+use crate::cqueue::PollError::*;
 use may::{coroutine, cqueue};
 
 use std::time::Duration;

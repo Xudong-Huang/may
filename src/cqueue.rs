@@ -3,14 +3,16 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use cancel::Cancel;
-use coroutine_impl::{current_cancel_data, run_coroutine, Coroutine, CoroutineImpl, EventSource};
-use join::JoinHandle;
+use crate::cancel::Cancel;
+use crate::coroutine_impl::{
+    current_cancel_data, run_coroutine, Coroutine, CoroutineImpl, EventSource,
+};
+use crate::join::JoinHandle;
+use crate::scoped::spawn_unsafe;
+use crate::sync::Mutex;
+use crate::sync::{AtomicOption, Blocker};
+use crate::yield_now::yield_with;
 use may_queue::mpsc_list;
-use scoped::spawn_unsafe;
-use sync::Mutex;
-use sync::{AtomicOption, Blocker};
-use yield_now::yield_with;
 
 /// This enumeration is the list of the possible reasons that `poll`
 /// could not return Event when called.

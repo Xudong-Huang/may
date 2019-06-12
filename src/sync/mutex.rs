@@ -3,8 +3,8 @@
 use super::blocking::SyncBlocker;
 use super::mpsc_list;
 use super::poison;
-use cancel::trigger_cancel_panic;
-use park::ParkError;
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -73,8 +73,8 @@ impl<T: ?Sized> Mutex<T> {
                 }
                 Err(ParkError::Timeout) => unreachable!("mutext timeout"),
                 Err(ParkError::Canceled) => {
-                    let b_ignore = if ::coroutine_impl::is_coroutine() {
-                        let cancel = ::coroutine_impl::current_cancel_data();
+                    let b_ignore = if crate::coroutine_impl::is_coroutine() {
+                        let cancel = crate::coroutine_impl::current_cancel_data();
                         cancel.is_disabled()
                     } else {
                         false
@@ -238,11 +238,11 @@ pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Fla
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::mpsc::channel;
+    use crate::sync::Condvar;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::thread;
-    use sync::mpsc::channel;
-    use sync::Condvar;
 
     struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
     unsafe impl<T: Send> Send for Packet<T> {}
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn test_mutex_canceled() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
         use std::mem::drop;
         use std::time::Duration;
 
@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_mutex_canceled_by_other_wait() {
-        use sleep::sleep;
+        use crate::sleep::sleep;
         use std::mem::drop;
         use std::time::Duration;
 
