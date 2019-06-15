@@ -324,6 +324,8 @@ impl<T> Default for Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         while let Some(_) = self.pop() {}
+        // release the stub
+        let _: Box<Node<T>> = unsafe { Box::from_raw(*self.tail.get()) };
     }
 }
 
