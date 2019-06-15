@@ -241,13 +241,20 @@ impl Builder {
         T: Send + 'static,
     {
         static DONE: Done = Done {};
-        let sched = get_scheduler();
-        let _co = sched.pool.get();
-        _co.prefetch();
 
-        let done = &DONE as &dyn EventSource as *const _ as *mut dyn EventSource;
+        let sched = get_scheduler();
         let Builder { name, stack_size } = self;
         let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
+        let _co = if stack_size == config().get_stack_size() {
+            let co = sched.pool.get();
+            co.prefetch();
+            Some(co)
+        } else {
+            None
+        };
+
+        let done = &DONE as &dyn EventSource as *const _ as *mut dyn EventSource;
+
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(UnsafeCell::new(None));
         let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
@@ -269,15 +276,13 @@ impl Builder {
             EventSubscriber { resource: done }
         };
 
-        let mut co;
-        if stack_size == config().get_stack_size() {
-            co = _co;
+        let mut co = if let Some(mut c) = _co {
             // re-init the closure
-            co.init(closure);
+            c.init(closure);
+            c
         } else {
-            sched.pool.put(_co);
-            co = Gn::new_opt(stack_size, closure);
-        }
+            Gn::new_opt(stack_size, closure)
+        };
 
         let handle = Coroutine::new(name, stack_size);
         // create the local storage

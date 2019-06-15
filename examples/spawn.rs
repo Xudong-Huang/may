@@ -1,8 +1,7 @@
 #[macro_use]
 extern crate may;
 
-use crate::coroutine::yield_now;
-use may::coroutine;
+use may::coroutine::yield_now;
 
 fn main() {
     let h = go!(move || {
