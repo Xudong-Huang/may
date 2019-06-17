@@ -20,7 +20,7 @@ impl CancelIo for CancelIoImpl {
     }
 
     fn clear(&self) {
-        self.0.take_fast(Ordering::Relaxed);
+        self.0.take(Ordering::Relaxed);
     }
 
     unsafe fn cancel(&self) {
