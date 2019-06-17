@@ -232,7 +232,7 @@ fn unpark() {
         // it depends on how many coroutines are running
         // if the test_sleep spawns too many within the same time span
         // this could be fail due to schedule latency. default 1 worker
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(Duration::from_millis(100));
         h.coroutine().unpark();
     });
 

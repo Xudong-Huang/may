@@ -68,7 +68,7 @@ impl Park {
         if old_ptr.is_null() {
             None
         } else {
-            unsafe { Some(TimeoutHandle::from_ptr(ptr)) }
+            Some(unsafe { TimeoutHandle::from_ptr(old_ptr) })
         }
     }
 
