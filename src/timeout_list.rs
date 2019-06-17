@@ -274,7 +274,7 @@ impl<T> TimerThread<T> {
 
     pub fn del_timer(&self, handle: TimeoutHandle<T>) {
         self.remove_list.push(handle);
-        if let Some(t) = self.wakeup.take_fast(Ordering::Relaxed) {
+        if let Some(t) = self.wakeup.take(Ordering::Acquire) {
             t.unpark();
         }
     }

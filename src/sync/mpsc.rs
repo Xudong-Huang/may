@@ -38,7 +38,7 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        if let Some(w) = self.to_wake.take_fast(Ordering::Acquire) {
+        if let Some(w) = self.to_wake.take(Ordering::Acquire) {
             w.unpark();
         }
         Ok(())
@@ -60,7 +60,7 @@ impl<T> InnerQueue<T> {
             }
             data => {
                 // no need to park, contention with send
-                if let Some(w) = self.to_wake.take_fast(Ordering::Relaxed) {
+                if let Some(w) = self.to_wake.take(Ordering::Acquire) {
                     w.unpark();
                 }
                 cur.park(dur).ok();

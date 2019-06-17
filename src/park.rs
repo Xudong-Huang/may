@@ -141,7 +141,7 @@ impl Park {
 
     #[inline]
     fn wake_up(&self, b_sync: bool) {
-        if let Some(co) = self.wait_co.take_fast(Ordering::Acquire) {
+        if let Some(co) = self.wait_co.take(Ordering::Acquire) {
             if b_sync {
                 run_coroutine(co);
             } else {

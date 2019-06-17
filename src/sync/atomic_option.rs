@@ -91,16 +91,6 @@ impl<T: Wrapped> AtomicOption<T> {
     }
 
     #[inline]
-    pub fn take_fast(&self, order: Ordering) -> Option<T> {
-        // our special version only apply with a grab contention
-        // for generic use case this is not true
-        if self.is_none() {
-            return None;
-        }
-        self.swap_inner(ptr::null_mut(), order)
-    }
-
-    #[inline]
     pub fn is_none(&self) -> bool {
         self.inner.load(Ordering::Acquire).is_null()
     }
@@ -108,6 +98,6 @@ impl<T: Wrapped> AtomicOption<T> {
 
 impl<T: Wrapped> Drop for AtomicOption<T> {
     fn drop(&mut self) {
-        self.take_fast(Ordering::Relaxed);
+        self.take(Ordering::Acquire);
     }
 }
