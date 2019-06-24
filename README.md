@@ -156,12 +156,11 @@ There is a detailed [document][caveat] that describes May's main restrictions. I
 * Don't exceed the coroutine stack. It will trigger undefined behavior.
 
 **Note**
-> The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
-
+> The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine's stack size, make sure it's big enough for your applications. 
 
 ----------
 
-## How to tune stack size
+## How to tune a stack size
 If you want to tune your coroutine's stack size, please check out [this document][stack].
 
 ----------
