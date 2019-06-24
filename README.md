@@ -17,18 +17,18 @@ May is a high performance stackful coroutine library that can be thought of rust
 </div>
 
 ## Features
-* Stackful coroutine implementation based on [generator][generator]
-* Support schedule on configurable number of threads for multi-cores
-* Support coroutine version local storage([CLS][cls])
-* Support efficient network async IO
-* Support efficient timer management
-* Support standard sync primitives plus semaphore, mpmc channel etc.
-* Support cancellation of coroutines
-* Support graceful panic handling that will not affect other coroutines
-* Support scoped coroutine creation
-* Support general select for all the coroutine APIs
-* All the coroutine APIs are compatible with std library semantics
-* All the coroutine APIs can be safely called in thread context
+* Stackful coroutine implementation based on [generator][generator];
+* Support schedule on configurable number of threads for multi-cores;
+* Support coroutine version local storage([CLS][cls]);
+* Support efficient network async IO;
+* Support efficient timer management;
+* Support standard sync primitives plus semaphore, mpmc channel etc;
+* Support cancellation of coroutine;
+* Support graceful panic handling that will not affect other coroutines;
+* Support scoped coroutine creation;
+* Support general select for all the coroutine APIs;
+* All the coroutine APIs are compatible with std library semantics;
+* All the coroutine APIs can be safely called in thread context;
 
 
 ## Usage
@@ -60,40 +60,36 @@ fn main() {
 ## More examples
 
 ### CPU heavy load examples
-* [quick sort][sort]
-* [prime number generator][prime]
+* [Quick sort][sort]
+* [A prime number generator][prime]
 
 ### IO heavy Bound examples
-* [echo server][echo_server]
-* [echo client][echo_client]
-* [simple http][http_sever]
-* [simple https][https_sever]
-* [websocket][websocket]
+* [An echo server][echo_server]
+* [An echo client][echo_client]
+* [A simple http][http_sever]
+* [A simple https][https_sever]
+* [WebSockets][websocket]
 
 ## Performance
-
-Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about `May`.
+Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about May.
 
 **Note**
-> The [tokio][tokio] version is not at it's maximum optimization. In theory `future` scheduling is not evolving context switch which should be a little faster than coroutine version. But I can't find a proper example for multi thread version comparison, so just put it here for you to get some sense about the performance of `May`. If you have a better implementation of `future` based echo server, I will update it here.
+> The [tokio][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of `future` based echo server, I will update it here.
 
 **Machine Specs:**
-
   * **Logical Cores:** 4 (4 cores x 1 threads)
   * **Memory:** 4gb ECC DDR3 @ 1600mhz
   * **Processor:** CPU Intel(R) Core(TM) i7-3820QM CPU @ 2.70GHz
   * **Operating System:** Ubuntu VirtualBox guest
 
 **Echo server client:**
-
-* you can just compile it under this project
+* You can just compile it under this project:
 ```sh
 $ cargo build --example=echo_client --release
 ```
 
 **tokio echo server**
-
-run the server by default with 2 threads in another terminal
+Run the server by default with 2 threads in another terminal:
 ```sh
 $ cd tokio-core
 $ cargo run --example=echo-threads --release
@@ -111,8 +107,7 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8080  1.89s 
 ```
 
 **may echo server**
-
-run the server by default with 2 threads in another terminal
+Run the server by default with 2 threads in another terminal:
 ```sh
 $ cd may
 $ cargo run --example=echo --release -- -p 8000 -t 2
@@ -138,7 +133,7 @@ It will hurt the performance.
 
 * Carefully use Thread Local Storage.
 Access TLS in coroutine may trigger undefined behavior.
-> it's considered **unsafe** with the following pattern
+> It's considered **unsafe** with the following pattern
 > ```rust
 > set_tls();
 > coroutine::yield_now(); // or other coroutine api that would cause a scheduling
@@ -153,7 +148,7 @@ Access TLS in coroutine may trigger undefined behavior.
 > The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
 
 ## How to tune stack size
-If you need to tune the coroutine stack size, please read [here][stack]
+If you need to tune the coroutine stack size, please read [here][stack].
 
 ## Notices
 * Both stable and nightly rust compiler are supported
@@ -164,7 +159,6 @@ If you need to tune the coroutine stack size, please read [here][stack]
     - x86_64 Windows
 
 ## License
-
 May is licensed under either of the following, at your option:
 
  * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
