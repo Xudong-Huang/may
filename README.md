@@ -65,11 +65,11 @@ fn main() {
 
 ## More examples
 
-### CPU heavy load examples
-* [Quick sort][sort]
+### The CPU heavy load examples
+* [The "Quick Sort" algorithm][sort]
 * [A prime number generator][prime]
 
-### IO heavy Bound examples
+### The I/O heavy bound examples
 * [An echo server][echo_server]
 * [An echo client][echo_client]
 * [A simple http][http_sever]
@@ -83,7 +83,7 @@ fn main() {
 Just a simple comparison with the Rust echo server implemented with [tokio][tokio] to get sense about May.
 
 **Note**
-> The [tokio][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
+> The [Tokio-based][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
 
 **Machine Specs:**
   * **Logical Cores:** 4 (4 cores x 1 threads)
