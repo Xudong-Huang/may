@@ -32,8 +32,8 @@ May is a high-performant library for programming stackful coroutines which can b
 
 
 ## Usage
+A naive echo server implemented with May:
 ```rust
-# A naive echo server
 #[macro_use]
 extern crate may;
 
