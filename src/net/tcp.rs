@@ -145,6 +145,14 @@ impl TcpStream {
         Ok(())
     }
 
+    pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
+        self.sys.set_ttl(ttl)
+    }
+
+    pub fn ttl(&self) -> io::Result<u32> {
+        self.sys.ttl()
+    }
+
     // convert std::net::TcpStream to Self without add_socket
     pub(crate) fn from_stream(s: net::TcpStream, io: io_impl::IoData) -> Self {
         TcpStream {
