@@ -13,7 +13,7 @@
         <img src="https://img.shields.io/badge/doc-may-green.svg">
     </a>
     
-May is a high-performant library for programming stackful coroutines which can be thought as the Rust version of [goroutine][go]. You can use it to easily develop and maintain massive concurrent programs in Rust!
+May is a high-performant library for programming stackful coroutines with which you can easily develop and maintain massive concurrent programs. It can be thought as the Rust version of the popular [Goroutine][go].
 </div>
 
 ----------
