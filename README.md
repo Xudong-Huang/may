@@ -20,19 +20,19 @@ May is a high-performant library for programming stackful coroutines which can b
 
 ## Features
 * The stackful coroutine's implementation is based on [generator][generator];
-* Support schedule on configurable number of threads for multi-core systems;
-* Support coroutine's version local storage([CLS][cls]);
+* Support schedule on a configurable number of threads for multi-core systems;
+* Support coroutine's version of a local storage([CLS][cls]);
 * Support efficient asynchronous network I/O;
 * Support efficient timer management;
 * Support standard synchronization primitives, a semaphore, an mpmc channel, etc;
 * Support cancellation of coroutines;
 * Support graceful panic handling that will not affect other coroutines;
 * Support scoped coroutine creation;
-* Support general selection for all the coroutine's APIs;
-* All the coroutine's APIs are compatible with the standard library semantics;
-* All the coroutine's APIs can be safely called in multithreaded context.
-
-
+* Support general selection for all the coroutine's API;
+* All the coroutine's API are compatible with the standard library semantics;
+* All the coroutine's API can be safely called in multithreaded context;
+* Both stable, beta, and nightly channels are supported;
+* Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS platforms are supported.
 ----------
 
 ## Usage
@@ -142,7 +142,7 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s 
 There is a detailed [doc][caveat] that describes May's main restrictions.
 
 There are four things you should avoid when writing coroutines:
-* Don't call thread blocking APIs.
+* Don't call thread blocking API.
 It will hurt the performance. 
 
 * Carefully use Thread Local Storage.
@@ -165,24 +165,15 @@ Access TLS in coroutine may trigger undefined behavior.
 ----------
 
 ## How to tune stack size
-If you need to tune the coroutine stack size, please read [this][stack].
-
-----------
-
-## Notices
-* Both stable and nightly rust compiler are supported;
-* This crate supports below platforms, for more platform support, please ref [generator][generator]:
-    - x86_64 Linux
-    - x86_64 MacOs
-    - x86_64 Windows
+If you want to tune your coroutine's stack size, please check out [this document][stack].
 
 ----------
 
 ## License
 May is licensed under either of the following, at your option:
 
- * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+ * The Apache License v2.0.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0);
+ * The MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT).
 
 <!-- refs -->
 [generator]:https://github.com/Xudong-Huang/generator-rs
