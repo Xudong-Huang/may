@@ -28,12 +28,12 @@ May is a high-performant library for programming stackful coroutines which can b
 * Support scoped coroutine creation;
 * Support general select for all the coroutine APIs;
 * All the coroutine APIs are compatible with std library semantics;
-* All the coroutine APIs can be safely called in thread context;
+* All the coroutine APIs can be safely called in thread context.
 
 
 ## Usage
 ```rust
-/// a naive echo server
+# A naive echo server
 #[macro_use]
 extern crate may;
 
@@ -71,7 +71,7 @@ fn main() {
 * [WebSockets][websocket]
 
 ## Performance
-Just a simple comparison with the Rust echo server implemented in [tokio][tokio] to get a sense about May.
+Just a simple comparison with the Rust echo server implemented with [tokio][tokio] to get sense about May.
 
 **Note**
 > The [tokio][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of `future` based echo server, I will update it here.
@@ -125,7 +125,7 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s 
 ```
 
 ## Caveat
-There is a detailed [doc][caveat] that describes MAY's main restrictions.
+There is a detailed [doc][caveat] that describes May's main restrictions.
 
 There are four things you should avoid when writing coroutines:
 * Don't call thread blocking APIs.
@@ -148,12 +148,11 @@ Access TLS in coroutine may trigger undefined behavior.
 > The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
 
 ## How to tune stack size
-If you need to tune the coroutine stack size, please read [here][stack].
+If you need to tune the coroutine stack size, please read [this][stack].
 
 ## Notices
-* Both stable and nightly rust compiler are supported
-* This crate supports below platforms, for more platform support, please ref [generator][generator]
-
+* Both stable and nightly rust compiler are supported;
+* This crate supports below platforms, for more platform support, please ref [generator][generator]:
     - x86_64 Linux
     - x86_64 MacOs
     - x86_64 Windows
