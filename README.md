@@ -17,18 +17,18 @@ May is a high-performant library for programming stackful coroutines which can b
 </div>
 
 ## Features
-* Stackful coroutine implementation based on [generator][generator];
-* Support schedule on configurable number of threads for multi-cores;
-* Support coroutine version local storage([CLS][cls]);
-* Support efficient network async IO;
+* The stackful coroutine's implementation is based on [generator][generator];
+* Support schedule on configurable number of threads for multi-core systems;
+* Support coroutine's version local storage([CLS][cls]);
+* Support efficient asynchronous network I/O;
 * Support efficient timer management;
-* Support standard sync primitives plus semaphore, mpmc channel etc;
-* Support cancellation of coroutine;
+* Support standard synchronization primitives, a semaphore, an mpmc channel, etc;
+* Support cancellation of coroutines;
 * Support graceful panic handling that will not affect other coroutines;
 * Support scoped coroutine creation;
-* Support general select for all the coroutine APIs;
-* All the coroutine APIs are compatible with std library semantics;
-* All the coroutine APIs can be safely called in thread context.
+* Support general selection for all the coroutine's APIs;
+* All the coroutine's APIs are compatible with the standard library semantics;
+* All the coroutine's APIs can be safely called in multithreaded context.
 
 
 ## Usage
@@ -83,12 +83,14 @@ Just a simple comparison with the Rust echo server implemented with [tokio][toki
   * **Operating System:** Ubuntu VirtualBox guest
 
 **Echo server client:**
+
 * You can just compile it under this project:
 ```sh
 $ cargo build --example=echo_client --release
 ```
 
 **tokio echo server**
+
 Run the server by default with 2 threads in another terminal:
 ```sh
 $ cd tokio-core
@@ -107,6 +109,7 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8080  1.89s 
 ```
 
 **may echo server**
+
 Run the server by default with 2 threads in another terminal:
 ```sh
 $ cd may
