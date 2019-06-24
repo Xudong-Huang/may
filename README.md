@@ -32,7 +32,7 @@ May is a high-performant library for programming stackful coroutines which can b
 * All the coroutine's API are compatible with the standard library semantics;
 * All the coroutine's API can be safely called in multithreaded context;
 * Both stable, beta, and nightly channels are supported;
-* Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS platforms are supported.
+* Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 ----------
 
 ## Usage
@@ -72,8 +72,8 @@ fn main() {
 ### The I/O heavy bound examples
 * [An echo server][echo_server]
 * [An echo client][echo_client]
-* [A simple http][http_sever]
-* [A simple https][https_sever]
+* [A simple HTTP][http_sever]
+* [A simple HTTPS][https_sever]
 * [WebSockets][websocket]
 
 
@@ -139,23 +139,20 @@ target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s 
 ----------
 
 ## Caveat
-There is a detailed [doc][caveat] that describes May's main restrictions.
+There is a detailed [document][caveat] that describes May's main restrictions. In general, there are four things you should follow when writing programs that use coroutines:
+* Don't call thread-blocking API (It will hurt the performance);
+* Carefully use Thread Local Storage (access TLS in coroutine might trigger undefined behavior).
 
-There are four things you should avoid when writing coroutines:
-* Don't call thread blocking API.
-It will hurt the performance. 
-
-* Carefully use Thread Local Storage.
-Access TLS in coroutine may trigger undefined behavior.
-> It's considered **unsafe** with the following pattern
+> It's considered **unsafe** with the following pattern:
 > ```rust
 > set_tls();
-> coroutine::yield_now(); // or other coroutine api that would cause a scheduling
+> // Or another coroutine's API that would cause scheduling:
+> coroutine::yield_now(); 
 > use_tls();
 > ```
-> but it's **safe** if your code is not sensitive about the previous state of TLS. Or there is no coroutine scheduling between **set** TLS and **use** TLS.
+> but it's **safe** if your code is not sensitive about the previous state of TLS. Or there is no coroutines scheduling between **set** TLS and **use** TLS.
 
-* Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness.
+* Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness;
 * Don't exceed the coroutine stack. It will trigger undefined behavior.
 
 **Note**
