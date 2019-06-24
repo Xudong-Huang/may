@@ -16,6 +16,8 @@
 May is a high-performant library for programming stackful coroutines which can be thought as the Rust version of [goroutine][go]. You can use it to easily develop and maintain massive concurrent programs in Rust!
 </div>
 
+----------
+
 ## Features
 * The stackful coroutine's implementation is based on [generator][generator];
 * Support schedule on configurable number of threads for multi-core systems;
@@ -30,6 +32,8 @@ May is a high-performant library for programming stackful coroutines which can b
 * All the coroutine's APIs are compatible with the standard library semantics;
 * All the coroutine's APIs can be safely called in multithreaded context.
 
+
+----------
 
 ## Usage
 A naive echo server implemented with May:
@@ -57,6 +61,8 @@ fn main() {
 
 ```
 
+----------
+
 ## More examples
 
 ### CPU heavy load examples
@@ -70,11 +76,14 @@ fn main() {
 * [A simple https][https_sever]
 * [WebSockets][websocket]
 
+
+----------
+
 ## Performance
 Just a simple comparison with the Rust echo server implemented with [tokio][tokio] to get sense about May.
 
 **Note**
-> The [tokio][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of `future` based echo server, I will update it here.
+> The [tokio][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
 
 **Machine Specs:**
   * **Logical Cores:** 4 (4 cores x 1 threads)
@@ -82,14 +91,14 @@ Just a simple comparison with the Rust echo server implemented with [tokio][toki
   * **Processor:** CPU Intel(R) Core(TM) i7-3820QM CPU @ 2.70GHz
   * **Operating System:** Ubuntu VirtualBox guest
 
-**Echo server client:**
+**An echo server and client:**
 
 * You can just compile it under this project:
 ```sh
 $ cargo build --example=echo_client --release
 ```
 
-**tokio echo server**
+**Tokio-based echo server:**
 
 Run the server by default with 2 threads in another terminal:
 ```sh
@@ -108,7 +117,7 @@ Responses: 3156989
 target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8080  1.89s user 13.46s system 152% cpu 10.035 total
 ```
 
-**may echo server**
+**May-based echo server:**
 
 Run the server by default with 2 threads in another terminal:
 ```sh
@@ -126,6 +135,8 @@ Requests: 4190944
 Responses: 4190944
 target/release/examples/echo_client -t 2 -c 100 -l 100 -a 127.0.0.1:8000  2.60s user 16.96s system 195% cpu 10.029 total
 ```
+
+----------
 
 ## Caveat
 There is a detailed [doc][caveat] that describes May's main restrictions.
@@ -150,8 +161,13 @@ Access TLS in coroutine may trigger undefined behavior.
 **Note**
 > The first three rules are common when using cooperative async libraries in rust. Even using `future` based system also have these limitations. So what you should really focus on is the coroutine stack size, make sure it's big enough for your applications. 
 
+
+----------
+
 ## How to tune stack size
 If you need to tune the coroutine stack size, please read [this][stack].
+
+----------
 
 ## Notices
 * Both stable and nightly rust compiler are supported;
@@ -159,6 +175,8 @@ If you need to tune the coroutine stack size, please read [this][stack].
     - x86_64 Linux
     - x86_64 MacOs
     - x86_64 Windows
+
+----------
 
 ## License
 May is licensed under either of the following, at your option:
