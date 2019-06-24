@@ -18,10 +18,23 @@ May is a high-performant library for programming stackful coroutines with which 
 
 ----------
 
+## Table of contents
+* [Features](https://github.com/Gymmasssorla/may#features)
+* [Usage](https://github.com/Gymmasssorla/may#usage)
+* [More examples](https://github.com/Gymmasssorla/may#more-examples)
+  * [The CPU heavy load examples](https://github.com/Gymmasssorla/may#the-cpu-heavy-load-examples)
+  * [The I/O heavy bound examples](https://github.com/Gymmasssorla/may#the-io-heavy-bound-examples)
+* [Performance](https://github.com/Gymmasssorla/may#performance)
+* [Caveat](https://github.com/Gymmasssorla/may#caveat)
+* [How to tune a stack size](https://github.com/Gymmasssorla/may#how-to-tune-a-stack-size)
+* [License](https://github.com/Gymmasssorla/may#license)
+
+----------
+
 ## Features
 * The stackful coroutine's implementation is based on [generator][generator];
 * Support schedule on a configurable number of threads for multi-core systems;
-* Support coroutine's version of a local storage([CLS][cls]);
+* Support coroutine's version of a local storage ([CLS][cls]);
 * Support efficient asynchronous network I/O;
 * Support efficient timer management;
 * Support standard synchronization primitives, a semaphore, an mpmc channel, etc;
@@ -33,6 +46,7 @@ May is a high-performant library for programming stackful coroutines with which 
 * All the coroutine's API can be safely called in multithreaded context;
 * Both stable, beta, and nightly channels are supported;
 * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
+
 ----------
 
 ## Usage
@@ -155,7 +169,7 @@ There is a detailed [document][caveat] that describes May's main restrictions. I
 * Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness;
 * Don't exceed the coroutine stack. It will trigger undefined behavior.
 
-**Note**
+**Note:**
 > The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine's stack size, make sure it's big enough for your applications. 
 
 ----------
