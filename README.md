@@ -82,10 +82,10 @@ fn main() {
 ## Performance
 Just a simple comparison with the Rust echo server implemented with [tokio][tokio] to get sense about May.
 
-**Note**
+**Note:**
 > The [Tokio-based][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
 
-**Machine Specs:**
+**The machine's specification:**
   * **Logical Cores:** 4 (4 cores x 1 threads)
   * **Memory:** 4gb ECC DDR3 @ 1600mhz
   * **Processor:** CPU Intel(R) Core(TM) i7-3820QM CPU @ 2.70GHz
@@ -93,7 +93,7 @@ Just a simple comparison with the Rust echo server implemented with [tokio][toki
 
 **An echo server and client:**
 
-* You can just compile it under this project:
+You can just compile it under this project:
 ```sh
 $ cargo build --example=echo_client --release
 ```
