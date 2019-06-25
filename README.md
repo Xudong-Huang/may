@@ -37,13 +37,13 @@ May is a high-performant library for programming stackful coroutines with which 
 * Support coroutine's version of a local storage ([CLS][cls]);
 * Support efficient asynchronous network I/O;
 * Support efficient timer management;
-* Support standard synchronization primitives, a semaphore, an mpmc channel, etc;
+* Support standard synchronization primitives, a semaphore, an MPMC channel, etc;
 * Support cancellation of coroutines;
 * Support graceful panic handling that will not affect other coroutines;
 * Support scoped coroutine creation;
 * Support general selection for all the coroutine's API;
 * All the coroutine's API are compatible with the standard library semantics;
-* All the coroutine's API can be safely called in multithreaded context;
+* All the coroutine's API can be safely called in multi-threaded context;
 * Both stable, beta, and nightly channels are supported;
 * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
@@ -97,7 +97,7 @@ fn main() {
 Just a simple comparison with the Rust echo server implemented with [tokio][tokio] to get sense about May.
 
 **Note:**
-> The [Tokio-based][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multithreaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
+> The [Tokio-based][tokio] version is not at it's maximum optimization. In theory, `future` scheduling is not evolving context switch which should be a little bit faster than the coroutine version. But I can't find a proper example for multi-threaded version comparison, so just put it here for you to get some sense about the performance of May. If you have a better implementation of s futures-based echo server, I will update it here.
 
 **The machine's specification:**
   * **Logical Cores:** 4 (4 cores x 1 threads)
@@ -167,7 +167,7 @@ There is a detailed [document][caveat] that describes May's main restrictions. I
 > but it's **safe** if your code is not sensitive about the previous state of TLS. Or there is no coroutines scheduling between **set** TLS and **use** TLS.
 
 * Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness;
-* Don't exceed the coroutine stack. It will trigger undefined behavior.
+* Don't exceed the coroutine stack. There is a guard page for each coroutine stack. When stack overflow occurs, it will trigger segment fault error.
 
 **Note:**
 > The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine's stack size, make sure it's big enough for your applications. 
