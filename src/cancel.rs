@@ -18,12 +18,12 @@ use generator::Error;
 #[inline]
 pub fn trigger_cancel_panic() -> ! {
     if thread::panicking() {
-        eprintln!("trigger another panic while paniking");
+        eprintln!("trigger another panic while panicking");
     }
 
     // should we clear the cancel flag to let other API continue?
     // so that we can avoid the re-panic problem?
-    // currently this is not used in any drop implmentation
+    // currently this is not used in any drop implementation
     // current_cancel_data().state.store(0, Ordering::Release);
     panic!(Error::Cancel);
 }
