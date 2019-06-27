@@ -1,23 +1,24 @@
-//! # Rust Stackful Coroutine Library
+//! # A library for programming stackful coroutines in Rust.
 //!
-//! May is a high performance stackful coroutine library that can be thought of rust version `goroutine`.
-//! You can use it easily to design and develop massive concurrent programs in Rust.
+//! May is a high-performant library for programming stackful coroutines with which
+//! you can easily develop and maintain massive concurrent programs. It can be thought
+//! as the Rust version of the popular Goroutine.
 //!
 //! ## Features
-//!
-//! * Stackful coroutine implementation based on stackful `generator`
-//! * Support schedule on configurable number of threads for multi-cores
-//! * Support coroutine version local storage
-//! * Support efficient network async IO
-//! * Support efficient timer management
-//! * Support standard sync primitives plus semaphore, mpmc channel etc.
-//! * Support cancellation of coroutines
-//! * Support graceful panic handling that will not affect other coroutines
-//! * Support scoped coroutine creation
-//! * Support general select for all the coroutine APIs
-//! * All the coroutine APIs are compatible with std library semantics
-//! * All the coroutine APIs can be safely called in thread context
-//!
+//! * The stackful coroutine's implementation is based on [generator][generator];
+//! * Support schedule on a configurable number of threads for multi-core systems;
+//! * Support coroutine's version of a local storage ([CLS][cls]);
+//! * Support efficient asynchronous network I/O;
+//! * Support efficient timer management;
+//! * Support standard synchronization primitives, a semaphore, an MPMC channel, etc;
+//! * Support cancellation of coroutines;
+//! * Support graceful panic handling that will not affect other coroutines;
+//! * Support scoped coroutine creation;
+//! * Support general selection for all the coroutine's API;
+//! * All the coroutine's API are compatible with the standard library semantics;
+//! * All the coroutine's API can be safely called in multi-threaded context;
+//! * Both stable, beta, and nightly channels are supported;
+//! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
 // #![deny(missing_docs)]
 #![allow(unused_extern_crates)]
