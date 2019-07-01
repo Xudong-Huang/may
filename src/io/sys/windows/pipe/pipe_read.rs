@@ -1,5 +1,5 @@
 use std::io;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -13,27 +13,24 @@ use winapi::shared::winerror::*;
 pub struct PipeRead<'a> {
     io_data: EventData,
     buf: &'a mut [u8],
-    pipe: NamedPipe,
+    pipe: RawHandle,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
 }
 
 impl<'a> PipeRead<'a> {
     pub fn new<T: AsRawHandle>(s: &T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
-        let handle = s.as_raw_handle();
+        let pipe = s.as_raw_handle();
         PipeRead {
-            io_data: EventData::new(handle),
+            io_data: EventData::new(pipe),
             buf,
-            pipe: unsafe { FromRawHandle::from_raw_handle(handle) },
+            pipe,
             timeout,
             can_drop: DelayDrop::new(),
         }
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<usize> {
-        // don't close the socket
-        self.pipe.into_raw_handle();
+    pub fn done(&mut self) -> io::Result<usize> {
         match co_io_result(&self.io_data) {
             // we should treat the broken pipe as read to end
             Err(ref e) if Some(ERROR_BROKEN_PIPE as i32) == e.raw_os_error() => Ok(0),
@@ -57,8 +54,11 @@ impl<'a> EventSource for PipeRead<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.pipe
-                .read_overlapped(self.buf, self.io_data.get_overlapped())
+            let pipe: NamedPipe = FromRawHandle::from_raw_handle(self.pipe);
+            let ret = pipe.read_overlapped(self.buf, self.io_data.get_overlapped());
+            // don't close the socket
+            pipe.into_raw_handle();
+            ret
         });
 
         // register the cancel io data

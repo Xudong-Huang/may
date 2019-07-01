@@ -25,8 +25,7 @@ impl<'a> TcpListenerAccept<'a> {
         })
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
+    pub fn done(&mut self) -> io::Result<(TcpStream, SocketAddr)> {
         loop {
             co_io_result()?;
 
@@ -49,7 +48,7 @@ impl<'a> TcpListenerAccept<'a> {
 
             // the result is still WouldBlock, need to try again
             self.can_drop.reset();
-            yield_with(&self);
+            yield_with(self);
         }
     }
 }

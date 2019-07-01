@@ -168,7 +168,7 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
             ret => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
+        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
         yield_with(&reader);
         reader.done()
     }
@@ -188,7 +188,7 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
             ret => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
+        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
         yield_with(&writer);
         writer.done()
     }

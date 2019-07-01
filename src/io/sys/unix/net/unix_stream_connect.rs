@@ -1,12 +1,11 @@
 use std::io;
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
 use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
-use crate::io::CoIo;
+use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -15,8 +14,8 @@ use libc;
 use socket2::{Domain, SockAddr, Socket, Type};
 
 pub struct UnixStreamConnect {
-    io_data: IoData,
-    stream: Socket,
+    io_data: OptionCell<IoData>,
+    stream: OptionCell<Socket>,
     path: SockAddr,
     can_drop: DelayDrop,
     is_connected: bool,
@@ -29,8 +28,8 @@ impl UnixStreamConnect {
         // before yield we must set the socket to nonblocking mode and registe to selector
         socket.set_nonblocking(true)?;
         add_socket(&socket).map(|io| UnixStreamConnect {
-            io_data: io,
-            stream: socket,
+            io_data: OptionCell::new(io),
+            stream: OptionCell::new(socket),
             path,
             can_drop: DelayDrop::new(),
             is_connected: false,
@@ -52,11 +51,10 @@ impl UnixStreamConnect {
         }
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<UnixStream> {
-        fn convert_to_stream(s: UnixStreamConnect) -> UnixStream {
-            let stream = s.stream.into_unix_stream();
-            UnixStream::from_coio(CoIo::from_raw(stream, s.io_data))
+    pub fn done(&mut self) -> io::Result<UnixStream> {
+        fn convert_to_stream(s: &mut UnixStreamConnect) -> UnixStream {
+            let stream = s.stream.take().into_unix_stream();
+            UnixStream::from_coio(CoIo::from_raw(stream, s.io_data.take()))
         }
 
         // first check if it's already connected
@@ -86,7 +84,7 @@ impl UnixStreamConnect {
 
             // the result is still EINPROGRESS, need to try again
             self.can_drop.reset();
-            yield_with(&self);
+            yield_with(self);
         }
     }
 }
@@ -107,7 +105,7 @@ impl EventSource for UnixStreamConnect {
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(self.io_data.clone());
         // re-check the cancel status
         if cancel.is_canceled() {
             unsafe { cancel.cancel() };

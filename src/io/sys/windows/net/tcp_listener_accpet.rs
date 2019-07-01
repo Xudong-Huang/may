@@ -5,6 +5,7 @@ use std::os::windows::io::AsRawSocket;
 use super::super::{add_socket, co_io_result, EventData};
 use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
+use crate::io::OptionCell;
 use crate::net::{TcpListener, TcpStream};
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -14,7 +15,7 @@ use winapi::shared::ntdef::*;
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
     socket: &'a ::std::net::TcpListener,
-    ret: ::std::net::TcpStream,
+    ret: OptionCell<::std::net::TcpStream>,
     addr: AcceptAddrsBuf,
     can_drop: DelayDrop,
 }
@@ -33,17 +34,16 @@ impl<'a> TcpListenerAccept<'a> {
         Ok(TcpListenerAccept {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),
             socket: socket.inner(),
-            ret: stream,
+            ret: OptionCell::new(stream),
             addr: AcceptAddrsBuf::new(),
             can_drop: DelayDrop::new(),
         })
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<(TcpStream, SocketAddr)> {
+    pub fn done(&mut self) -> io::Result<(TcpStream, SocketAddr)> {
         co_io_result(&self.io_data)?;
         let socket = &self.socket;
-        let ss = self.ret;
+        let ss = self.ret.take();
         let s = socket.accept_complete(&ss).and_then(|_| {
             ss.set_nonblocking(true)?;
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
@@ -71,7 +71,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.socket
-                .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
+                .accept_overlapped(&*self.ret, &mut self.addr, self.io_data.get_overlapped())
         });
 
         // register the cancel io data

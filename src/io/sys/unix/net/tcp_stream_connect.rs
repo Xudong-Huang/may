@@ -1,11 +1,11 @@
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
 use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -14,8 +14,8 @@ use libc;
 use socket2::Socket;
 
 pub struct TcpStreamConnect {
-    io_data: IoData,
-    stream: Socket,
+    io_data: OptionCell<IoData>,
+    stream: OptionCell<Socket>,
     timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
@@ -42,8 +42,8 @@ impl TcpStreamConnect {
                 stream.set_nonblocking(true)?;
 
                 add_socket(&stream).map(|io| TcpStreamConnect {
-                    io_data: io,
-                    stream,
+                    io_data: OptionCell::new(io),
+                    stream: OptionCell::new(stream),
                     timeout,
                     addr,
                     can_drop: DelayDrop::new(),
@@ -67,11 +67,10 @@ impl TcpStreamConnect {
         }
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<TcpStream> {
-        fn convert_to_stream(s: TcpStreamConnect) -> TcpStream {
-            let stream = s.stream.into_tcp_stream();
-            TcpStream::from_stream(stream, s.io_data)
+    pub fn done(&mut self) -> io::Result<TcpStream> {
+        fn convert_to_stream(s: &mut TcpStreamConnect) -> TcpStream {
+            let stream = s.stream.take().into_tcp_stream();
+            TcpStream::from_stream(stream, s.io_data.take())
         }
 
         // first check if it's already connected
@@ -101,7 +100,7 @@ impl TcpStreamConnect {
 
             // the result is still EINPROGRESS, need to try again
             self.can_drop.reset();
-            yield_with(&self);
+            yield_with(self);
         }
     }
 }
@@ -122,7 +121,7 @@ impl EventSource for TcpStreamConnect {
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(self.io_data.clone());
         // re-check the cancel status
         if cancel.is_canceled() {
             unsafe { cancel.cancel() };

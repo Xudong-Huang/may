@@ -418,7 +418,7 @@ impl UnixListener {
             Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
         }
 
-        let a = net_impl::UnixListenerAccept::new(self)?;
+        let mut a = net_impl::UnixListenerAccept::new(self)?;
         yield_with(&a);
         a.done()
     }
@@ -803,7 +803,7 @@ impl UnixDatagram {
             ret => return ret,
         }
 
-        let reader = net_impl::UnixRecvFrom::new(self, buf);
+        let mut reader = net_impl::UnixRecvFrom::new(self, buf);
         yield_with(&reader);
         reader.done()
     }
@@ -834,7 +834,7 @@ impl UnixDatagram {
             ret => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
+        let mut reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
         yield_with(&reader);
         reader.done()
     }
@@ -864,7 +864,7 @@ impl UnixDatagram {
             ret => return ret,
         }
 
-        let writer = net_impl::UnixSendTo::new(self, buf, path.as_ref())?;
+        let mut writer = net_impl::UnixSendTo::new(self, buf, path.as_ref())?;
         yield_with(&writer);
         writer.done()
     }
@@ -898,7 +898,7 @@ impl UnixDatagram {
             ret => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());
+        let mut writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());
         yield_with(&writer);
         writer.done()
     }

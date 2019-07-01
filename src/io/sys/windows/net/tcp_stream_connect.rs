@@ -1,5 +1,4 @@
 use std::io;
-use std::net::TcpStream as SysTcpStream;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
@@ -7,6 +6,7 @@ use std::time::Duration;
 use super::super::{add_socket, co_io_result, EventData, IoData};
 use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
+use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -15,7 +15,7 @@ use winapi::shared::ntdef::*;
 
 pub struct TcpStreamConnect {
     io_data: EventData,
-    stream: SysTcpStream,
+    stream: OptionCell<std::net::TcpStream>,
     timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
@@ -63,7 +63,7 @@ impl TcpStreamConnect {
                         add_socket(&s).map(|_io| TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
                             addr,
-                            stream: s,
+                            stream: OptionCell::new(s),
                             timeout,
                             can_drop: DelayDrop::new(),
                         })
@@ -77,11 +77,11 @@ impl TcpStreamConnect {
         Ok(false)
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<TcpStream> {
+    pub fn done(&mut self) -> io::Result<TcpStream> {
         co_io_result(&self.io_data)?;
-        self.stream.connect_complete()?;
-        Ok(TcpStream::from_stream(self.stream, IoData))
+        let stream = self.stream.take();
+        stream.connect_complete()?;
+        Ok(TcpStream::from_stream(stream, IoData))
     }
 }
 

@@ -36,8 +36,7 @@ impl<'a> UdpSendTo<'a> {
             })
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<usize> {
+    pub fn done(&mut self) -> io::Result<usize> {
         co_io_result(&self.io_data)
     }
 }

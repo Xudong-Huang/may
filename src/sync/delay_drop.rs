@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct DropGuard<'a>(&'a DelayDrop);
 pub struct DelayDrop {
-    // can't alloc in stack because it may moved
     // can_drop & 0x1 is the flag that when kernel is done
     // can_drop & 0x2 is the flag that when kernel is started
     can_drop: AtomicUsize,
@@ -23,10 +22,8 @@ impl DelayDrop {
 
     pub fn reset(&self) {
         // wait the kernel finished
-        if self.can_drop.load(Ordering::Acquire) & 2 != 0 {
-            while self.can_drop.load(Ordering::Acquire) == 2 {
-                yield_now();
-            }
+        while self.can_drop.load(Ordering::Acquire) == 2 {
+            yield_now();
         }
 
         self.can_drop.store(0, Ordering::Release);

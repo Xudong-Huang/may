@@ -91,7 +91,36 @@ impl IoContext {
         self.nonblocking.store(nonblocking, Ordering::Relaxed);
     }
 }
+use std::ops::Deref;
 
 // export the generic IO wrapper
 pub mod co_io_err;
 pub use self::sys::co_io::CoIo;
+
+// an option type that implement deref
+struct OptionCell<T>(Option<T>);
+
+impl<T> Deref for OptionCell<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self.0.as_ref() {
+            Some(d) => d,
+            #[cold]
+            None => panic!("no data to deref for OptionCell"),
+        }
+    }
+}
+
+impl<T> OptionCell<T> {
+    pub fn new(data: T) -> Self {
+        OptionCell(Some(data))
+    }
+
+    pub fn take(&mut self) -> T {
+        match self.0.take() {
+            Some(d) => d,
+            #[cold]
+            None => panic!("no data to take for OptionCell"),
+        }
+    }
+}

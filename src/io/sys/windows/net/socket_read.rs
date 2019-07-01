@@ -1,4 +1,4 @@
-use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
+use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 use std::time::Duration;
 use std::{self, io};
 
@@ -13,7 +13,7 @@ use winapi::shared::ntdef::*;
 pub struct SocketRead<'a> {
     io_data: EventData,
     buf: &'a mut [u8],
-    socket: std::net::TcpStream,
+    socket: RawSocket,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
 }
@@ -24,16 +24,13 @@ impl<'a> SocketRead<'a> {
         SocketRead {
             io_data: EventData::new(socket as HANDLE),
             buf,
-            socket: unsafe { FromRawSocket::from_raw_socket(socket) },
+            socket,
             timeout,
             can_drop: DelayDrop::new(),
         }
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<usize> {
-        // don't close the socket
-        self.socket.into_raw_socket();
+    pub fn done(&mut self) -> io::Result<usize> {
         co_io_result(&self.io_data)
     }
 }
@@ -53,8 +50,11 @@ impl<'a> EventSource for SocketRead<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket
-                .read_overlapped(self.buf, self.io_data.get_overlapped())
+            let socket: std::net::TcpStream = FromRawSocket::from_raw_socket(self.socket);
+            let ret = socket.read_overlapped(self.buf, self.io_data.get_overlapped());
+            // don't close the socket
+            socket.into_raw_socket();
+            ret
         });
 
         // register the cancel io data

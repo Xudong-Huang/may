@@ -184,7 +184,7 @@ impl Read for TcpStream {
             ret => return ret,
         }
 
-        let reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
+        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
         yield_with(&reader);
         reader.done()
     }
@@ -208,7 +208,7 @@ impl Write for TcpStream {
             ret => return ret,
         }
 
-        let writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
         yield_with(&writer);
         writer.done()
     }
@@ -298,7 +298,7 @@ impl TcpListener {
             ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
         }
 
-        let a = net_impl::TcpListenerAccept::new(self)?;
+        let mut a = net_impl::TcpListenerAccept::new(self)?;
         yield_with(&a);
         a.done()
     }

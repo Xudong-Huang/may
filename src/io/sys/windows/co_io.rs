@@ -121,7 +121,7 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
         }
 
         self.io.reset();
-        let reader = PipeRead::new(self, buf, self.read_timeout.get());
+        let mut reader = PipeRead::new(self, buf, self.read_timeout.get());
         yield_with(&reader);
         reader.done()
     }
@@ -134,7 +134,7 @@ impl<T: AsRawHandle + Write> Write for CoIo<T> {
         }
 
         self.io.reset();
-        let writer = PipeWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = PipeWrite::new(self, buf, self.write_timeout.get());
         yield_with(&writer);
         writer.done()
     }

@@ -32,8 +32,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
         })
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<usize> {
+    pub fn done(&mut self) -> io::Result<usize> {
         loop {
             co_io_result()?;
 
@@ -51,7 +50,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
             // the result is still WouldBlock, need to try again
             self.can_drop.reset();
-            yield_with(&self);
+            yield_with(self);
         }
     }
 }

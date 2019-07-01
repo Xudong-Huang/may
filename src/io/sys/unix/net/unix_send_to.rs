@@ -32,8 +32,7 @@ impl<'a> UnixSendTo<'a> {
         })
     }
 
-    #[inline]
-    pub fn done(self) -> io::Result<usize> {
+    pub fn done(&mut self) -> io::Result<usize> {
         loop {
             co_io_result()?;
 
@@ -51,7 +50,7 @@ impl<'a> UnixSendTo<'a> {
 
             // the result is still WouldBlock, need to try again
             self.can_drop.reset();
-            yield_with(&self);
+            yield_with(self);
         }
     }
 }
