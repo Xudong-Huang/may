@@ -64,7 +64,8 @@ impl Config {
         if workers != 0 {
             workers
         } else {
-            let num = num_cpus::get();
+            // let num = num_cpus::get();
+            let num = 2;
             IO_WORKERS.store(num, Ordering::Relaxed);
             num
         }
