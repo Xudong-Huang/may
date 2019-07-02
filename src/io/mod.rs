@@ -8,14 +8,20 @@ pub(crate) mod sys;
 #[path = "sys/windows/mod.rs"]
 pub(crate) mod sys;
 
+// export the generic IO wrapper
+pub mod co_io_err;
+
 mod event_loop;
 
 use std::io;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub(crate) use self::event_loop::EventLoop;
-pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 use crate::coroutine_impl::is_coroutine;
+
+pub(crate) use self::event_loop::EventLoop;
+pub use self::sys::co_io::CoIo;
+pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;
@@ -91,11 +97,6 @@ impl IoContext {
         self.nonblocking.store(nonblocking, Ordering::Relaxed);
     }
 }
-use std::ops::Deref;
-
-// export the generic IO wrapper
-pub mod co_io_err;
-pub use self::sys::co_io::CoIo;
 
 // an option type that implement deref
 struct OptionCell<T>(Option<T>);
