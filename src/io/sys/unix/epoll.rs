@@ -84,7 +84,7 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
+        // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
         let timeout_ms = timeout
             .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
@@ -92,22 +92,25 @@ impl Selector {
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let epfd = self.vec[id].epfd;
-        let evfd = self.vec[id].evfd;
+        // let evfd = self.vec[id].evfd;
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
 
         // add this would increase the performance!!!!!!!!
         // this maybe a linux bug, the code is meaningless
-        epoll_ctl(epfd, EpollOp::EpollCtlDel, evfd, &mut ev).ok();
-        epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut ev).ok();
+        // epoll_ctl(epfd, EpollOp::EpollCtlDel, evfd, &mut ev).ok();
+        // epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut ev).ok();
 
         for event in events[..n].iter() {
             if event.data() == 0 {
-                // this is just a wakeup event, ignore it
-                let mut buf = [0u8; 8];
-                // clear the eventfd, ignore the result
-                read(self.vec[id].evfd, &mut buf).ok();
-                // info!("got wakeup event in select, id={}", id);
-                continue;
+                #[cold]
+                {
+                    // this is just a wakeup event, ignore it
+                    let mut buf = [0u8; 8];
+                    // clear the eventfd, ignore the result
+                    read(self.vec[id].evfd, &mut buf).ok();
+                    // info!("got wakeup event in select, id={}", id);
+                    continue;
+                }
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
             // info!("select got event, data={:p}", data);
@@ -118,7 +121,7 @@ impl Selector {
                 None => continue,
                 Some(co) => co,
             };
-            co.prefetch();
+            // co.prefetch();
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {

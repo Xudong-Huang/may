@@ -203,11 +203,10 @@ impl<T> TimeOutList<T> {
                 }
             }
             // pop out the entry
-            let mut entry;
-            {
+            let mut entry = {
                 let mut timer_bh = self.timer_bh.lock().unwrap();
-                entry = (*timer_bh).pop().unwrap();
-            }
+                (*timer_bh).pop().unwrap()
+            };
 
             // consume all the timeout event
             // println!("interval = {:?}", entry.interval);

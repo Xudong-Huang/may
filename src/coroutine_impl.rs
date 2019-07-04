@@ -409,6 +409,7 @@ where
 #[inline]
 pub fn current() -> Coroutine {
     match get_co_local_data() {
+        #[cold]
         None => panic!("no current coroutine, did you call `current()` in thread context?"),
         Some(local) => unsafe { local.as_ref() }.get_co().clone(),
     }
@@ -428,6 +429,7 @@ pub(crate) fn is_coroutine() -> bool {
 #[inline]
 pub(crate) fn current_cancel_data() -> &'static Cancel {
     match get_co_local_data() {
+        #[cold]
         None => panic!("no cancel data, did you call `current_cancel_data()` in thread context?"),
         Some(local) => &(unsafe { &*local.as_ptr() }.get_co().inner.cancel),
     }
@@ -444,6 +446,7 @@ pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
 fn park_timeout_impl(dur: Option<Duration>) {
     if !is_coroutine() {
         // in thread context we do nothing
+        #[cold]
         return;
     }
 
@@ -466,6 +469,7 @@ pub fn park_timeout(dur: Duration) {
 pub(crate) fn run_coroutine(mut co: CoroutineImpl) {
     match co.resume() {
         Some(ev) => ev.subscribe(co),
+        #[cold]
         None => {
             // panic happened here
             let local = unsafe { &mut *get_co_local(&co) };
