@@ -106,6 +106,7 @@ impl<T> Entry<T> {
                 node.refs -= 1;
                 if node.refs == 0 {
                     // release the node only when the ref count becomes 0
+                    #[cold]
                     let _: Box<Node<T>> = Box::from_raw(node);
                 }
 

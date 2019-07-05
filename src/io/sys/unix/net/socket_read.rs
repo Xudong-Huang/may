@@ -75,7 +75,10 @@ impl<'a> EventSource for SocketRead<'a> {
         cancel.set_io(self.io_data.deref().clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+            #[cold]
+            unsafe {
+                cancel.cancel()
+            };
         }
     }
 }

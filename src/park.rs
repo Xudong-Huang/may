@@ -248,7 +248,10 @@ impl EventSource for Park {
         cancel.set_co(self.wait_co.clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+            #[cold]
+            unsafe {
+                cancel.cancel()
+            };
         }
     }
 

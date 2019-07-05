@@ -61,7 +61,10 @@ impl<'a> EventSource for SocketRead<'a> {
         cancel.set_io(CancelIoData::new(&self.io_data));
         // re-check the cancel status
         if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+            #[cold]
+            unsafe {
+                cancel.cancel()
+            };
         }
     }
 }
