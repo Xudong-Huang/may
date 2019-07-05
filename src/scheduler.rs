@@ -1,6 +1,5 @@
-use std::cell::RefCell;
 use std::io;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once, ONCE_INIT};
 use std::thread;
 use std::time::Duration;
@@ -25,7 +24,12 @@ fn likely(e: bool) -> bool {
 }
 
 // thread id, only workers are normal ones
-thread_local! {static WORKER_ID: RefCell<usize> = RefCell::new(!1);}
+#[cfg(nightly)]
+#[thread_local]
+static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
+
+#[cfg(not(nightly))]
+thread_local! {static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);}
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
@@ -139,7 +143,11 @@ impl Scheduler {
     }
 
     fn run(&self, id: usize) {
-        WORKER_ID.with(|worker_id| *worker_id.borrow_mut() = id);
+        #[cfg(nightly)]
+        WORKER_ID.store(id, Ordering::Relaxed);
+        #[cfg(not(nightly))]
+        WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
+
         let local = &self.local_queues[id];
         let mut stealers = Vec::new();
         for (i, worker) in self.local_queues.iter().enumerate() {
@@ -203,14 +211,16 @@ impl Scheduler {
     /// put the coroutine to correct queue so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        WORKER_ID.with(|worker_id| {
-            let id = *worker_id.borrow();
-            if id == !1 {
-                self.schedule_global(co);
-            } else {
-                self.local_queues[id].push(co);
-            }
-        });
+        #[cfg(nightly)]
+        let id = WORKER_ID.load(Ordering::Relaxed);
+        #[cfg(not(nightly))]
+        let id = WORKER_ID.with(|id| id.load(Ordering::Relaxed));
+
+        if id == !1 {
+            self.schedule_global(co);
+        } else {
+            self.local_queues[id].push(co);
+        }
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
