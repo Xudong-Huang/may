@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, Ordering, spin_loop_hint};
 use std::thread;
 
 use crossbeam::utils::CachePadded;
@@ -71,6 +71,7 @@ impl<T> Entry<T> {
             // when the link bit is cleared, next and prev is no longer valid
             if node.refs & !REF_COUNT_MASK == 0 {
                 // already removed
+                #[cold]
                 return None;
             }
 
@@ -201,8 +202,13 @@ impl<T> Queue<T> {
                 }
                 i += 1;
                 if i > 500 {
-                    thread::yield_now();
-                    i = 0;
+                    #[cold]
+                    {
+                        thread::yield_now();
+                        i = 0;
+                    }
+                } else {
+                    spin_loop_hint()
                 }
             }
 
@@ -293,8 +299,13 @@ impl<T> Queue<T> {
                 }
                 i += 1;
                 if i > 100 {
-                    thread::yield_now();
-                    i = 0;
+                    #[cold]
+                    {
+                        thread::yield_now();
+                        i = 0;
+                    }
+                } else {
+                    spin_loop_hint()
                 }
             }
             (*next).prev = ptr::null_mut();
