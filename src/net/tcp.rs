@@ -50,8 +50,11 @@ impl TcpStream {
 
         let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
 
-        if c.check_connected()? {
-            return c.done();
+        #[cfg(unix)]
+        {
+            if c.check_connected()? {
+                return c.done();
+            }
         }
 
         yield_with(&c);
@@ -176,12 +179,15 @@ impl Read for TcpStream {
             return self.sys.read(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking read
-        // it's useful for server but not necessary for client
-        match self.sys.read(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking read
+            // it's useful for server but not necessary for client
+            match self.sys.read(buf) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
@@ -201,11 +207,14 @@ impl Write for TcpStream {
             return self.sys.write(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking write
-        match self.sys.write(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking write
+            match self.sys.write(buf) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
@@ -215,7 +224,7 @@ impl Write for TcpStream {
 
     fn flush(&mut self) -> io::Result<()> {
         // TcpStream just return Ok(()), no need to yield
-        (&self.sys).flush()
+        self.sys.flush()
     }
 }
 
@@ -292,10 +301,13 @@ impl TcpListener {
                 .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
         }
 
-        self.io.reset();
-        match self.sys.accept() {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            match self.sys.accept() {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+            }
         }
 
         let mut a = net_impl::TcpListenerAccept::new(self)?;

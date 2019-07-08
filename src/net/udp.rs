@@ -83,11 +83,14 @@ impl UdpSocket {
             return self.sys.send_to(buf, addr);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking read
-        match self.sys.send_to(buf, &addr) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking read
+            match self.sys.send_to(buf, &addr) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut writer = net_impl::UdpSendTo::new(self, buf, addr)?;
@@ -105,11 +108,14 @@ impl UdpSocket {
             return self.sys.recv_from(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking read
-        match self.sys.recv_from(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking read
+            match self.sys.recv_from(buf) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut reader = net_impl::UdpRecvFrom::new(self, buf);
@@ -127,11 +133,14 @@ impl UdpSocket {
             return self.sys.send(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking write
-        match self.sys.send(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking write
+            match self.sys.send(buf) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
@@ -149,11 +158,14 @@ impl UdpSocket {
             return self.sys.recv(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking read
-        match self.sys.recv(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking read
+            match self.sys.recv(buf) {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                ret => return ret,
+            }
         }
 
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
