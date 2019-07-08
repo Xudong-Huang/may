@@ -49,8 +49,9 @@ fn del_socket(io: &IoData) {
 #[inline]
 fn co_io_result() -> io::Result<()> {
     match get_co_para() {
-        Some(err) => Err(err),
         None => Ok(()),
+        #[cold]
+        Some(err) => Err(err),
     }
 }
 
@@ -60,16 +61,8 @@ fn from_nix_error(err: nix::Error) -> ::std::io::Error {
 
     match err {
         Sys(errno) => ::std::io::Error::from_raw_os_error(errno as i32),
-        InvalidPath => {
-            ::std::io::Error::new(::std::io::ErrorKind::InvalidData, "nix invalide path")
-        }
-        InvalidUtf8 => {
-            ::std::io::Error::new(::std::io::ErrorKind::InvalidData, "nix invalide utf8")
-        }
-        UnsupportedOperation => ::std::io::Error::new(
-            ::std::io::ErrorKind::PermissionDenied,
-            "nix unsupported operation",
-        ),
+        #[cold]
+        _ => ::std::io::Error::new(::std::io::ErrorKind::Other, "nix other error"),
     }
 }
 
