@@ -38,20 +38,24 @@ macro_rules! t {
     ($e:expr) => {
         match $e {
             Ok(val) => val,
+            #[cold]
             Err(err) => return println!("err = {:?}", err),
         }
     };
 }
 
+#[inline]
 fn handle_client(mut stream: TcpStream) {
     // t!(stream.set_read_timeout(Some(Duration::from_secs(10))));
     // t!(stream.set_write_timeout(Some(Duration::from_secs(10))));
     let mut read = vec![0; 1024 * 16]; // alloc in heap!
     loop {
-        match stream.read(&mut read) {
-            Ok(0) => break, // connection was closed
-            Ok(n) => t!(stream.write_all(&read[0..n])),
-            Err(err) => return println!("err = {:?}", err),
+        let n = t!(stream.read(&mut read));
+        if n > 0 {
+            t!(stream.write_all(&read[0..n]));
+        } else {
+            #[cold]
+            break;
         }
     }
 }

@@ -48,8 +48,9 @@ struct Args {
 macro_rules! t {
     ($e:expr) => {
         match $e {
-            Err(err) => return println!("call = {:?}\nerr = {:?}", stringify!($e), err),
             Ok(val) => val,
+            #[cold]
+            Err(err) => return println!("call = {:?}\nerr = {:?}", stringify!($e), err),
         }
     };
 }
