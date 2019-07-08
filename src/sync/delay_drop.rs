@@ -20,9 +20,12 @@ impl DelayDrop {
         DropGuard(self)
     }
 
+    #[allow(dead_code)]
+    #[inline]
     pub fn reset(&self) {
         // wait the kernel finished
         while self.can_drop.load(Ordering::Acquire) == 2 {
+            #[cold]
             yield_now();
         }
 
@@ -40,6 +43,9 @@ impl<'a> Drop for DropGuard<'a> {
 impl Drop for DelayDrop {
     fn drop(&mut self) {
         // wait for drop
-        self.reset()
+        while self.can_drop.load(Ordering::Acquire) == 2 {
+            #[cold]
+            yield_now();
+        }
     }
 }

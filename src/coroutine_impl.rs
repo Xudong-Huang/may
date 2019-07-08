@@ -149,6 +149,12 @@ impl Coroutine {
     pub fn name(&self) -> Option<&str> {
         self.inner.name.as_ref().map(|s| &**s)
     }
+
+    /// Get the internal cancel
+    #[cfg(unix)]
+    pub(crate) fn get_cancel(&self) -> &Cancel {
+        &self.inner.cancel
+    }
 }
 
 impl fmt::Debug for Coroutine {
@@ -439,6 +445,13 @@ pub(crate) fn current_cancel_data() -> &'static Cancel {
 pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
     let local = unsafe { &*get_co_local(co) };
     &local.get_co().inner.cancel
+}
+
+// windows use delay drop instead
+#[cfg(unix)]
+pub(crate) fn co_get_handle(co: &CoroutineImpl) -> Coroutine {
+    let local = unsafe { &*get_co_local(co) };
+    local.get_co().clone()
 }
 
 /// timeout block the current coroutine until it's get unparked

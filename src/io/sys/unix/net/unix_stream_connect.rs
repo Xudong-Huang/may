@@ -4,11 +4,10 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 use libc;
 use socket2::{Domain, SockAddr, Socket, Type};
@@ -17,7 +16,6 @@ pub struct UnixStreamConnect {
     io_data: OptionCell<IoData>,
     stream: OptionCell<Socket>,
     path: SockAddr,
-    can_drop: DelayDrop,
     is_connected: bool,
 }
 
@@ -31,7 +29,6 @@ impl UnixStreamConnect {
             io_data: OptionCell::new(io),
             stream: OptionCell::new(socket),
             path,
-            can_drop: DelayDrop::new(),
             is_connected: false,
         })
     }
@@ -83,7 +80,6 @@ impl UnixStreamConnect {
             }
 
             // the result is still EINPROGRESS, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -91,12 +87,13 @@ impl UnixStreamConnect {
 
 impl EventSource for UnixStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
-        let cancel = co_cancel_data(&co);
-        let io_data = &self.io_data;
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = (*self.io_data).clone();
+
         get_scheduler()
             .get_selector()
-            .add_io_timer(io_data, Duration::from_secs(2));
+            .add_io_timer(&self.io_data, Duration::from_secs(2));
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
@@ -105,7 +102,7 @@ impl EventSource for UnixStreamConnect {
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]

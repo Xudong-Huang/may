@@ -8,7 +8,6 @@ use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {
@@ -17,7 +16,6 @@ pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     socket: &'a std::net::UdpSocket,
     addr: A,
     timeout: Option<Duration>,
-    can_drop: DelayDrop,
 }
 
 impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
@@ -28,7 +26,6 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             socket: socket.inner(),
             addr,
             timeout: socket.write_timeout().unwrap(),
-            can_drop: DelayDrop::new(),
         })
     }
 
@@ -58,7 +55,6 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -66,7 +62,8 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
 impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
+        let io_data = (*self.io_data).clone();
+
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -75,8 +72,8 @@ impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            io_data.schedule();
         }
     }
 }

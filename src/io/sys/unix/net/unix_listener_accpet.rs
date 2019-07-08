@@ -1,19 +1,16 @@
 use std::io;
-use std::ops::Deref;
 use std::os::unix::net::{self, SocketAddr};
 use std::sync::atomic::Ordering;
 
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::sys::{co_io_result, IoData};
 use crate::io::{AsIoData, CoIo};
 use crate::os::unix::net::{UnixListener, UnixStream};
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 
 pub struct UnixListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a net::UnixListener,
-    can_drop: DelayDrop,
 }
 
 impl<'a> UnixListenerAccept<'a> {
@@ -21,7 +18,6 @@ impl<'a> UnixListenerAccept<'a> {
         Ok(UnixListenerAccept {
             io_data: socket.0.as_io_data(),
             socket: socket.0.inner(),
-            can_drop: DelayDrop::new(),
         })
     }
 
@@ -54,7 +50,6 @@ impl<'a> UnixListenerAccept<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -62,18 +57,20 @@ impl<'a> UnixListenerAccept<'a> {
 
 impl<'a> EventSource for UnixListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
-        let cancel = co_cancel_data(&co);
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = (*self.io_data).clone();
+
         // if there is no timer we don't need to call add_io_timer
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event happened
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            return self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            return io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]

@@ -1,19 +1,16 @@
 use std::net::SocketAddr;
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::{self, io};
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::{TcpListener, TcpStream};
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 
 pub struct TcpListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a std::net::TcpListener,
-    can_drop: DelayDrop,
 }
 
 impl<'a> TcpListenerAccept<'a> {
@@ -21,7 +18,6 @@ impl<'a> TcpListenerAccept<'a> {
         Ok(TcpListenerAccept {
             io_data: socket.as_io_data(),
             socket: socket.inner(),
-            can_drop: DelayDrop::new(),
         })
     }
 
@@ -54,7 +50,6 @@ impl<'a> TcpListenerAccept<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -62,18 +57,19 @@ impl<'a> TcpListenerAccept<'a> {
 
 impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
-        let cancel = co_cancel_data(&co);
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = (*self.io_data).clone();
         // if there is no timer we don't need to call add_io_timer
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event happened
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            return self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            return io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]

@@ -8,7 +8,6 @@ use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::os::unix::net::UnixDatagram;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 
 pub struct UnixSendTo<'a> {
@@ -17,7 +16,6 @@ pub struct UnixSendTo<'a> {
     socket: &'a std::os::unix::net::UnixDatagram,
     path: &'a Path,
     timeout: Option<Duration>,
-    can_drop: DelayDrop,
 }
 
 impl<'a> UnixSendTo<'a> {
@@ -28,7 +26,6 @@ impl<'a> UnixSendTo<'a> {
             socket: socket.0.inner(),
             path,
             timeout: socket.write_timeout().unwrap(),
-            can_drop: DelayDrop::new(),
         })
     }
 
@@ -58,7 +55,6 @@ impl<'a> UnixSendTo<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -66,7 +62,8 @@ impl<'a> UnixSendTo<'a> {
 
 impl<'a> EventSource for UnixSendTo<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
+        let io_data = (*self.io_data).clone();
+
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -75,8 +72,8 @@ impl<'a> EventSource for UnixSendTo<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            io_data.schedule();
         }
     }
 }

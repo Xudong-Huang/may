@@ -1,15 +1,13 @@
-use std::ops::Deref;
 use std::os::unix::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::os::unix::net::UnixDatagram;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 
 pub struct UnixRecvFrom<'a> {
@@ -17,7 +15,6 @@ pub struct UnixRecvFrom<'a> {
     buf: &'a mut [u8],
     socket: &'a std::os::unix::net::UnixDatagram,
     timeout: Option<Duration>,
-    can_drop: DelayDrop,
 }
 
 impl<'a> UnixRecvFrom<'a> {
@@ -27,7 +24,6 @@ impl<'a> UnixRecvFrom<'a> {
             buf,
             socket: socket.0.inner(),
             timeout: socket.0.read_timeout().unwrap(),
-            can_drop: DelayDrop::new(),
         }
     }
 
@@ -57,7 +53,6 @@ impl<'a> UnixRecvFrom<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -65,8 +60,10 @@ impl<'a> UnixRecvFrom<'a> {
 
 impl<'a> EventSource for UnixRecvFrom<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
-        let cancel = co_cancel_data(&co);
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = (*self.io_data).clone();
+
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -75,12 +72,12 @@ impl<'a> EventSource for UnixRecvFrom<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            return self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            return io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]

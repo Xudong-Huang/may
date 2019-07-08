@@ -6,7 +6,6 @@ use super::super::{co_io_result, from_nix_error, IoData};
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 use nix::unistd::write;
 
@@ -14,7 +13,6 @@ pub struct SocketWrite<'a> {
     io_data: &'a IoData,
     buf: &'a [u8],
     timeout: Option<Duration>,
-    can_drop: DelayDrop,
 }
 
 impl<'a> SocketWrite<'a> {
@@ -23,7 +21,6 @@ impl<'a> SocketWrite<'a> {
             io_data: s.as_io_data(),
             buf,
             timeout,
-            can_drop: DelayDrop::new(),
         }
     }
 
@@ -51,7 +48,6 @@ impl<'a> SocketWrite<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -59,7 +55,8 @@ impl<'a> SocketWrite<'a> {
 
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
+        let io_data = (*self.io_data).clone();
+
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -68,8 +65,8 @@ impl<'a> EventSource for SocketWrite<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            io_data.schedule();
         }
     }
 }

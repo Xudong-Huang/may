@@ -14,6 +14,7 @@ mod semphore;
 mod sync_flag;
 
 pub(crate) mod atomic_dur;
+#[cfg(not(unix))]
 pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;

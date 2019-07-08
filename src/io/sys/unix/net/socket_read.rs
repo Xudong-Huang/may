@@ -1,13 +1,11 @@
 use std::io;
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 use nix::unistd::read;
 
@@ -15,7 +13,6 @@ pub struct SocketRead<'a> {
     io_data: &'a IoData,
     buf: &'a mut [u8],
     timeout: Option<Duration>,
-    can_drop: DelayDrop,
 }
 
 impl<'a> SocketRead<'a> {
@@ -24,7 +21,6 @@ impl<'a> SocketRead<'a> {
             io_data: s.as_io_data(),
             buf,
             timeout,
-            can_drop: DelayDrop::new(),
         }
     }
 
@@ -53,7 +49,6 @@ impl<'a> SocketRead<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -61,10 +56,9 @@ impl<'a> SocketRead<'a> {
 
 impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        // when exit the scope the `can_drop` will be set to true
-        let _g = self.can_drop.delay_drop();
-
-        let cancel = co_cancel_data(&co);
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = (*self.io_data).clone();
 
         if let Some(dur) = self.timeout {
             get_scheduler()
@@ -76,14 +70,15 @@ impl<'a> EventSource for SocketRead<'a> {
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here
         self.io_data.co.swap(co, Ordering::Release);
+        // till here the io may be done in other thread
 
         // there is event, re-run the coroutine
-        if self.io_data.io_flag.load(Ordering::Acquire) {
-            return self.io_data.schedule();
+        if io_data.io_flag.load(Ordering::Acquire) {
+            return io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.deref().clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]

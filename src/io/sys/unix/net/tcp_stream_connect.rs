@@ -4,11 +4,10 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
-use crate::sync::delay_drop::DelayDrop;
 use crate::yield_now::yield_with;
 use libc;
 use socket2::Socket;
@@ -18,7 +17,6 @@ pub struct TcpStreamConnect {
     stream: OptionCell<Socket>,
     timeout: Option<Duration>,
     addr: SocketAddr,
-    can_drop: DelayDrop,
     is_connected: bool,
 }
 
@@ -46,7 +44,6 @@ impl TcpStreamConnect {
                     stream: OptionCell::new(stream),
                     timeout,
                     addr,
-                    can_drop: DelayDrop::new(),
                     is_connected: false,
                 })
             })
@@ -99,7 +96,6 @@ impl TcpStreamConnect {
             }
 
             // the result is still EINPROGRESS, need to try again
-            self.can_drop.reset();
             yield_with(self);
         }
     }
@@ -107,11 +103,14 @@ impl TcpStreamConnect {
 
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let _g = self.can_drop.delay_drop();
-        let cancel = co_cancel_data(&co);
-        let io_data = &self.io_data;
+        let handle = co_get_handle(&co);
+        let cancel = handle.get_cancel();
+        let io_data = self.io_data.clone();
+
         if let Some(dur) = self.timeout {
-            get_scheduler().get_selector().add_io_timer(io_data, dur);
+            get_scheduler()
+                .get_selector()
+                .add_io_timer(&self.io_data, dur);
         }
         io_data.co.swap(co, Ordering::Release);
 
@@ -121,7 +120,7 @@ impl EventSource for TcpStreamConnect {
         }
 
         // register the cancel io data
-        cancel.set_io(self.io_data.clone());
+        cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
             #[cold]
