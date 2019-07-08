@@ -277,7 +277,7 @@ impl Selector {
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
+        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(id);

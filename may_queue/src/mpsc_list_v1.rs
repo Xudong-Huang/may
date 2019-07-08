@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering, spin_loop_hint};
+use std::sync::atomic::{spin_loop_hint, AtomicPtr, Ordering};
 use std::thread;
 
 use crossbeam::utils::CachePadded;
