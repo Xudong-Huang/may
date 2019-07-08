@@ -58,9 +58,13 @@ impl<'a> EventSource for SocketRead<'a> {
         let _g = self.can_drop.delay_drop();
 
         let cancel = co_cancel_data(&co);
-        get_scheduler()
-            .get_selector()
-            .add_io_timer(self.io_data, self.timeout);
+
+        if let Some(dur) = self.timeout {
+            get_scheduler()
+                .get_selector()
+                .add_io_timer(self.io_data, dur);
+        }
+
         // after register the coroutine, it's possible that other thread run it immediately
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here

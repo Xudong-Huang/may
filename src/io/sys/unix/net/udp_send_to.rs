@@ -58,9 +58,11 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
-        get_scheduler()
-            .get_selector()
-            .add_io_timer(self.io_data, self.timeout);
+        if let Some(dur) = self.timeout {
+            get_scheduler()
+                .get_selector()
+                .add_io_timer(self.io_data, dur);
+        }
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

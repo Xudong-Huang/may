@@ -33,8 +33,9 @@ impl<'a> PipeWrite<'a> {
 impl<'a> EventSource for PipeWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
-        s.get_selector()
-            .add_io_timer(&mut self.io_data, self.timeout);
+        if let Some(dur) = self.timeout {
+            s.get_selector().add_io_timer(&mut self.io_data, dur);
+        }
         // prepare the co first
         self.io_data.co = Some(co);
         // call the overlapped write API

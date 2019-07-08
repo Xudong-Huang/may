@@ -90,8 +90,9 @@ impl EventSource for TcpStreamConnect {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();
         let cancel = co_cancel_data(&co);
-        s.get_selector()
-            .add_io_timer(&mut self.io_data, self.timeout);
+        if let Some(dur) = self.timeout {
+            s.get_selector().add_io_timer(&mut self.io_data, dur);
+        }
         self.io_data.co = Some(co);
 
         // call the overlapped connect API

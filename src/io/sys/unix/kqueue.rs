@@ -274,16 +274,14 @@ impl Selector {
 
     // register the io request to the timeout list
     #[inline]
-    pub fn add_io_timer(&self, io: &IoData, timeout: Option<Duration>) {
+    pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
-        *io.timer.borrow_mut() = timeout.map(|dur| {
-            // info!("io timeout = {:?}", dur);
-            let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
-            if b_new {
-                // wakeup the event loop thread to recall the next wait timeout
-                self.wakeup(id);
-            }
-            h
-        });
+        // info!("io timeout = {:?}", dur);
+        let (h, b_new) = self.vec[id].timer_list.add_timer(dur, io.timer_data());
+        if b_new {
+            // wakeup the event loop thread to recall the next wait timeout
+            self.wakeup(id);
+        }
+        io.timer.borrow_mut().replace(h);
     }
 }

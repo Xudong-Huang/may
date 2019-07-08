@@ -96,7 +96,7 @@ impl EventSource for UnixStreamConnect {
         let io_data = &self.io_data;
         get_scheduler()
             .get_selector()
-            .add_io_timer(io_data, Some(Duration::from_secs(10)));
+            .add_io_timer(io_data, Duration::from_secs(2));
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine

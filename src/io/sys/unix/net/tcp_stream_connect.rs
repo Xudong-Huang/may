@@ -110,9 +110,9 @@ impl EventSource for TcpStreamConnect {
         let _g = self.can_drop.delay_drop();
         let cancel = co_cancel_data(&co);
         let io_data = &self.io_data;
-        get_scheduler()
-            .get_selector()
-            .add_io_timer(io_data, self.timeout);
+        if let Some(dur) = self.timeout {
+            get_scheduler().get_selector().add_io_timer(io_data, dur);
+        }
         io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
