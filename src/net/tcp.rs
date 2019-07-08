@@ -70,8 +70,11 @@ impl TcpStream {
 
         let mut c = net_impl::TcpStreamConnect::new(addr, Some(timeout))?;
 
-        if c.check_connected()? {
-            return c.done();
+        #[cfg(unix)]
+        {
+            if c.check_connected()? {
+                return c.done();
+            }
         }
 
         yield_with(&c);
@@ -185,8 +188,17 @@ impl Read for TcpStream {
             // this is an earlier return try for nonblocking read
             // it's useful for server but not necessary for client
             match self.sys.read(buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 
@@ -212,8 +224,17 @@ impl Write for TcpStream {
             self.io.reset();
             // this is an earlier return try for nonblocking write
             match self.sys.write(buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 
@@ -305,8 +326,17 @@ impl TcpListener {
         {
             self.io.reset();
             match self.sys.accept() {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret.and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a))),
+                Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 

@@ -164,8 +164,17 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
         // this is an earlier return try for nonblocking read
         // it's useful for server but not necessary for client
         match self.inner.read(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
@@ -184,8 +193,17 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
         self.io.reset();
         // this is an earlier return try for nonblocking write
         match self.inner.write(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);

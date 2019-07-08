@@ -413,9 +413,17 @@ impl UnixListener {
 
         self.0.io_reset();
         match self.0.inner().accept() {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            Err(e) => return Err(e),
             Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut a = net_impl::UnixListenerAccept::new(self)?;
@@ -799,8 +807,17 @@ impl UnixDatagram {
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv_from(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut reader = net_impl::UnixRecvFrom::new(self, buf);
@@ -830,8 +847,17 @@ impl UnixDatagram {
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
@@ -860,8 +886,17 @@ impl UnixDatagram {
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().send_to(buf, path.as_ref()) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut writer = net_impl::UnixSendTo::new(self, buf, path.as_ref())?;
@@ -894,8 +929,17 @@ impl UnixDatagram {
         self.0.io_reset();
         // this is an earlier return try for nonblocking write
         match self.0.inner().send(buf) {
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-            ret => return ret,
+            Ok(n) => return Ok(n),
+            #[cold]
+            Err(e) => {
+                // raw_os_error is faster than kind
+                let raw_err = e.raw_os_error();
+                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                    // do nothing here
+                } else {
+                    return Err(e);
+                }
+            }
         }
 
         let mut writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());

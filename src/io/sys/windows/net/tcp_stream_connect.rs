@@ -71,12 +71,6 @@ impl TcpStreamConnect {
             })
     }
 
-    #[inline]
-    pub fn check_connected(&mut self) -> io::Result<bool> {
-        // always try overvlappend version
-        Ok(false)
-    }
-
     pub fn done(&mut self) -> io::Result<TcpStream> {
         co_io_result(&self.io_data)?;
         let stream = self.stream.take();

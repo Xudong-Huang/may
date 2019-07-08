@@ -33,11 +33,19 @@ impl<'a> UnixListenerAccept<'a> {
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.socket.accept() {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                Err(e) => return Err(e),
                 Ok((s, a)) => {
                     let s = UnixStream::from_coio(CoIo::new(s)?);
                     return Ok((s, a));
+                }
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
 

@@ -39,8 +39,17 @@ impl<'a> UnixRecvFrom<'a> {
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.socket.recv_from(self.buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

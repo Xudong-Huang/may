@@ -34,9 +34,16 @@ impl<'a> SocketWrite<'a> {
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
-            match write(self.io_data.fd, self.buf).map_err(from_nix_error) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+            match write(self.io_data.fd, self.buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
+                        // do nothing
+                    } else {
+                        return Err(from_nix_error(e));
+                    }
+                }
             }
 
             if self.io_data.io_flag.swap(false, Ordering::Relaxed) {

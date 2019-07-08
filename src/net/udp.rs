@@ -88,8 +88,17 @@ impl UdpSocket {
             self.io.reset();
             // this is an earlier return try for nonblocking read
             match self.sys.send_to(buf, &addr) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 
@@ -113,8 +122,17 @@ impl UdpSocket {
             self.io.reset();
             // this is an earlier return try for nonblocking read
             match self.sys.recv_from(buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 
@@ -138,8 +156,17 @@ impl UdpSocket {
             self.io.reset();
             // this is an earlier return try for nonblocking write
             match self.sys.send(buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 
@@ -163,8 +190,17 @@ impl UdpSocket {
             self.io.reset();
             // this is an earlier return try for nonblocking read
             match self.sys.recv(buf) {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => return ret,
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
             }
         }
 

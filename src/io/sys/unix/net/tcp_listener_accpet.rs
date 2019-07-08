@@ -33,12 +33,19 @@ impl<'a> TcpListenerAccept<'a> {
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
             match self.socket.accept() {
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                ret => {
-                    return ret.and_then(|(s, a)| {
-                        s.set_nonblocking(true)?;
-                        add_socket(&s).map(|io| (TcpStream::from_stream(s, io), a))
-                    });
+                Ok((s, a)) => {
+                    s.set_nonblocking(true)?;
+                    return add_socket(&s).map(|io| (TcpStream::from_stream(s, io), a));
+                }
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
 
