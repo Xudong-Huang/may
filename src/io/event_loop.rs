@@ -31,7 +31,8 @@ impl EventLoop {
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
     pub fn run(&self, id: usize) -> io::Result<()> {
-        let mut events_buf: [SysEvent; 1024] = unsafe { ::std::mem::uninitialized() };
+        let mut events_buf: [SysEvent; 1024] =
+            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
         let mut next_expire = None;
         loop {
             next_expire = match self.selector.select(id, &mut events_buf, next_expire) {
