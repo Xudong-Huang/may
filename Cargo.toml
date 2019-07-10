@@ -27,7 +27,7 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 [dependencies]
 log = "0.4"
 time = "0.1"
-socket2 = { version = "0.3", features = ["unix"] }
+socket2 = { version = "0.3", features = ["unix", "reuseport"] }
 num_cpus = "1.10"
 smallvec = "0.6"
 generator = "0.6"

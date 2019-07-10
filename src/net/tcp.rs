@@ -305,7 +305,27 @@ impl TcpListener {
     }
 
     pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<TcpListener> {
-        let s = net::TcpListener::bind(addr)?;
+        use socket2::{Domain, Socket, Type};
+        let mut addrs = addr.to_socket_addrs()?;
+        let addr = addrs.next().unwrap();
+        let listener = match &addr {
+            SocketAddr::V4(_) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::ipv6(), Type::stream(), None)?,
+        };
+
+        // windows not have reuset port but reuse address is not safe
+        listener.set_reuse_address(true)?;
+
+        #[cfg(unix)]
+        listener.set_reuse_port(true)?;
+
+        listener.bind(&addr.into())?;
+        for addr in addrs {
+            listener.bind(&addr.into())?;
+        }
+        listener.listen(256)?;
+
+        let s = listener.into_tcp_listener();
         TcpListener::new(s)
     }
 

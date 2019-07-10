@@ -74,24 +74,27 @@ fn main() {
     let threads = args.flag_t;
     may::config().set_io_workers(threads);
 
-    go!(move || {
-        // let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-        let listener = TcpListener::bind(("0.0.0.0", port)).unwrap();
-        println!(
-            "Starting tcp echo server on {:?}\nRunning on {} threads",
-            listener.local_addr().unwrap(),
-            threads
-        );
+    may::coroutine::scope(|s| {
+        for i in 0..threads {
+            go!(s, move || {
+                // let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+                let listener = TcpListener::bind(("0.0.0.0", port)).unwrap();
 
-        for stream in listener.incoming() {
-            match stream {
-                Ok(s) => {
-                    go!(move || handle_client(s));
+                println!(
+                    "Starting tcp echo server on {:?}",
+                    listener.local_addr().unwrap(),
+                );
+                println!("running on thread id {}", i);
+
+                for stream in listener.incoming() {
+                    match stream {
+                        Ok(s) => {
+                            go!(move || handle_client(s));
+                        }
+                        Err(e) => println!("err = {:?}", e),
+                    }
                 }
-                Err(e) => println!("err = {:?}", e),
-            }
+            });
         }
-    })
-    .join()
-    .unwrap();
+    });
 }
