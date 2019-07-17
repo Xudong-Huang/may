@@ -1,6 +1,6 @@
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Once, ONCE_INIT};
+use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
 
@@ -114,7 +114,7 @@ pub fn get_scheduler() -> &'static Scheduler {
             return &*SCHED;
         }
     }
-    static ONCE: Once = ONCE_INIT;
+    static ONCE: Once = Once::new();
     ONCE.call_once(init_scheduler);
     unsafe { &*SCHED }
 }

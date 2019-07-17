@@ -96,7 +96,7 @@ impl<T> InnerQueue<T> {
                 .take(Ordering::Relaxed)
                 .map(|w| w.unpark())
                 .unwrap_or(()),
-            n if n > 1 => return,
+            n if n > 1 => {}
             n => panic!("bad number of channels left {}", n),
         }
     }

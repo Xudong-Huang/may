@@ -102,7 +102,7 @@ impl<T> InnerQueue<T> {
                     self.sem.post();
                 }
             }
-            n if n > 1 => return,
+            n if n > 1 => {}
             n => panic!("bad number of tx_ports left {}", n),
         }
     }
@@ -117,7 +117,7 @@ impl<T> InnerQueue<T> {
                 // there is no receiver any more, clear the data
                 while let Ok(_) = self.queue.pop() {}
             }
-            n if n > 1 => return,
+            n if n > 1 => {}
             n => panic!("bad number of rx_ports left {}", n),
         }
     }
