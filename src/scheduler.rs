@@ -168,10 +168,10 @@ impl Scheduler {
             }
         };
 
-        fn steal_local<T>(stealer: &deque::Stealer<T>) -> Option<T> {
+        fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
             let backoff = Backoff::new();
             loop {
-                match stealer.steal() {
+                match stealer.steal_batch_and_pop(local) {
                     deque::Steal::Success(t) => return Some(t),
                     deque::Steal::Empty => return None,
                     deque::Steal::Retry => backoff.snooze(),
@@ -185,7 +185,10 @@ impl Scheduler {
                 // Try stealing a batch of tasks from the global queue.
                 steal_global(&self.global_queue, local).or_else(|| {
                     // Try stealing a of task from other local queues.
-                    stealers.iter().map(steal_local).find_map(|r| r)
+                    stealers
+                        .iter()
+                        .map(|s| steal_local(s, local))
+                        .find_map(|r| r)
                 })
             });
 
@@ -202,8 +205,9 @@ impl Scheduler {
                     }
                 }
 
-                // thread::park_timeout(Duration::from_millis(100));
-                thread::park();
+                // wake up every 500ms to check if there are more tasks
+                thread::park_timeout(Duration::from_millis(500));
+                // thread::park();
             }
         }
     }
