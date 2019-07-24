@@ -240,7 +240,7 @@ impl Builder {
     /// Spawns a new coroutine, and returns a join handle for it.
     /// The join handle can be used to block on
     /// termination of the child coroutine, including recovering its panics.
-    fn spawn_impl<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    fn spawn_impl<F, T>(self, f: F) -> io::Result<(CoroutineImpl, JoinHandle<T>)>
     where
         F: FnOnce() -> T,
         F: Send + 'static,
@@ -296,9 +296,7 @@ impl Builder {
         // attache the local storage to the coroutine
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
-        // put the coroutine to ready list
-        sched.schedule_global(co);
-        Ok(make_join_handle(handle, join, packet, panic))
+        Ok((co, make_join_handle(handle, join, packet, panic)))
     }
 
     /// Spawns a new coroutine by taking ownership of the `Builder`, and returns an
@@ -317,7 +315,7 @@ impl Builder {
     ///
     ///  - Access [`TLS`] in coroutine may trigger undefined behavior.
     ///  - If the coroutine exceed the stack during execution, this would trigger
-    ///    undefined behavior
+    ///    memory segment fault
     ///
     /// If you find it annoying to wrap every thing in the unsafe block, you can
     /// use the [`go!`] macro instead.
@@ -348,7 +346,27 @@ impl Builder {
         T: Send + 'static,
     {
         // we will still get optimizations in spawn_impl
-        self.spawn_impl(f)
+        let (co, handle) = self.spawn_impl(f)?;
+
+        // put the coroutine to ready list
+        get_scheduler().schedule_global(co);
+
+        Ok(handle)
+    }
+
+    /// first run the coroutine in current thread, you should allways use
+    /// `spawn` instead of this API.
+    pub unsafe fn spawn_local<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
+    where
+        F: FnOnce() -> T,
+        F: Send + 'static,
+        T: Send + 'static,
+    {
+        // we will still get optimizations in spawn_impl
+        let (co, handle) = self.spawn_impl(f)?;
+        // first run the coroutine in current thread
+        run_coroutine(co);
+        Ok(handle)
     }
 }
 
@@ -375,7 +393,7 @@ impl Builder {
 ///
 ///  - Access [`TLS`] in coroutine may trigger undefined behavior.
 ///  - If the coroutine exceed the stack during execution, this would trigger
-///    undefined behavior
+///    memory segment fault
 ///
 /// If you find it annoying to wrap every thing in the unsafe block, you can
 /// use the [`go!`] macro instead.
