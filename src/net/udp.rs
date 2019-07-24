@@ -314,7 +314,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(unix)]
 impl IntoRawFd for UdpSocket {
     fn into_raw_fd(self) -> RawFd {
-        self.sys.as_raw_fd()
+        self.sys.into_raw_fd()
         // drop self will dereg from the selector
     }
 }
