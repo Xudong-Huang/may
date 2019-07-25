@@ -7,6 +7,7 @@ use std::io::{self, Read, Write};
 use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
 use std::time::Duration;
 
+use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 use crate::io as io_impl;
 use crate::sync::atomic_dur::AtomicDuration;
@@ -37,7 +38,7 @@ impl<T: AsRawHandle + IntoRawHandle> IntoRawHandle for CoIo<T> {
 
 impl<T: AsRawHandle> CoIo<T> {
     /// create `CoIo` instance from `T`
-    pub fn new(io: T) -> io::Result<Self> {
+    pub fn new(io: T) -> Result<Self, Error<T>> {
         use std::os::windows::io::{AsRawSocket, RawSocket};
         struct CoHandle(RawHandle);
         impl AsRawSocket for CoHandle {
@@ -47,13 +48,16 @@ impl<T: AsRawHandle> CoIo<T> {
         }
 
         let handle = CoHandle(io.as_raw_handle());
-        io_impl::add_socket(&handle).map(|io_data| CoIo {
-            inner: io,
-            io: io_data,
-            ctx: io_impl::IoContext::new(),
-            read_timeout: AtomicDuration::new(None),
-            write_timeout: AtomicDuration::new(None),
-        })
+        match io_impl::add_socket(&handle) {
+            Ok(io_data) => Ok(CoIo {
+                inner: io,
+                io: io_data,
+                ctx: io_impl::IoContext::new(),
+                read_timeout: AtomicDuration::new(None),
+                write_timeout: AtomicDuration::new(None),
+            }),
+            Err(e) => Err(Error::new(e, io)),
+        }
     }
 
     /// reset internal io data
