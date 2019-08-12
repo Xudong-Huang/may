@@ -32,6 +32,7 @@ impl<'a> SocketWrite<'a> {
 }
 
 impl<'a> EventSource for SocketWrite<'a> {
+    #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         if let Some(dur) = self.timeout {

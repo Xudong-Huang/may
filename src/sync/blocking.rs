@@ -7,13 +7,13 @@ use crate::coroutine_impl::is_coroutine;
 use crate::park::{Park, ParkError};
 
 #[derive(Debug)]
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::mutex_atomic))]
+#[allow(clippy::mutex_atomic)]
 pub struct ThreadPark {
     lock: Mutex<bool>,
     cvar: Condvar,
 }
 
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::mutex_atomic))]
+#[allow(clippy::mutex_atomic)]
 impl ThreadPark {
     fn new() -> Self {
         ThreadPark {

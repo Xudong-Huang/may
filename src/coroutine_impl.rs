@@ -92,7 +92,7 @@ impl EventSource for Done {
 pub type CoroutineImpl = Generator<'static, EventResult, EventSubscriber>;
 
 #[inline]
-#[cfg_attr(feature = "cargo-clippy", allow(clippy::cast_ptr_alignment))]
+#[allow(clippy::cast_ptr_alignment)]
 fn get_co_local(co: &CoroutineImpl) -> *mut CoroutineLocal {
     co.get_local_data() as *mut CoroutineLocal
 }
@@ -242,8 +242,7 @@ impl Builder {
     /// termination of the child coroutine, including recovering its panics.
     fn spawn_impl<F, T>(self, f: F) -> io::Result<(CoroutineImpl, JoinHandle<T>)>
     where
-        F: FnOnce() -> T,
-        F: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
         static DONE: Done = Done {};
@@ -341,8 +340,7 @@ impl Builder {
     /// [`spawn`]: ./fn.spawn.html
     pub unsafe fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
-        F: FnOnce() -> T,
-        F: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
         // we will still get optimizations in spawn_impl
@@ -358,8 +356,7 @@ impl Builder {
     /// `spawn` instead of this API.
     pub unsafe fn spawn_local<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
-        F: FnOnce() -> T,
-        F: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
         // we will still get optimizations in spawn_impl

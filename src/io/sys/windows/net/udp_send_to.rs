@@ -42,6 +42,7 @@ impl<'a> UdpSendTo<'a> {
 }
 
 impl<'a> EventSource for UdpSendTo<'a> {
+    #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         if let Some(dur) = self.timeout {
