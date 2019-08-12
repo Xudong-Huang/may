@@ -92,17 +92,15 @@ impl<T: Send> State<T> {
         let mask = self.mask;
         let mut pos = self.enqueue_pos.load(Relaxed);
         loop {
-            let node = &self.buffer[pos & mask];
-            let seq = unsafe { (*node.get()).sequence.load(Acquire) };
+            let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
+            let seq = node.sequence.load(Acquire);
             let diff: isize = seq as isize - pos as isize;
 
             if diff == 0 {
                 let enqueue_pos = self.enqueue_pos.compare_and_swap(pos, pos + 1, Relaxed);
                 if enqueue_pos == pos {
-                    unsafe {
-                        (*node.get()).value = Some(value);
-                        (*node.get()).sequence.store(pos + 1, Release);
-                    }
+                    node.value = Some(value);
+                    node.sequence.store(pos + 1, Release);
                     break;
                 } else {
                     pos = enqueue_pos;
@@ -120,17 +118,15 @@ impl<T: Send> State<T> {
         let mask = self.mask;
         let mut pos = self.dequeue_pos.load(Relaxed);
         loop {
-            let node = &self.buffer[pos & mask];
-            let seq = unsafe { (*node.get()).sequence.load(Acquire) };
+            let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
+            let seq = node.sequence.load(Acquire);
             let diff: isize = seq as isize - (pos + 1) as isize;
             if diff == 0 {
                 let dequeue_pos = self.dequeue_pos.compare_and_swap(pos, pos + 1, Relaxed);
                 if dequeue_pos == pos {
-                    unsafe {
-                        let value = (*node.get()).value.take();
-                        (*node.get()).sequence.store(pos + mask + 1, Release);
-                        return value;
-                    }
+                    let value = node.value.take();
+                    node.sequence.store(pos + mask + 1, Release);
+                    return value;
                 } else {
                     pos = dequeue_pos;
                 }
