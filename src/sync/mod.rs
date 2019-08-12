@@ -6,7 +6,6 @@ mod atomic_option;
 mod atomic_option;
 mod blocking;
 mod condvar;
-mod mpsc_list;
 mod mutex;
 mod poison;
 mod rwlock;

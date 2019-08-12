@@ -1,10 +1,5 @@
 //! compatible with std::sync::mutex except for both thread and coroutine
 //! please ref the doc from std::sync::mutex
-use super::blocking::SyncBlocker;
-use super::mpsc_list;
-use super::poison;
-use crate::cancel::trigger_cancel_panic;
-use crate::park::ParkError;
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -13,9 +8,15 @@ use std::sync::atomic::{fence, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::{LockResult, TryLockError, TryLockResult};
 
+use super::blocking::SyncBlocker;
+use super::poison;
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
+use crossbeam::queue::SegQueue as WaitList;
+
 pub struct Mutex<T: ?Sized> {
     // the waiting blocker list
-    to_wake: mpsc_list::Queue<Arc<SyncBlocker>>,
+    to_wake: WaitList<Arc<SyncBlocker>>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
     poison: poison::Flag,
@@ -40,7 +41,7 @@ impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
     pub fn new(t: T) -> Mutex<T> {
         Mutex {
-            to_wake: mpsc_list::Queue::new(),
+            to_wake: WaitList::new(),
             cnt: AtomicUsize::new(0),
             poison: poison::Flag::new(),
             data: UnsafeCell::new(t),
@@ -64,7 +65,8 @@ impl<T: ?Sized> Mutex<T> {
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
+                .map(|w| self.unpark_one(&w))
+                .expect("got null blocker!");
         }
         loop {
             match cur.park(None) {
@@ -135,7 +137,8 @@ impl<T: ?Sized> Mutex<T> {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
+                .map(|w| self.unpark_one(&w))
+                .expect("got null blocker!");
         }
     }
 

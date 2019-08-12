@@ -7,8 +7,8 @@ use std::{cmp, io, isize, ptr};
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::timeout_list::{now, ns_to_ms};
+use crossbeam::queue::SegQueue as mpsc;
 use libc::{eventfd, EFD_NONBLOCK};
-use may_queue::mpsc_list::Queue as mpsc;
 use nix::sys::epoll::*;
 use nix::unistd::{close, read, write};
 use smallvec::SmallVec;
@@ -206,7 +206,7 @@ impl Selector {
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
         let free_ev = &self.vec[id].free_ev;
-        while let Some(_) = free_ev.pop() {}
+        while let Ok(_) = free_ev.pop() {}
     }
 
     // register the io request to the timeout list

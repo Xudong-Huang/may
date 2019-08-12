@@ -9,7 +9,8 @@ use std::thread;
 use std::time::Duration;
 
 use crate::sync::AtomicOption;
-use may_queue::mpsc_list::Queue as mpsc;
+// use may_queue::mpsc_list::Queue as mpsc;
+use crossbeam::queue::SegQueue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutList;
 
@@ -282,7 +283,7 @@ impl<T> TimerThread<T> {
     pub fn run<F: Fn(T)>(&self, f: &F) {
         let current_thread = thread::current();
         loop {
-            while let Some(h) = self.remove_list.pop() {
+            while let Ok(h) = self.remove_list.pop() {
                 h.remove();
             }
             // we must register the thread handle first

@@ -10,7 +10,7 @@ use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-use may_queue::mpsc_list;
+use crossbeam::queue::SegQueue as WaitList;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex};
@@ -23,7 +23,7 @@ pub struct RwLock<T: ?Sized> {
     // below two variables consist a global mutex
     // we need to deal with the cancel logic differently
     // the waiting blocker list
-    to_wake: mpsc_list::Queue<Arc<SyncBlocker>>,
+    to_wake: WaitList<Arc<SyncBlocker>>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
 
@@ -57,7 +57,7 @@ pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
 impl<T> RwLock<T> {
     pub fn new(t: T) -> RwLock<T> {
         RwLock {
-            to_wake: mpsc_list::Queue::new(),
+            to_wake: WaitList::new(),
             cnt: AtomicUsize::new(0),
             rlock: Mutex::new(0),
             poison: poison::Flag::new(),
@@ -83,7 +83,8 @@ impl<T: ?Sized> RwLock<T> {
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
+                .map(|w| self.unpark_one(&w))
+                .expect("got null blocker!");
         }
         match cur.park(None) {
             Ok(_) => Ok(()),
@@ -129,7 +130,8 @@ impl<T: ?Sized> RwLock<T> {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
                 .pop()
-                .map_or_else(|| panic!("got null blocker!"), |w| self.unpark_one(&w));
+                .map(|w| self.unpark_one(&w))
+                .expect("got null blocker!");
         }
     }
 

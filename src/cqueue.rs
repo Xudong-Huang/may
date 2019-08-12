@@ -12,7 +12,8 @@ use crate::scoped::spawn_unsafe;
 use crate::sync::Mutex;
 use crate::sync::{AtomicOption, Blocker};
 use crate::yield_now::yield_with;
-use may_queue::mpsc_list;
+
+use crossbeam::queue::SegQueue as Queue;
 
 /// This enumeration is the list of the possible reasons that `poll`
 /// could not return Event when called.
@@ -147,7 +148,7 @@ impl<'a> Drop for EventSender<'a> {
 /// cqueue interface for general select model
 pub struct Cqueue {
     // the mpsc queue that transfer event
-    ev_queue: mpsc_list::Queue<Event>,
+    ev_queue: Queue<Event>,
     // thread/coroutine for wake up
     to_wake: AtomicOption<Arc<Blocker>>,
     // track how many coroutines left
@@ -242,9 +243,12 @@ impl Cqueue {
         let deadline = timeout.map(|dur| Instant::now() + dur);
         loop {
             match self.ev_queue.pop() {
-                Some(mut ev) => run_ev!(ev),
-                None if self.cnt.load(Ordering::Relaxed) == 0 => return Err(PollError::Finished),
-                _ => {}
+                Ok(mut ev) => run_ev!(ev),
+                Err(_) => {
+                    if self.cnt.load(Ordering::Relaxed) == 0 {
+                        return Err(PollError::Finished);
+                    }
+                }
             }
 
             let cur = Blocker::current();
@@ -252,10 +256,10 @@ impl Cqueue {
             self.to_wake.swap(cur.clone(), Ordering::Release);
             // re-check the queue
             match self.ev_queue.pop() {
-                None => {
+                Err(_) => {
                     cur.park(timeout).ok();
                 }
-                Some(mut ev) => {
+                Ok(mut ev) => {
                     if let Some(w) = self.to_wake.take(Ordering::Relaxed) {
                         w.unpark();
                     }
@@ -313,7 +317,7 @@ where
     F: FnOnce(&Cqueue) -> R + 'a,
 {
     let cqueue = Cqueue {
-        ev_queue: mpsc_list::Queue::new(),
+        ev_queue: Queue::new(),
         to_wake: AtomicOption::none(),
         cnt: AtomicUsize::new(0),
         selectors: Mutex::new(Vec::new()),
