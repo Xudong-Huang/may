@@ -13,7 +13,6 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 use crossbeam::deque;
 use crossbeam::utils::Backoff;
-use may_queue::mpmc_bounded::Queue as WaitList;
 
 #[cfg(nightly)]
 use std::intrinsics::likely;
@@ -50,7 +49,43 @@ fn filter_cancel_panic() {
     }));
 }
 
-static mut SCHED: *const Scheduler = 0 as *const _;
+static mut SCHED: *const Scheduler = std::ptr::null();
+
+struct WorkerThreads {
+    parked: Vec<AtomicUsize>,
+    threads: Vec<thread::Thread>,
+}
+
+impl WorkerThreads {
+    fn new(workers: usize) -> Self {
+        let mut parked = Vec::with_capacity(workers);
+        let mut threads = Vec::with_capacity(workers);
+        for _ in 0..workers {
+            threads.push(thread::current()); // fake init
+            parked.push(AtomicUsize::new(0));
+        }
+
+        WorkerThreads { parked, threads }
+    }
+
+    fn wake_one(&self) {
+        for (i, parked) in self.parked.iter().enumerate() {
+            if parked.load(Ordering::Relaxed) == 1 {
+                parked.store(0, Ordering::Relaxed);
+                self.threads[i].unpark();
+                break;
+            }
+        }
+    }
+
+    fn get_thread_stat(&self, id: usize) -> &AtomicUsize {
+        unsafe { self.parked.get_unchecked(id) }
+    }
+
+    fn get_thread_handle(&self, id: usize) -> &thread::Thread {
+        unsafe { self.threads.get_unchecked(id) }
+    }
+}
 
 #[cold]
 #[inline(never)]
@@ -71,11 +106,17 @@ fn init_scheduler() {
 
     // run the workers in background
     for id in 0..workers {
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             filter_cancel_panic();
             let s = unsafe { &*SCHED };
             s.run(id);
-        });
+        })
+        .thread()
+        .clone();
+
+        // set the real thread handle
+        let s = unsafe { &mut *(SCHED as *const _ as *mut Scheduler) };
+        s.workers.threads[id] = handle;
     }
 
     // timer thread
@@ -119,12 +160,13 @@ pub fn get_scheduler() -> &'static Scheduler {
     unsafe { &*SCHED }
 }
 
+#[repr(align(128))]
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
     global_queue: deque::Injector<CoroutineImpl>,
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
-    wait_list: WaitList<thread::Thread>,
+    workers: WorkerThreads,
     timer_thread: TimerThread,
 }
 
@@ -138,7 +180,7 @@ impl Scheduler {
             global_queue: deque::Injector::new(),
             local_queues,
             timer_thread: TimerThread::new(),
-            wait_list: WaitList::with_capacity(workers),
+            workers: WorkerThreads::new(workers),
         })
     }
 
@@ -196,18 +238,20 @@ impl Scheduler {
                 run_coroutine(co);
             } else {
                 // first register thread handle
-                self.wait_list.push(thread::current()).ok();
+                let parked = self.workers.get_thread_stat(id);
+                parked.store(1, Ordering::Relaxed);
 
                 // do a re-check
                 if !self.global_queue.is_empty() {
-                    if let Some(t) = self.wait_list.pop() {
-                        t.unpark();
-                    }
+                    self.workers.get_thread_handle(id).unpark()
                 }
 
                 // wake up every 500ms to check if there are more tasks
                 thread::park_timeout(Duration::from_millis(500));
                 // thread::park();
+
+                // clear the park stat after comeback
+                parked.store(0, Ordering::Relaxed);
             }
         }
     }
@@ -232,9 +276,7 @@ impl Scheduler {
     pub fn schedule_global(&self, co: CoroutineImpl) {
         self.global_queue.push(co);
         // signal one waiting thread if any
-        if let Some(t) = self.wait_list.pop() {
-            t.unpark();
-        }
+        self.workers.wake_one();
     }
 
     #[inline]
