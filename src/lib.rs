@@ -27,38 +27,7 @@
 #![cfg_attr(nightly, feature(core_intrinsics))]
 
 #[macro_use]
-#[doc(hidden)]
 extern crate log;
-#[doc(hidden)]
-extern crate socket2;
-// windows platform not use this crate
-#[doc(hidden)]
-extern crate crossbeam;
-#[doc(hidden)]
-extern crate generator;
-#[doc(hidden)]
-extern crate may_queue;
-#[doc(hidden)]
-extern crate num_cpus;
-#[doc(hidden)]
-extern crate smallvec;
-#[cfg(test)]
-#[doc(hidden)]
-extern crate tempdir;
-
-#[cfg(windows)]
-#[doc(hidden)]
-extern crate miow;
-#[cfg(windows)]
-#[doc(hidden)]
-extern crate winapi;
-
-#[cfg(unix)]
-#[doc(hidden)]
-extern crate libc;
-#[cfg(unix)]
-#[doc(hidden)]
-extern crate nix;
 
 mod cancel;
 mod config;
