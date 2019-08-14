@@ -1,5 +1,6 @@
 mod socket_read;
 mod socket_write;
+mod socket_write_vectored;
 mod tcp_listener_accpet;
 mod tcp_stream_connect;
 mod udp_recv_from;
@@ -11,6 +12,7 @@ mod unix_stream_connect;
 
 pub use self::socket_read::SocketRead;
 pub use self::socket_write::SocketWrite;
+pub use self::socket_write_vectored::SocketWriteVectored;
 pub use self::tcp_listener_accpet::TcpListenerAccept;
 pub use self::tcp_stream_connect::TcpStreamConnect;
 pub use self::udp_recv_from::UdpRecvFrom;

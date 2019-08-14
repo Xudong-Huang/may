@@ -243,6 +243,42 @@ impl Write for TcpStream {
         writer.done()
     }
 
+    #[cfg(unix)]
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        if self
+            .ctx
+            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
+            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
+        {
+            #[cold]
+            return self.sys.write_vectored(bufs);
+        }
+
+        #[cfg(unix)]
+        {
+            self.io.reset();
+            // this is an earlier return try for nonblocking write
+            match self.sys.write_vectored(bufs) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        let mut writer =
+            net_impl::SocketWriteVectored::new(self, &self.sys, bufs, self.write_timeout.get());
+        yield_with(&writer);
+        writer.done()
+    }
+
     fn flush(&mut self) -> io::Result<()> {
         // TcpStream just return Ok(()), no need to yield
         self.sys.flush()
