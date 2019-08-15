@@ -32,6 +32,7 @@ impl Config {
     ///
     /// the minimum worker thread is 1, if you pass 0 to it, will use internal default
     pub fn set_workers(&self, workers: usize) -> &Self {
+        assert!(workers <= 64);
         info!("set workers={:?}", workers);
         WORKERS.store(workers, Ordering::Relaxed);
         self

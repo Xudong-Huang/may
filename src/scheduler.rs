@@ -1,5 +1,5 @@
 use std::io;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
@@ -52,34 +52,31 @@ fn filter_cancel_panic() {
 static mut SCHED: *const Scheduler = std::ptr::null();
 
 struct WorkerThreads {
-    parked: Vec<AtomicUsize>,
+    parked: AtomicU64,
     threads: Vec<thread::Thread>,
 }
 
 impl WorkerThreads {
     fn new(workers: usize) -> Self {
-        let mut parked = Vec::with_capacity(workers);
+        let parked = AtomicU64::new(0);
         let mut threads = Vec::with_capacity(workers);
         for _ in 0..workers {
             threads.push(thread::current()); // fake init
-            parked.push(AtomicUsize::new(0));
         }
 
         WorkerThreads { parked, threads }
     }
 
     fn wake_one(&self) {
-        for (i, parked) in self.parked.iter().enumerate() {
-            if parked.load(Ordering::Relaxed) == 1 {
-                parked.store(0, Ordering::Relaxed);
-                self.threads[i].unpark();
-                break;
-            }
+        let parked = self.parked.load(Ordering::Relaxed);
+        let first_thread = parked.trailing_zeros() as usize;
+        if first_thread >= self.threads.len() {
+            // there is no thread pending
+            return;
         }
-    }
-
-    fn get_thread_stat(&self, id: usize) -> &AtomicUsize {
-        unsafe { self.parked.get_unchecked(id) }
+        let mask = 1 << first_thread;
+        self.parked.fetch_and(!mask, Ordering::Relaxed);
+        self.threads[first_thread].unpark();
     }
 
     fn get_thread_handle(&self, id: usize) -> &thread::Thread {
@@ -185,6 +182,7 @@ impl Scheduler {
     }
 
     fn run(&self, id: usize) {
+        let mask = 1 << id;
         #[cfg(nightly)]
         WORKER_ID.store(id, Ordering::Relaxed);
         #[cfg(not(nightly))]
@@ -238,8 +236,7 @@ impl Scheduler {
                 run_coroutine(co);
             } else {
                 // first register thread handle
-                let parked = self.workers.get_thread_stat(id);
-                parked.store(1, Ordering::Relaxed);
+                self.workers.parked.fetch_or(mask, Ordering::Relaxed);
 
                 // do a re-check
                 if !self.global_queue.is_empty() {
@@ -251,7 +248,7 @@ impl Scheduler {
                 // thread::park();
 
                 // clear the park stat after comeback
-                parked.store(0, Ordering::Relaxed);
+                self.workers.parked.fetch_and(!mask, Ordering::Relaxed);
             }
         }
     }
