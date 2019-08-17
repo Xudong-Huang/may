@@ -19,15 +19,15 @@ May is a high-performant library for programming stackful coroutines with which 
 ----------
 
 ## Table of contents
-* [Features](https://github.com/Gymmasssorla/may#features)
-* [Usage](https://github.com/Gymmasssorla/may#usage)
-* [More examples](https://github.com/Gymmasssorla/may#more-examples)
-  * [The CPU heavy load examples](https://github.com/Gymmasssorla/may#the-cpu-heavy-load-examples)
-  * [The I/O heavy bound examples](https://github.com/Gymmasssorla/may#the-io-heavy-bound-examples)
-* [Performance](https://github.com/Gymmasssorla/may#performance)
-* [Caveat](https://github.com/Gymmasssorla/may#caveat)
-* [How to tune a stack size](https://github.com/Gymmasssorla/may#how-to-tune-a-stack-size)
-* [License](https://github.com/Gymmasssorla/may#license)
+* [Features](#features)
+* [Usage](#usage)
+* [More examples](#more-examples)
+  * [The CPU heavy load examples](#the-cpu-heavy-load-examples)
+  * [The I/O heavy bound examples](#the-io-heavy-bound-examples)
+* [Performance](#performance)
+* [Caveat](#caveat)
+* [How to tune a stack size](#how-to-tune-a-stack-size)
+* [License](#license)
 
 ----------
 
