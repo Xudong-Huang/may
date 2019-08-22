@@ -36,6 +36,12 @@ pub struct Park {
     wait_kernel: AtomicBool,
 }
 
+impl Default for Park {
+    fn default() -> Self {
+        Park::new()
+    }
+}
+
 // this is the park resource type (spmc style)
 impl Park {
     pub fn new() -> Self {
@@ -102,7 +108,7 @@ impl Park {
 
     // unpark the underlying coroutine if any
     #[inline]
-    pub fn unpark(&self) {
+    pub(crate) fn unpark_impl(&self, b_sync: bool) {
         let mut state = self.state.load(Ordering::Acquire);
         if state & 1 == 1 {
             // the state is already set do nothing here
@@ -116,7 +122,7 @@ impl Park {
                 Ordering::AcqRel,
                 Ordering::Relaxed,
             ) {
-                Ok(_) => return self.wake_up(false),
+                Ok(_) => return self.wake_up(b_sync),
                 Err(x) => {
                     if x & 1 == 1 {
                         break; // already set, do nothing
@@ -125,6 +131,12 @@ impl Park {
                 }
             }
         }
+    }
+
+    // unpark the underlying coroutine if any, push to the ready task queue
+    #[inline]
+    pub fn unpark(&self) {
+        self.unpark_impl(false);
     }
 
     // remove the timeout handle after return back to user space

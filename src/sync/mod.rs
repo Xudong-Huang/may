@@ -18,7 +18,7 @@ pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;
 pub use self::atomic_option::AtomicOption;
-pub use self::blocking::Blocker;
+pub use self::blocking::{Blocker, FastBlocker};
 pub use self::condvar::{Condvar, WaitTimeoutResult};
 pub use self::mutex::{Mutex, MutexGuard};
 pub use self::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};

@@ -100,6 +100,34 @@ impl Blocker {
     }
 }
 
+// only used for coroutine that would schedule immediately
+// when unparked. which means not push to the task queue
+// but run the coroutine right away in the current thread
+// this is an optimized blocker especially usefull for waiting io
+#[derive(Debug, Default)]
+pub struct FastBlocker(Park);
+
+impl FastBlocker {
+    pub fn new() -> Self {
+        if !is_coroutine() {
+            panic!("only possible to block coroutine");
+        }
+
+        FastBlocker(Park::new())
+    }
+
+    #[inline]
+    pub fn park(&self, timeout: Option<Duration>) -> Result<(), ParkError> {
+        self.0.park_timeout(timeout)
+    }
+
+    // run the coroutine immediately
+    #[inline]
+    pub fn unpark(&self) {
+        self.0.unpark_impl(true)
+    }
+}
+
 /// a blocker type with async release support
 /// the blocker would ignore the cancel
 /// need to deal with it in custom logic
