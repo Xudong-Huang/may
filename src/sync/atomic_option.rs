@@ -96,6 +96,12 @@ impl<T: Wrapped> AtomicOption<T> {
     }
 }
 
+impl<T: Wrapped> Default for AtomicOption<T> {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
 impl<T: Wrapped> Drop for AtomicOption<T> {
     fn drop(&mut self) {
         self.take(Ordering::Acquire);
