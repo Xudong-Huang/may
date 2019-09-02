@@ -9,7 +9,6 @@ use std::thread;
 use std::time::Duration;
 
 use crate::sync::AtomicOption;
-// use may_queue::mpsc_list::Queue as mpsc;
 use crossbeam::queue::SegQueue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutList;

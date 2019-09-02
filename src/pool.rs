@@ -1,7 +1,7 @@
 use crate::config::config;
 use crate::coroutine_impl::CoroutineImpl;
+use crossbeam::queue::ArrayQueue as Queue;
 use generator::Gn;
-use may_queue::mpmc_bounded::Queue;
 
 /// the raw coroutine pool, with stack and register prepared
 /// you need to tack care of the local storage
@@ -19,7 +19,7 @@ impl CoroutinePool {
 
     pub fn new() -> Self {
         let capacity = config().get_pool_capacity();
-        let pool = Queue::with_capacity(capacity);
+        let pool = Queue::new(capacity);
         for _ in 0..capacity {
             let co = Self::create_dummy_coroutine();
             pool.push(co).unwrap();
@@ -32,8 +32,8 @@ impl CoroutinePool {
     #[inline]
     pub fn get(&self) -> CoroutineImpl {
         match self.pool.pop() {
-            Some(co) => co,
-            None => Self::create_dummy_coroutine(),
+            Ok(co) => co,
+            Err(_) => Self::create_dummy_coroutine(),
         }
     }
 
