@@ -35,7 +35,7 @@ crossbeam = "0.7"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.14"
+nix = "0.15"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
@@ -49,7 +49,7 @@ docopt = "1.0"
 tempdir = "0.3"
 httparse = "1.1"
 native-tls = "0.2"
-tungstenite = "0.8"
+tungstenite = "0.9"
 serde_derive = "1.0"
 
 
