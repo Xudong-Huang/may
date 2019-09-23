@@ -58,6 +58,14 @@ impl<T> BlockNode<T> {
         }
     }
 
+    /// peek the indexed value
+    /// not safe if pop out a value when hold the data ref
+    #[inline]
+    pub unsafe fn peek(&self, index: usize) -> &T {
+        let data = self.data.ptr().add(index & BLOCK_MASK);
+        &*data
+    }
+
     /// read out indexed value
     /// this would make the underlying data dropped when it get out of scope
     #[inline]

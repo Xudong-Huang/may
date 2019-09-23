@@ -32,6 +32,7 @@ impl<T> Queue<T> {
             pop_index: AtomicUsize::new(0),
         }
     }
+
     /// push a value to the queue
     pub fn push(&self, v: T) {
         let tail = unsafe { &mut *self.tail.load(Ordering::Relaxed) };
@@ -49,6 +50,19 @@ impl<T> Queue<T> {
 
         // commit the push
         self.push_index.store(new_index, Ordering::Relaxed);
+    }
+
+    /// peek the head
+    /// safety: not safe if you pop out the head value when hold the data ref
+    pub unsafe fn peek(&self) -> Option<&T> {
+        let index = self.pop_index.load(Ordering::Relaxed);
+        let push_index = self.push_index.load(Ordering::Relaxed);
+        if index == push_index {
+            return None;
+        }
+
+        let head = &mut *self.head.load(Ordering::Relaxed);
+        Some(head.peek(index))
     }
 
     /// pop from the queue, if it's empty return None
@@ -197,6 +211,17 @@ mod bench {
     use std::thread;
 
     use crate::test_queue::ScBlockPop;
+
+    #[test]
+    fn spsc_peek() {
+        let q = Queue::new();
+        assert_eq!(unsafe { q.peek() }, None);
+        q.push(1);
+        assert_eq!(unsafe { q.peek() }, Some(&1));
+        let v = q.pop();
+        assert_eq!(v, Some(1));
+        assert_eq!(unsafe { q.peek() }, None);
+    }
 
     #[bench]
     fn bulk_pop_1p1c_bench(b: &mut Bencher) {
