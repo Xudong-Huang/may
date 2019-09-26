@@ -438,7 +438,7 @@ pub fn current() -> Coroutine {
 
 /// if current context is coroutine
 #[inline]
-pub(crate) fn is_coroutine() -> bool {
+pub fn is_coroutine() -> bool {
     // we never call this function in a pure generator context
     // so we can sure that this function is called
     // either in a thread context or in a coroutine context
