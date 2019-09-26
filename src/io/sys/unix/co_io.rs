@@ -10,6 +10,7 @@ use std::time::Duration;
 use self::io_impl::co_io_err::Error;
 use self::io_impl::net as net_impl;
 use crate::io as io_impl;
+use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with;
 use libc;
 
@@ -41,8 +42,8 @@ pub struct CoIo<T: AsRawFd> {
     inner: T,
     io: io_impl::IoData,
     ctx: io_impl::IoContext,
-    read_timeout: Option<Duration>,
-    write_timeout: Option<Duration>,
+    read_timeout: AtomicDuration,
+    write_timeout: AtomicDuration,
 }
 
 impl<T: AsRawFd> io_impl::AsIoData for CoIo<T> {
@@ -80,8 +81,8 @@ impl<T: AsRawFd> CoIo<T> {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),
-            read_timeout: None,
-            write_timeout: None,
+            read_timeout: AtomicDuration::new(None),
+            write_timeout: AtomicDuration::new(None),
         })
     }
 
@@ -91,8 +92,8 @@ impl<T: AsRawFd> CoIo<T> {
             inner: io,
             io: io_data,
             ctx: io_impl::IoContext::new(),
-            read_timeout: None,
-            write_timeout: None,
+            read_timeout: AtomicDuration::new(None),
+            write_timeout: AtomicDuration::new(None),
         }
     }
 
@@ -124,25 +125,23 @@ impl<T: AsRawFd> CoIo<T> {
 
     /// get read timeout
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
-        Ok(self.read_timeout)
+        Ok(self.read_timeout.get())
     }
 
     /// get write timeout
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
-        Ok(self.write_timeout)
+        Ok(self.write_timeout.get())
     }
 
     /// set read timeout
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.read_timeout = dur;
+        self.read_timeout.swap(dur);
         Ok(())
     }
 
     /// set write timeout
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        let me = unsafe { &mut *(self as *const _ as *mut Self) };
-        me.write_timeout = dur;
+        self.write_timeout.swap(dur);
         Ok(())
     }
 
@@ -177,7 +176,7 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
             }
         }
 
-        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout);
+        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
         yield_with(&reader);
         reader.done()
     }
@@ -206,7 +205,7 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
             }
         }
 
-        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout);
+        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
         yield_with(&writer);
         writer.done()
     }
@@ -216,24 +215,24 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
     }
 }
 
-impl<'a, T: AsRawFd + Read> Read for &'a CoIo<T> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIo::<T>::read(s, buf)
-    }
-}
+// impl<'a, T: AsRawFd + Read> Read for &'a CoIo<T> {
+//     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+//         let s = unsafe { &mut *(*self as *const _ as *mut _) };
+//         CoIo::<T>::read(s, buf)
+//     }
+// }
 
-impl<'a, T: AsRawFd + Write> Write for &'a CoIo<T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIo::<T>::write(s, buf)
-    }
+// impl<'a, T: AsRawFd + Write> Write for &'a CoIo<T> {
+//     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+//         let s = unsafe { &mut *(*self as *const _ as *mut _) };
+//         CoIo::<T>::write(s, buf)
+//     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        let s = unsafe { &mut *(*self as *const _ as *mut _) };
-        CoIo::<T>::flush(s)
-    }
-}
+//     fn flush(&mut self) -> io::Result<()> {
+//         let s = unsafe { &mut *(*self as *const _ as *mut _) };
+//         CoIo::<T>::flush(s)
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

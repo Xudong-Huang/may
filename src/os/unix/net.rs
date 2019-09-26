@@ -276,35 +276,35 @@ impl UnixStream {
 
 impl io::Read for UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        io::Read::read(&mut &*self, buf)
+        self.0.read(buf)
     }
 }
 
-impl<'a> io::Read for &'a UnixStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        (&self.0).read(buf)
-    }
-}
+// impl<'a> io::Read for &'a UnixStream {
+//     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+//         (&self.0).read(buf)
+//     }
+// }
 
 impl io::Write for UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        io::Write::write(&mut &*self, buf)
+        self.0.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        io::Write::flush(&mut &*self)
+        self.0.flush()
     }
 }
 
-impl<'a> io::Write for &'a UnixStream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.0).write(buf)
-    }
+// impl<'a> io::Write for &'a UnixStream {
+//     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+//         (&self.0).write(buf)
+//     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        (&self.0).flush()
-    }
-}
+//     fn flush(&mut self) -> io::Result<()> {
+//         (&self.0).flush()
+//     }
+// }
 
 impl AsRawFd for UnixStream {
     fn as_raw_fd(&self) -> RawFd {
