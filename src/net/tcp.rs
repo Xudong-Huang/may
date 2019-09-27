@@ -44,7 +44,8 @@ impl TcpStream {
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         if !is_coroutine() {
             let s = net::TcpStream::connect(addr)?;
-            let io = io_impl::IoData::new(&s);
+            s.set_nonblocking(true)?;
+            let io = io_impl::add_socket(&s)?;
             return Ok(TcpStream::from_stream(s, io));
         }
 
@@ -64,7 +65,8 @@ impl TcpStream {
     pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
         if !is_coroutine() {
             let s = net::TcpStream::connect_timeout(addr, timeout)?;
-            let io = io_impl::IoData::new(&s);
+            s.set_nonblocking(true)?;
+            let io = io_impl::add_socket(&s)?;
             return Ok(TcpStream::from_stream(s, io));
         }
 
