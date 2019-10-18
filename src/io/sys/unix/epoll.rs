@@ -93,12 +93,15 @@ impl Selector {
         // info!("select; timeout={:?}", timeout_ms);
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let epfd = self.vec[id].epfd;
-        // let evfd = self.vec[id].evfd;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let epfd = single_selector.epfd;
+        // first register thread handle
+        let scheduler = get_scheduler();
+        scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
+
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
 
         // clear the park stat after comeback
-        let scheduler = get_scheduler();
         scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
         // add this would increase the performance!!!!!!!!
@@ -113,7 +116,7 @@ impl Selector {
                     // this is just a wakeup event, ignore it
                     let mut buf = [0u8; 8];
                     // clear the eventfd, ignore the result
-                    read(self.vec[id].evfd, &mut buf).ok();
+                    read(single_selector.evfd, &mut buf).ok();
                     // info!("got wakeup event in select, id={}", id);
                     continue;
                 }
@@ -150,7 +153,7 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
-        let next_expire = self.vec[id]
+        let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
@@ -160,7 +163,7 @@ impl Selector {
     #[inline]
     pub fn wakeup(&self, id: usize) {
         let buf = unsafe { ::std::slice::from_raw_parts(&1u64 as *const u64 as _, 8) };
-        let ret = write(self.vec[id].evfd, buf);
+        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd, buf);
         info!("wakeup id={:?}, ret={:?}", id, ret);
     }
 
@@ -177,7 +180,8 @@ impl Selector {
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let epfd = self.vec[id].epfd;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let epfd = single_selector.epfd;
         info!("add fd to epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &mut info)
             .map_err(from_nix_error)
@@ -202,19 +206,21 @@ impl Selector {
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let epfd = self.vec[id].epfd;
+        let epfd = unsafe { self.vec.get_unchecked(id) }.epfd;
         info!("del fd from epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &mut info).ok();
 
         // after EpollCtlDel push the unused event data
-        self.vec[id].free_ev.push(io_data.deref().clone());
+        unsafe { self.vec.get_unchecked(id) }
+            .free_ev
+            .push(io_data.deref().clone());
     }
 
     // we can't free the event data directly in the worker thread
     // must free them before the next epoll_wait
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
-        let free_ev = &self.vec[id].free_ev;
+        let free_ev = &unsafe { self.vec.get_unchecked(id) }.free_ev;
         while let Ok(_) = free_ev.pop() {}
     }
 
@@ -223,7 +229,9 @@ impl Selector {
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
+        let (h, b_new) = unsafe { self.vec.get_unchecked(id) }
+            .timer_list
+            .add_timer(timeout, io.timer_data());
         if b_new {
             // wake up the event loop thread to recall the next wait timeout
             self.wakeup(id);

@@ -213,7 +213,6 @@ impl Scheduler {
     }
 
     pub fn run_queued_tasks(&self, id: usize) {
-        let mask = 1 << id;
         let local = unsafe { self.local_queues.get_unchecked(id) };
         let stealers = unsafe { self.stealers.get_unchecked(id) };
         let cached_co = unsafe { self.local_cache_co.get_unchecked(id) };
@@ -235,9 +234,6 @@ impl Scheduler {
             if let Some(co) = co {
                 run_coroutine(co);
             } else {
-                // first register thread handle
-                self.workers.parked.fetch_or(mask, Ordering::Relaxed);
-
                 // do a re-check
                 if self.global_queue.is_empty() {
                     break;
