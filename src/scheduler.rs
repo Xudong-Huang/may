@@ -28,7 +28,7 @@ fn likely(e: bool) -> bool {
 pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
 
 #[cfg(not(nightly))]
-thread_local! {static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);}
+thread_local! { pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1); }
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
