@@ -6,8 +6,8 @@ use std::{cmp, io, isize, ptr};
 
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::CoroutineImpl;
-use crate::timeout_list::{now, ns_to_ms};
 use crate::scheduler::get_scheduler;
+use crate::timeout_list::{now, ns_to_ms};
 use crossbeam::queue::SegQueue as mpsc;
 use libc::{eventfd, EFD_NONBLOCK};
 use nix::sys::epoll::*;
