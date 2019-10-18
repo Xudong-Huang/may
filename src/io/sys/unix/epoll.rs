@@ -7,6 +7,7 @@ use std::{cmp, io, isize, ptr};
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::timeout_list::{now, ns_to_ms};
+use crate::scheduler::get_scheduler;
 use crossbeam::queue::SegQueue as mpsc;
 use libc::{eventfd, EFD_NONBLOCK};
 use nix::sys::epoll::*;
@@ -84,6 +85,7 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
+        let mask = 1 << id;
         // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
         let timeout_ms = timeout
             .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
@@ -94,6 +96,10 @@ impl Selector {
         let epfd = self.vec[id].epfd;
         // let evfd = self.vec[id].evfd;
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
+
+        // clear the park stat after comeback
+        let scheduler = get_scheduler();
+        scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
         // add this would increase the performance!!!!!!!!
         // this maybe a linux bug, the code is meaningless
@@ -137,6 +143,9 @@ impl Selector {
             (self.schedule_policy)(co);
         }
 
+        // run all the local tasks
+        scheduler.run_queued_tasks(id);
+
         // free the unused event_data
         self.free_unused_event_data(id);
 
@@ -149,7 +158,7 @@ impl Selector {
 
     // this will post an os event so that we can wake up the event loop
     #[inline]
-    fn wakeup(&self, id: usize) {
+    pub fn wakeup(&self, id: usize) {
         let buf = unsafe { ::std::slice::from_raw_parts(&1u64 as *const u64 as _, 8) };
         let ret = write(self.vec[id].evfd, buf);
         info!("wakeup id={:?}, ret={:?}", id, ret);

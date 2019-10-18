@@ -164,7 +164,7 @@ impl Selector {
 
     // this will post an os event so that we can wakeup the event loop
     #[inline]
-    fn wakeup(&self) {
+    pub fn wakeup(&self, _id: usize) {
         // this is not correct for multi thread io, which thread will it wakeup?
         self.port
             .post(CompletionStatus::new(0, 0, ptr::null_mut()))
@@ -185,7 +185,7 @@ impl Selector {
         let (h, b_new) = self.timer_list.add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
-            self.wakeup();
+            self.wakeup(0);
         }
         io.timer.replace(h);
     }

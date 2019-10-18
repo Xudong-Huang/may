@@ -25,7 +25,7 @@ fn likely(e: bool) -> bool {
 // thread id, only workers are normal ones
 #[cfg(nightly)]
 #[thread_local]
-static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
+pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
 
 #[cfg(not(nightly))]
 thread_local! {static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);}
@@ -51,36 +51,28 @@ fn filter_cancel_panic() {
 
 static mut SCHED: *const Scheduler = std::ptr::null();
 
-struct WorkerThreads {
-    parked: AtomicU64,
-    threads: Vec<thread::Thread>,
+pub struct WorkerThreads {
+    pub parked: AtomicU64,
+    workers: usize,
 }
 
 impl WorkerThreads {
     fn new(workers: usize) -> Self {
         let parked = AtomicU64::new(0);
-        let mut threads = Vec::with_capacity(workers);
-        for _ in 0..workers {
-            threads.push(thread::current()); // fake init
-        }
-
-        WorkerThreads { parked, threads }
+        WorkerThreads { parked, workers }
     }
 
-    fn wake_one(&self) {
+    fn wake_one(&self, scheduler: &Scheduler) {
         let parked = self.parked.load(Ordering::Relaxed);
         let first_thread = parked.trailing_zeros() as usize;
-        if first_thread >= self.threads.len() {
+        if first_thread >= self.workers {
             // there is no thread pending
             return;
         }
         let mask = 1 << first_thread;
         self.parked.fetch_and(!mask, Ordering::Relaxed);
-        self.threads[first_thread].unpark();
-    }
-
-    fn get_thread_handle(&self, id: usize) -> &thread::Thread {
-        unsafe { self.threads.get_unchecked(id) }
+        let selector = scheduler.get_selector();
+        selector.wakeup(first_thread);
     }
 }
 
@@ -102,19 +94,19 @@ fn init_scheduler() {
     }
 
     // run the workers in background
-    for id in 0..workers {
-        let handle = thread::spawn(move || {
-            filter_cancel_panic();
-            let s = unsafe { &*SCHED };
-            s.run(id);
-        })
-        .thread()
-        .clone();
+    // for id in 0..workers {
+    //     let handle = thread::spawn(move || {
+    //         filter_cancel_panic();
+    //         let s = unsafe { &*SCHED };
+    //         s.run(id);
+    //     })
+    //     .thread()
+    //     .clone();
 
-        // set the real thread handle
-        let s = unsafe { &mut *(SCHED as *const _ as *mut Scheduler) };
-        s.workers.threads[id] = handle;
-    }
+    //     // set the real thread handle
+    //     let s = unsafe { &mut *(SCHED as *const _ as *mut Scheduler) };
+    //     s.workers.threads[id] = handle;
+    // }
 
     // timer thread
     thread::spawn(move || {
@@ -157,20 +149,54 @@ pub fn get_scheduler() -> &'static Scheduler {
     unsafe { &*SCHED }
 }
 
+fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
+    let backoff = Backoff::new();
+    loop {
+        match global.steal_batch_and_pop(local) {
+            deque::Steal::Success(t) => return Some(t),
+            deque::Steal::Empty => return None,
+            deque::Steal::Retry => backoff.snooze(),
+        }
+    }
+}
+
+fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
+    let backoff = Backoff::new();
+    loop {
+        match stealer.steal_batch_and_pop(local) {
+            deque::Steal::Success(t) => return Some(t),
+            deque::Steal::Empty => return None,
+            deque::Steal::Retry => backoff.snooze(),
+        }
+    }
+}
+
 #[repr(align(128))]
 pub struct Scheduler {
     pub pool: CoroutinePool,
     event_loop: EventLoop,
     global_queue: deque::Injector<CoroutineImpl>,
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
-    workers: WorkerThreads,
+    pub(crate) workers: WorkerThreads,
     timer_thread: TimerThread,
+    stealers: Vec<Vec<deque::Stealer<CoroutineImpl>>>,
 }
 
 impl Scheduler {
     pub fn new(workers: usize, io_workers: usize, run_on_io: bool) -> Box<Self> {
         let mut local_queues = Vec::with_capacity(workers);
         (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
+        let mut stealers = Vec::new();
+        for id in 0.. workers {
+            let mut stealers_l = Vec::new();
+            for (i, worker) in local_queues.iter().enumerate() {
+                if i != id {
+                    stealers_l.push(worker.stealer());
+                }
+            }
+            stealers_l.rotate_left(id);
+            stealers.push(stealers_l);
+        }
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(io_workers, run_on_io).expect("can't create event_loop"),
@@ -178,47 +204,14 @@ impl Scheduler {
             local_queues,
             timer_thread: TimerThread::new(),
             workers: WorkerThreads::new(workers),
+            stealers,
         })
     }
 
-    fn run(&self, id: usize) {
+    pub fn run_queued_tasks(&self, id: usize) {
         let mask = 1 << id;
-        #[cfg(nightly)]
-        WORKER_ID.store(id, Ordering::Relaxed);
-        #[cfg(not(nightly))]
-        WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
-
-        let local = &self.local_queues[id];
-        let mut stealers = Vec::new();
-        for (i, worker) in self.local_queues.iter().enumerate() {
-            if i != id {
-                stealers.push(worker.stealer());
-            }
-        }
-        stealers.rotate_left(id);
-
-        fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
-            let backoff = Backoff::new();
-            loop {
-                match global.steal_batch_and_pop(local) {
-                    deque::Steal::Success(t) => return Some(t),
-                    deque::Steal::Empty => return None,
-                    deque::Steal::Retry => backoff.snooze(),
-                }
-            }
-        };
-
-        fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
-            let backoff = Backoff::new();
-            loop {
-                match stealer.steal_batch_and_pop(local) {
-                    deque::Steal::Success(t) => return Some(t),
-                    deque::Steal::Empty => return None,
-                    deque::Steal::Retry => backoff.snooze(),
-                }
-            }
-        }
-
+        let local = unsafe { self.local_queues.get_unchecked(id) };
+        let stealers = unsafe { self.stealers.get_unchecked(id) };
         loop {
             // Pop a task from the local queue
             let co = local.pop().or_else(|| {
@@ -239,16 +232,9 @@ impl Scheduler {
                 self.workers.parked.fetch_or(mask, Ordering::Relaxed);
 
                 // do a re-check
-                if !self.global_queue.is_empty() {
-                    self.workers.get_thread_handle(id).unpark()
+                if self.global_queue.is_empty() {
+                    break;
                 }
-
-                // wake up every 500ms to check if there are more tasks
-                thread::park_timeout(Duration::from_millis(500));
-                // thread::park();
-
-                // clear the park stat after comeback
-                self.workers.parked.fetch_and(!mask, Ordering::Relaxed);
             }
         }
     }
@@ -273,7 +259,7 @@ impl Scheduler {
     pub fn schedule_global(&self, co: CoroutineImpl) {
         self.global_queue.push(co);
         // signal one waiting thread if any
-        self.workers.wake_one();
+        self.workers.wake_one(&self);
     }
 
     #[inline]
