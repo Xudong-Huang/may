@@ -80,15 +80,7 @@ impl WorkerThreads {
 #[inline(never)]
 fn init_scheduler() {
     let workers = config().get_workers();
-    let mut io_workers = config().get_io_workers();
-    let run_on_io = if io_workers == 0 {
-        // running all the coroutines on normal worker thread
-        io_workers = 1;
-        false
-    } else {
-        true
-    };
-    let b: Box<Scheduler> = Scheduler::new(workers, io_workers, run_on_io);
+    let b: Box<Scheduler> = Scheduler::new(workers);
     unsafe {
         SCHED = Box::into_raw(b);
     }
@@ -126,7 +118,7 @@ fn init_scheduler() {
     });
 
     // io event loop thread
-    for id in 0..io_workers {
+    for id in 0..workers {
         thread::spawn(move || {
             filter_cancel_panic();
             let s = unsafe { &*SCHED };
@@ -184,7 +176,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(workers: usize, io_workers: usize, run_on_io: bool) -> Box<Self> {
+    pub fn new(workers: usize) -> Box<Self> {
         let mut local_queues = Vec::with_capacity(workers);
         let mut local_cache_co = Vec::with_capacity(workers);
         (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
@@ -202,7 +194,7 @@ impl Scheduler {
         }
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new(io_workers, run_on_io).expect("can't create event_loop"),
+            event_loop: EventLoop::new(workers, true).expect("can't create event_loop"),
             global_queue: deque::Injector::new(),
             local_queues,
             local_cache_co,

@@ -11,7 +11,6 @@ const DEFAULT_STACK_SIZE: usize = 0x1000;
 const DEFAULT_POOL_CAPACITY: usize = 100;
 
 static WORKERS: AtomicUsize = AtomicUsize::new(0);
-static IO_WORKERS: AtomicUsize = AtomicUsize::new(0);
 static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
 static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
 
@@ -46,28 +45,6 @@ impl Config {
         } else {
             let num = num_cpus::get();
             WORKERS.store(num, Ordering::Relaxed);
-            num
-        }
-    }
-
-    /// set the io worker thread number
-    ///
-    /// if you pass in 0, all the coroutines would be scheduled on worker thread
-    pub fn set_io_workers(&self, workers: usize) -> &Self {
-        info!("set io workers={:?}", workers);
-        IO_WORKERS.store(workers, Ordering::Relaxed);
-        self
-    }
-
-    /// get the io workers number
-    pub fn get_io_workers(&self) -> usize {
-        let workers = IO_WORKERS.load(Ordering::Relaxed);
-        if workers != 0 {
-            workers
-        } else {
-            // let num = num_cpus::get();
-            let num = 2;
-            IO_WORKERS.store(num, Ordering::Relaxed);
             num
         }
     }
