@@ -5,6 +5,7 @@ use std::time::Duration;
 use std::{io, ptr};
 
 use crate::coroutine_impl::CoroutineImpl;
+use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 use crossbeam::queue::SegQueue as mpsc;
 use libc;
@@ -114,7 +115,6 @@ impl Selector {
 
         let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let epfd = single_selector.epfd;
         // first register thread handle
         let scheduler = get_scheduler();
         scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
@@ -175,6 +175,9 @@ impl Selector {
             (self.schedule_policy)(co);
         }
 
+        // run all the local tasks
+        scheduler.run_queued_tasks(id);
+
         // free the unused event_data
         self.free_unused_event_data(id);
 
@@ -187,7 +190,7 @@ impl Selector {
 
     // this will post an os event so that we can wakeup the event loop
     #[inline]
-    fn wakeup(&self, id: usize) {
+    pub fn wakeup(&self, id: usize) {
         let kqfd = unsafe { self.vec.get_unchecked(id) }.kqfd;
         let kev = libc::kevent {
             ident: NOTIFY_IDENT,
