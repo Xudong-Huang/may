@@ -85,21 +85,6 @@ fn init_scheduler() {
         SCHED = Box::into_raw(b);
     }
 
-    // run the workers in background
-    // for id in 0..workers {
-    //     let handle = thread::spawn(move || {
-    //         filter_cancel_panic();
-    //         let s = unsafe { &*SCHED };
-    //         s.run(id);
-    //     })
-    //     .thread()
-    //     .clone();
-
-    //     // set the real thread handle
-    //     let s = unsafe { &mut *(SCHED as *const _ as *mut Scheduler) };
-    //     s.workers.threads[id] = handle;
-    // }
-
     // timer thread
     thread::spawn(move || {
         filter_cancel_panic();
@@ -142,14 +127,21 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
+    static GLOBABLE_LOCK: AtomicUsize = AtomicUsize::new(0);
+    if GLOBABLE_LOCK.swap(1, Ordering::AcqRel) == 1 {
+        return None;
+    }
+
     let backoff = Backoff::new();
-    loop {
+    let ret = loop {
         match global.steal_batch_and_pop(local) {
-            deque::Steal::Success(t) => return Some(t),
-            deque::Steal::Empty => return None,
+            deque::Steal::Success(t) => break Some(t),
+            deque::Steal::Empty => break None,
             deque::Steal::Retry => backoff.snooze(),
         }
-    }
+    };
+    GLOBABLE_LOCK.store(0, Ordering::Release);
+    ret
 }
 
 fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
