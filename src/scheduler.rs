@@ -128,7 +128,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
     static GLOBABLE_LOCK: AtomicUsize = AtomicUsize::new(0);
-    if GLOBABLE_LOCK.swap(1, Ordering::AcqRel) == 1 {
+    if GLOBABLE_LOCK.swap(1, Ordering::Relaxed) == 1 {
         return None;
     }
 
@@ -140,7 +140,7 @@ fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Opt
             deque::Steal::Retry => backoff.snooze(),
         }
     };
-    GLOBABLE_LOCK.store(0, Ordering::Release);
+    GLOBABLE_LOCK.store(0, Ordering::Relaxed);
     ret
 }
 
@@ -164,7 +164,7 @@ pub struct Scheduler {
     local_cache_co: Vec<AtomicOption<CoroutineImpl>>,
     pub(crate) workers: WorkerThreads,
     timer_thread: TimerThread,
-    stealers: Vec<Vec<deque::Stealer<CoroutineImpl>>>,
+    stealers: Vec<Vec<(usize, deque::Stealer<CoroutineImpl>)>>,
 }
 
 impl Scheduler {
@@ -178,7 +178,7 @@ impl Scheduler {
             let mut stealers_l = Vec::with_capacity(workers);
             for (i, worker) in local_queues.iter().enumerate() {
                 if i != id {
-                    stealers_l.push(worker.stealer());
+                    stealers_l.push((i, worker.stealer()));
                 }
             }
             stealers_l.rotate_left(id);
@@ -197,6 +197,7 @@ impl Scheduler {
     }
 
     pub fn run_queued_tasks(&self, id: usize) {
+        let parked_threads = self.workers.parked.load(Ordering::Relaxed);
         let local = unsafe { self.local_queues.get_unchecked(id) };
         let stealers = unsafe { self.stealers.get_unchecked(id) };
         let cached_co = unsafe { self.local_cache_co.get_unchecked(id) };
@@ -209,7 +210,12 @@ impl Scheduler {
                         // Try stealing a of task from other local queues.
                         stealers
                             .iter()
-                            .map(|s| steal_local(s, local))
+                            .map(|s| {
+                                if parked_threads & (1 << s.0) != 0 {
+                                    return None;
+                                }
+                                steal_local(&s.1, local)
+                            })
                             .find_map(|r| r)
                     })
                 })
