@@ -12,7 +12,7 @@ use super::blocking::SyncBlocker;
 use super::poison;
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-use crossbeam::queue::SegQueue as WaitList;
+use may_queue::mpsc_list::Queue as WaitList;
 
 pub struct Mutex<T: ?Sized> {
     // the waiting blocker list

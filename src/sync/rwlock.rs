@@ -10,7 +10,7 @@ use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-use crossbeam::queue::SegQueue as WaitList;
+use may_queue::mpsc_list::Queue as WaitList;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex};

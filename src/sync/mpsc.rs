@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{AtomicOption, Blocker};
-use crossbeam::queue::SegQueue as WaitList;
+use may_queue::mpsc_list::Queue as WaitList;
 // TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -74,11 +74,11 @@ impl<T> InnerQueue<T> {
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.queue.pop() {
-            Ok(data) => Ok(data),
-            Err(_) => {
+            Some(data) => Ok(data),
+            None => {
                 match self.channels.load(Ordering::SeqCst) {
                     // there is no sender any more, should re-check
-                    0 => self.queue.pop().map_err(|_| TryRecvError::Disconnected),
+                    0 => self.queue.pop().ok_or_else(|| TryRecvError::Disconnected),
                     _ => Err(TryRecvError::Empty),
                 }
             }
@@ -104,7 +104,7 @@ impl<T> InnerQueue<T> {
     pub fn drop_port(&self) {
         self.port_dropped.store(true, Ordering::SeqCst);
         // clear all the data
-        while let Ok(_) = self.queue.pop() {}
+        while let Some(_) = self.queue.pop() {}
     }
 }
 
