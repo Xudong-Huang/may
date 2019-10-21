@@ -161,7 +161,6 @@ pub struct Scheduler {
     event_loop: EventLoop,
     global_queue: deque::Injector<CoroutineImpl>,
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
-    local_locks: Vec<AtomicUsize>,
     pub(crate) workers: WorkerThreads,
     timer_thread: TimerThread,
     stealers: Vec<Vec<(usize, deque::Stealer<CoroutineImpl>)>>,
@@ -170,9 +169,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         let mut local_queues = Vec::with_capacity(workers);
-        let mut local_locks = Vec::with_capacity(workers);
         (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
-        (0..workers).for_each(|_| local_locks.push(AtomicUsize::new(0)));
         let mut stealers = Vec::with_capacity(workers);
         for id in 0..workers {
             let mut stealers_l = Vec::with_capacity(workers);
@@ -189,7 +186,6 @@ impl Scheduler {
             event_loop: EventLoop::new(workers, true).expect("can't create event_loop"),
             global_queue: deque::Injector::new(),
             local_queues,
-            local_locks,
             timer_thread: TimerThread::new(),
             workers: WorkerThreads::new(workers),
             stealers,
@@ -212,13 +208,7 @@ impl Scheduler {
                             if parked_threads & (1 << s.0) != 0 {
                                 return None;
                             }
-                            let local_lock = unsafe { self.local_locks.get_unchecked(s.0) };
-                            if local_lock.swap(1, Ordering::Relaxed) == 1 {
-                                return None;
-                            }
-                            let ret = steal_local(&s.1, local);
-                            local_lock.store(0, Ordering::Relaxed);
-                            ret
+                            steal_local(&s.1, local)
                         })
                         .find_map(|r| r)
                 })
