@@ -9,7 +9,7 @@ use may::net::{TcpListener, TcpStream};
 fn main() {
     // below config would schedule all the coroutines
     // on the single worker thread
-    may::config().set_workers(1).set_io_workers(0);
+    may::config().set_workers(1);
 
     // start the server
     let _server = go!(|| {

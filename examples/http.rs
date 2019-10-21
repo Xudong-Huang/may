@@ -23,7 +23,7 @@ fn req_done(buf: &[u8], path: &mut String) -> Option<usize> {
 }
 
 fn main() {
-    may::config().set_io_workers(4);
+    may::config().set_workers(4);
 
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
     while let Ok((mut stream, _)) = listener.accept() {

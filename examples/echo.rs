@@ -72,7 +72,7 @@ fn main() {
 
     let port = args.flag_p;
     let threads = args.flag_t;
-    may::config().set_io_workers(threads);
+    may::config().set_workers(threads);
 
     may::coroutine::scope(|s| {
         for i in 0..threads {

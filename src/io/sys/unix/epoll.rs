@@ -85,7 +85,6 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let mask = 1 << id;
         // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
         let timeout_ms = timeout
             .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
@@ -93,6 +92,7 @@ impl Selector {
         // info!("select; timeout={:?}", timeout_ms);
 
         // Wait for epoll events for at most timeout_ms milliseconds
+        let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
         // first register thread handle
@@ -130,7 +130,7 @@ impl Selector {
                 None => continue,
                 Some(co) => co,
             };
-            // co.prefetch();
+            co.prefetch();
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {
@@ -206,14 +206,13 @@ impl Selector {
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let epfd = unsafe { self.vec.get_unchecked(id) }.epfd;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let epfd = single_selector.epfd;
         info!("del fd from epoll select, fd={:?}", fd);
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &mut info).ok();
 
         // after EpollCtlDel push the unused event data
-        unsafe { self.vec.get_unchecked(id) }
-            .free_ev
-            .push(io_data.deref().clone());
+        single_selector.free_ev.push(io_data.deref().clone());
     }
 
     // we can't free the event data directly in the worker thread

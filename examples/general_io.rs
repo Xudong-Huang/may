@@ -12,7 +12,7 @@ use may::io::CoIo;
 // because stdin/stdout can't resiger on IOCP
 fn main() {
     // run every thing in a single thread to verify the aysnc io
-    may::config().set_io_workers(0).set_workers(1);
+    may::config().set_workers(1);
     let b_run = true;
 
     join!(

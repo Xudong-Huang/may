@@ -112,8 +112,15 @@ impl Selector {
             .unwrap_or(ptr::null_mut());
         // info!("select; timeout={:?}", timeout_ms);
 
+        let mask = 1 << id;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let epfd = single_selector.epfd;
+        // first register thread handle
+        let scheduler = get_scheduler();
+        scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
+
         // Wait for epoll events for at most timeout_ms milliseconds
-        let kqfd = self.vec[id].kqfd;
+        let kqfd = single_selector.kqfd;
         let n = unsafe {
             libc::kevent(
                 kqfd,
@@ -124,6 +131,10 @@ impl Selector {
                 timeout,
             )
         };
+
+        // clear the park stat after comeback
+        scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
+
         if n < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -168,7 +179,7 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
-        let next_expire = self.vec[id]
+        let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
@@ -177,7 +188,7 @@ impl Selector {
     // this will post an os event so that we can wakeup the event loop
     #[inline]
     fn wakeup(&self, id: usize) {
-        let kqfd = self.vec[id].kqfd;
+        let kqfd = unsafe { self.vec.get_unchecked(id) }.kqfd;
         let kev = libc::kevent {
             ident: NOTIFY_IDENT,
             filter: libc::EVFILT_USER,
@@ -197,7 +208,7 @@ impl Selector {
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let kqfd = self.vec[id].kqfd;
+        let kqfd = unsafe { self.vec.get_unchecked(id) }.kqfd;
         info!("add fd to kqueue select, fd={:?}", fd);
 
         let flags = libc::EV_ADD | libc::EV_CLEAR;
@@ -240,7 +251,8 @@ impl Selector {
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let kqfd = self.vec[id].kqfd;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let kqfd = single_selector.kqfd;
         info!("del fd from kqueue select, fd={:?}", fd);
 
         let filter = libc::EV_DELETE;
@@ -261,14 +273,14 @@ impl Selector {
         }
 
         // after EpollCtlDel push the unused event data
-        self.vec[id].free_ev.push(io_data.deref().clone());
+        single_selector.free_ev.push(io_data.deref().clone());
     }
 
     // we can't free the event data directly in the worker thread
     // must free them before the next epoll_wait
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
-        let free_ev = &self.vec[id].free_ev;
+        let free_ev = &unsafe { self.vec.get_unchecked(id) }.free_ev;
         while let Ok(_) = free_ev.pop() {}
     }
 
@@ -277,7 +289,9 @@ impl Selector {
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
+        let (h, b_new) = unsafe { self.vec.get_unchecked(id) }
+            .timer_list
+            .add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(id);

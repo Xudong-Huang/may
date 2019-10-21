@@ -70,7 +70,7 @@ fn main() {
     let test_seconds = args.flag_d;
     // let io_timeout = 2;
 
-    may::config().set_io_workers(args.flag_t);
+    may::config().set_workers(args.flag_t);
 
     let stop = AtomicBool::new(false);
     let in_num = AtomicUsize::new(0);

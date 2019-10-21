@@ -75,7 +75,7 @@ fn main() {
         .fold(Err(err), |prev, addr| prev.or_else(|_| Ok(addr)))
         .unwrap();
 
-    may::config().set_io_workers(args.flag_t);
+    may::config().set_workers(args.flag_t);
 
     // let io_timeout = 5;
     let base_port = AtomicUsize::new(addr.port() as usize + 100);

@@ -193,7 +193,9 @@ impl fmt::Debug for Coroutine {
 /// use may::coroutine;
 ///
 /// let builder = coroutine::Builder::new();
-/// let code = || { /* coroutine code */ };
+/// let code = || {
+///     // coroutine code
+/// };
 ///
 /// let handler = unsafe { builder.spawn(code).unwrap() };
 ///

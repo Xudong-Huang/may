@@ -51,15 +51,15 @@ fn filter_cancel_panic() {
 
 static mut SCHED: *const Scheduler = std::ptr::null();
 
-pub struct WorkerThreads {
+pub struct ParkStatus {
     pub parked: AtomicU64,
     workers: usize,
 }
 
-impl WorkerThreads {
+impl ParkStatus {
     fn new(workers: usize) -> Self {
-        let parked = AtomicU64::new(0);
-        WorkerThreads { parked, workers }
+        let parked = AtomicU64::new((1 << workers) - 1);
+        ParkStatus { parked, workers }
     }
 
     fn wake_one(&self, scheduler: &Scheduler) {
@@ -126,9 +126,10 @@ pub fn get_scheduler() -> &'static Scheduler {
     unsafe { &*SCHED }
 }
 
+#[inline]
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
     static GLOBABLE_LOCK: AtomicUsize = AtomicUsize::new(0);
-    if GLOBABLE_LOCK.swap(1, Ordering::Relaxed) == 1 {
+    if GLOBABLE_LOCK.compare_and_swap(0, 1, Ordering::Relaxed) == 1 {
         return None;
     }
 
@@ -144,6 +145,7 @@ fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Opt
     ret
 }
 
+#[inline]
 fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
     let backoff = Backoff::new();
     loop {
@@ -161,7 +163,7 @@ pub struct Scheduler {
     event_loop: EventLoop,
     global_queue: deque::Injector<CoroutineImpl>,
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
-    pub(crate) workers: WorkerThreads,
+    pub(crate) workers: ParkStatus,
     timer_thread: TimerThread,
     stealers: Vec<Vec<(usize, deque::Stealer<CoroutineImpl>)>>,
 }
@@ -187,7 +189,7 @@ impl Scheduler {
             global_queue: deque::Injector::new(),
             local_queues,
             timer_thread: TimerThread::new(),
-            workers: WorkerThreads::new(workers),
+            workers: ParkStatus::new(workers),
             stealers,
         })
     }
