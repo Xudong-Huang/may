@@ -49,6 +49,12 @@ impl Config {
         }
     }
 
+    /// set the io worker thread number
+    #[deprecated(since = "0.3.13", note = "use `set_workers` only")]
+    pub fn set_io_workers(&self, _workers: usize) -> &Self {
+        self
+    }
+
     /// set cached coroutine pool number
     ///
     /// if you pass 0 to it, will use internal default
