@@ -1,12 +1,15 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::{io, ptr};
 
 use crate::coroutine_impl::CoroutineImpl;
+use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
 use miow::iocp::{CompletionPort, CompletionStatus};
+use smallvec::SmallVec;
 use winapi::shared::ntdef::*;
 use winapi::shared::ntstatus::STATUS_CANCELLED;
 use winapi::shared::winerror::*;
@@ -63,36 +66,63 @@ impl EventData {
 // buffer to receive the system events
 pub type SysEvent = CompletionStatus;
 
-pub struct Selector {
+struct SingleSelector {
     /// The actual completion port that's used to manage all I/O
     port: CompletionPort,
     timer_list: TimerList,
+}
+
+impl SingleSelector {
+    pub fn new() -> io::Result<SingleSelector> {
+        // only let one thread working, other threads blocking, this is more efficient
+        CompletionPort::new(1).map(|cp| SingleSelector {
+            port: cp,
+            timer_list: TimerList::new(),
+        })
+    }
+}
+
+pub struct Selector {
+    // 128 should be fine for max io threads
+    vec: SmallVec<[SingleSelector; 128]>,
     schedule_policy: fn(CoroutineImpl),
 }
 
 impl Selector {
-    pub fn new(_io_workers: usize, schedule_policy: fn(CoroutineImpl)) -> io::Result<Selector> {
-        // only let one thread working, other threads blocking, this is more efficient
-        CompletionPort::new(1).map(|cp| Selector {
-            port: cp,
-            timer_list: TimerList::new(),
+    pub fn new(io_workers: usize, schedule_policy: fn(CoroutineImpl)) -> io::Result<Self> {
+        let mut s = Selector {
             schedule_policy,
-        })
+            vec: SmallVec::new(),
+        };
+
+        for _ in 0..io_workers {
+            let ss = SingleSelector::new()?;
+            s.vec.push(ss);
+        }
+
+        Ok(s)
     }
 
     pub fn select(
         &self,
-        _id: usize,
+        id: usize,
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         let timeout = timeout.map(ns_to_dur);
         // info!("select; timeout={:?}", timeout);
-        let n = match self.port.get_many(events, timeout) {
+        let mask = 1 << id;
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let scheduler = get_scheduler();
+        scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
+        let n = match single_selector.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
             Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
             Err(e) => return Err(e),
         };
+
+        // clear the park stat after comeback
+        scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
         for status in events[..n].iter() {
             // need to check the status for each io
@@ -157,16 +187,22 @@ impl Selector {
             (self.schedule_policy)(co);
         }
 
+        // run all the local tasks
+        scheduler.run_queued_tasks(id);
+
         // deal with the timer list
-        let next_expire = self.timer_list.schedule_timer(now(), &timeout_handler);
+        let next_expire = single_selector
+            .timer_list
+            .schedule_timer(now(), &timeout_handler);
         Ok(next_expire)
     }
 
     // this will post an os event so that we can wakeup the event loop
     #[inline]
-    pub fn wakeup(&self, _id: usize) {
+    pub fn wakeup(&self, id: usize) {
         // this is not correct for multi thread io, which thread will it wakeup?
-        self.port
+        unsafe { self.vec.get_unchecked(id) }
+            .port
             .post(CompletionStatus::new(0, 0, ptr::null_mut()))
             .unwrap();
     }
@@ -175,14 +211,19 @@ impl Selector {
     #[inline]
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle
-        self.port.add_socket(t.as_raw_socket() as usize, t)
+        let fd = (t.as_raw_socket() as usize) >> 2;
+        let id = fd as usize % self.vec.len();
+        unsafe { self.vec.get_unchecked(id) }.port.add_socket(fd, t)
     }
 
     // register the io request to the timeout list
     #[inline]
     pub fn add_io_timer(&self, io: &mut EventData, timeout: Duration) {
+        let id = (io.handle as usize % self.vec.len()) >> 2;
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.timer_list.add_timer(timeout, io.timer_data());
+        let (h, b_new) = unsafe { self.vec.get_unchecked(id) }
+            .timer_list
+            .add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(0);
