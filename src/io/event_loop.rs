@@ -2,33 +2,16 @@ use std::io;
 use std::sync::atomic::Ordering;
 
 use super::sys::{Selector, SysEvent};
-use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
-use crate::scheduler::{get_scheduler, WORKER_ID};
+use crate::scheduler::WORKER_ID;
 
 /// Single threaded IO event loop.
 pub struct EventLoop {
     selector: Selector,
 }
 
-#[inline]
-fn schedule_io_default(co: CoroutineImpl) {
-    run_coroutine(co);
-}
-
-#[inline]
-fn schedule_io_on_worker(co: CoroutineImpl) {
-    get_scheduler().schedule_global(co);
-}
-
 impl EventLoop {
-    pub fn new(io_workers: usize, run_on_io: bool) -> io::Result<EventLoop> {
-        let schedule_policy = if run_on_io {
-            schedule_io_default
-        } else {
-            schedule_io_on_worker
-        };
-
-        Selector::new(io_workers, schedule_policy).map(|selector| EventLoop { selector })
+    pub fn new(io_workers: usize) -> io::Result<EventLoop> {
+        Selector::new(io_workers).map(|selector| EventLoop { selector })
     }
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io, ptr};
 
-use crate::coroutine_impl::CoroutineImpl;
+use crate::coroutine_impl::run_coroutine;
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 use crossbeam::queue::SegQueue as mpsc;
@@ -75,14 +75,12 @@ impl Drop for SingleSelector {
 pub struct Selector {
     // 128 should be fine for max io threads
     vec: SmallVec<[SingleSelector; 128]>,
-    schedule_policy: fn(CoroutineImpl),
 }
 
 impl Selector {
-    pub fn new(io_workers: usize, schedule_policy: fn(CoroutineImpl)) -> io::Result<Self> {
+    pub fn new(io_workers: usize) -> io::Result<Self> {
         let mut s = Selector {
             vec: SmallVec::new(),
-            schedule_policy,
         };
 
         for _ in 0..io_workers {
@@ -172,7 +170,7 @@ impl Selector {
             });
 
             // schedule the coroutine
-            (self.schedule_policy)(co);
+            run_coroutine(co);
         }
 
         // run all the local tasks

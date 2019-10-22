@@ -185,7 +185,7 @@ impl Scheduler {
         }
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
-            event_loop: EventLoop::new(workers, true).expect("can't create event_loop"),
+            event_loop: EventLoop::new(workers).expect("can't create event_loop"),
             global_queue: deque::Injector::new(),
             local_queues,
             timer_thread: TimerThread::new(),
