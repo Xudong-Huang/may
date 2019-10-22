@@ -201,19 +201,18 @@ impl Scheduler {
         loop {
             // Pop a task from the local queue
             let co = local.pop().or_else(|| {
-                // Try stealing a batch of tasks from the global queue.
-                steal_global(&self.global_queue, local).or_else(|| {
-                    // Try stealing a of task from other local queues.
-                    stealers
-                        .iter()
-                        .map(|s| {
-                            if parked_threads & (1 << s.0) != 0 {
-                                return None;
-                            }
-                            steal_local(&s.1, local)
-                        })
-                        .find_map(|r| r)
-                })
+                // Try stealing a of task from other local queues.
+                stealers
+                    .iter()
+                    .map(|s| {
+                        if parked_threads & (1 << s.0) != 0 {
+                            return None;
+                        }
+                        steal_local(&s.1, local)
+                    })
+                    .find_map(|r| r)
+                    // Try stealing a batch of tasks from the global queue.
+                    .or_else(|| steal_global(&self.global_queue, local))
             });
 
             if let Some(co) = co {
