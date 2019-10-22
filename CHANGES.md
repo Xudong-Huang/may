@@ -1,3 +1,8 @@
+## v0.3.13
+
+* update scheduler, merge io workers and normal workers
+
+
 ## v0.3.5
 
 `MAY` 0.3.5 use crossbeam work stealing deque for scheduler
