@@ -54,7 +54,6 @@ pub struct Done;
 
 impl Done {
     fn drop_coroutine(co: CoroutineImpl) {
-        // println!("co is dropped. done={:?}", co.is_done());
         // assert!(co.is_done(), "unfinished coroutine detected");
         // just consume the coroutine
         // destroy the local storage
@@ -68,7 +67,7 @@ impl Done {
             ::std::process::exit(1);
         }
         // show the actual used stack size in debug log
-        if size & 1 == 1 {
+        if local.get_co().stack_size() & 1 == 1 {
             println!(
                 "coroutine name = {:?}, stack size = {},  used size = {}",
                 name, size, used
