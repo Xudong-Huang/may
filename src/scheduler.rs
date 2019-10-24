@@ -62,17 +62,13 @@ impl ParkStatus {
         ParkStatus { parked, workers }
     }
 
+    #[inline]
     fn wake_one(&self, scheduler: &Scheduler) {
         let parked = self.parked.load(Ordering::Relaxed);
         let first_thread = parked.trailing_zeros() as usize;
-        if first_thread >= self.workers {
-            // there is no thread pending
-            return;
+        if first_thread < self.workers {
+            scheduler.get_selector().wakeup(first_thread);
         }
-        let mask = 1 << first_thread;
-        self.parked.fetch_and(!mask, Ordering::Relaxed);
-        let selector = scheduler.get_selector();
-        selector.wakeup(first_thread);
     }
 }
 
@@ -95,7 +91,8 @@ fn init_scheduler() {
             if let Some(mut c) = co.take(Ordering::Relaxed) {
                 // set the timeout result for the coroutine
                 set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
-                s.schedule_global(c);
+                // s.schedule_global(c);
+                run_coroutine(c);
             }
         };
 
@@ -195,13 +192,13 @@ impl Scheduler {
     }
 
     pub fn run_queued_tasks(&self, id: usize) {
-        let parked_threads = self.workers.parked.load(Ordering::Relaxed);
         let local = unsafe { self.local_queues.get_unchecked(id) };
         let stealers = unsafe { self.stealers.get_unchecked(id) };
         loop {
             // Pop a task from the local queue
             let co = local.pop().or_else(|| {
                 // Try stealing a of task from other local queues.
+                let parked_threads = self.workers.parked.load(Ordering::Relaxed);
                 stealers
                     .iter()
                     .map(|s| {
