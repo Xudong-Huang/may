@@ -21,6 +21,8 @@ use crate::coroutine_impl::is_coroutine;
 
 pub(crate) use self::event_loop::EventLoop;
 pub use self::sys::co_io::CoIo;
+#[cfg(unix)]
+pub use self::sys::wait_io::WaitIo;
 pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 
 pub trait AsIoData {
