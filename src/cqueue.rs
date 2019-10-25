@@ -161,8 +161,6 @@ pub struct Cqueue {
     is_panicking: AtomicBool,
 }
 
-unsafe impl Sync for Cqueue {}
-
 impl Cqueue {
     /// register a select coroutine with the cqueue
     /// should use `cqueue_add` and `cqueue_add_oneshot` macros to

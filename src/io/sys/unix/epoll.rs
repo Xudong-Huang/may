@@ -102,11 +102,6 @@ impl Selector {
         // clear the park stat after comeback
         scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
-        // add this would increase the performance!!!!!!!!
-        // this maybe a linux bug, the code is meaningless
-        // epoll_ctl(epfd, EpollOp::EpollCtlDel, evfd, &mut ev).ok();
-        // epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut ev).ok();
-
         for event in events[..n].iter() {
             if event.data() == 0 {
                 #[cold]
