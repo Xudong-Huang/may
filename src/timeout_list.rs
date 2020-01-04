@@ -1,12 +1,10 @@
-extern crate time;
-
 use std::cmp;
 use std::collections::{BinaryHeap, HashMap};
 use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::sync::AtomicOption;
 use crossbeam::queue::SegQueue as mpsc;
@@ -37,14 +35,18 @@ pub fn ns_to_ms(ns: u64) -> u64 {
     (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI
 }
 
+#[inline]
+fn get_instant() -> &'static Instant {
+    use std::mem::MaybeUninit;
+    // NOTICE: the static bss seems always zeroed
+    static START_TIME: MaybeUninit<Instant> = MaybeUninit::uninit();
+    unsafe { &*START_TIME.as_ptr() }
+}
 // get the current wall clock in ns
 #[inline]
 pub fn now() -> u64 {
-    use std::convert::TryInto;
-    (time::PrimitiveDateTime::now() - time::PrimitiveDateTime::unix_epoch())
-        .whole_nanoseconds()
-        .try_into()
-        .expect("You really shouldn't be using this in the year 2554...")
+    // we need a Monotonic Clock here
+    get_instant().elapsed().as_nanos() as u64
 }
 
 // timeout event data
