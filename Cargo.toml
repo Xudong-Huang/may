@@ -26,16 +26,16 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 
 [dependencies]
 log = "0.4"
-time = "0.1"
+time = "0.2"
 socket2 = { version = "0.3", features = ["unix", "reuseport"] }
-num_cpus = "1.10"
-smallvec = "0.6"
+num_cpus = "1.1"
+smallvec = "1.1"
 generator = "0.6"
 crossbeam = "0.7"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.15"
+nix = "0.16"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
@@ -43,7 +43,7 @@ miow = "0.3"
 winapi = "0.3"
 
 [dev-dependencies]
-bytes = "0.4"
+bytes = "0.5"
 serde = "1.0"
 docopt = "1.0"
 tempdir = "0.3"

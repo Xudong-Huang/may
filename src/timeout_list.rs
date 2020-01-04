@@ -40,7 +40,11 @@ pub fn ns_to_ms(ns: u64) -> u64 {
 // get the current wall clock in ns
 #[inline]
 pub fn now() -> u64 {
-    time::precise_time_ns()
+    use std::convert::TryInto;
+    (time::PrimitiveDateTime::now() - time::PrimitiveDateTime::unix_epoch())
+        .whole_nanoseconds()
+        .try_into()
+        .expect("You really shouldn't be using this in the year 2554...")
 }
 
 // timeout event data
