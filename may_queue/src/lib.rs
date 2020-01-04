@@ -1,7 +1,5 @@
 #![cfg_attr(all(nightly, test), feature(test))]
 
-extern crate crossbeam;
-
 mod block_node;
 
 pub mod mpmc_bounded;
