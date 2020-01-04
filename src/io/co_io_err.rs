@@ -38,10 +38,6 @@ impl<T> From<Error<T>> for io::Error {
 }
 
 impl<T> error::Error for Error<T> {
-    fn description(&self) -> &str {
-        self.err.description()
-    }
-
     fn cause(&self) -> Option<&dyn error::Error> {
         self.err.source()
     }
