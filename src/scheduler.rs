@@ -64,9 +64,18 @@ impl ParkStatus {
 
     #[inline]
     fn wake_one(&self, scheduler: &Scheduler) {
+        // when the worker thread is idle, the corresponding bit would set to 1
         let parked = self.parked.load(Ordering::Relaxed);
-        let first_thread = parked.trailing_zeros() as usize;
+        // find the right most set bit
+        let rms = parked & !parked.wrapping_sub(1);
+        let first_thread = rms.trailing_zeros() as usize;
+        // if all 64 threads are busy, the first thread would be wake up
+        // it doesn't matter to wake up the first thread again
         if first_thread < self.workers {
+            // mark the thread as busy in advance (clear to 0)
+            // the worker thread would set it to 1 when idle
+            let mask = 1 << first_thread;
+            self.parked.fetch_and(!mask, Ordering::Relaxed);
             scheduler.get_selector().wakeup(first_thread);
         }
     }
