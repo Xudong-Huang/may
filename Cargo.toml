@@ -28,13 +28,13 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 log = "0.4"
 socket2 = { version = "0.3", features = ["unix", "reuseport"] }
 num_cpus = "1.1"
-smallvec = "1.1"
+smallvec = "1.2"
 generator = "0.6"
 crossbeam = "0.7"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.16"
+nix = "0.17"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
@@ -48,7 +48,7 @@ docopt = "1.0"
 tempdir = "0.3"
 httparse = "1.1"
 native-tls = "0.2"
-tungstenite = "0.9"
+tungstenite = "0.10"
 serde_derive = "1.0"
 
 
