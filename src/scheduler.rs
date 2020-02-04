@@ -69,8 +69,9 @@ impl ParkStatus {
         // find the right most set bit
         let rms = parked & !parked.wrapping_sub(1);
         let first_thread = rms.trailing_zeros() as usize;
-        // if all 64 threads are busy, the first thread would be wake up
-        // it doesn't matter to wake up the first thread again
+        // if all threads are busy, we would not send any signal to wake up
+        // any worker thread. In case worker thread missing the signal it will
+        // wake up itself every 1 second, this is a rarely case
         if first_thread < self.workers {
             // mark the thread as busy in advance (clear to 0)
             // the worker thread would set it to 1 when idle

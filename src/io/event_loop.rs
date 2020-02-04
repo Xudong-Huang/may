@@ -24,10 +24,11 @@ impl EventLoop {
 
         let mut events_buf: [SysEvent; 1024] =
             unsafe { std::mem::MaybeUninit::uninit().assume_init() };
-        let mut next_expire = None;
+        // wake up every 1 second
+        let mut next_expire = Some(1_000_000_000);
         loop {
             next_expire = match self.selector.select(id, &mut events_buf, next_expire) {
-                Ok(v) => v,
+                Ok(v) => v.or(Some(1_000_000_000)),
                 #[cold]
                 Err(e) => {
                     error!("selector error={:?}", e);
