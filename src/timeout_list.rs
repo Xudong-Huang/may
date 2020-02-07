@@ -1,7 +1,7 @@
 use std::cmp;
 use std::collections::{BinaryHeap, HashMap};
 use std::mem;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use crate::sync::AtomicOption;
 use crossbeam::queue::SegQueue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
-use may_queue::mpsc_list_v1::Queue as TimeoutList;
+use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
@@ -58,7 +58,21 @@ pub struct TimeoutData<T> {
 // timeout handler which can be removed/cancelled
 pub type TimeoutHandle<T> = Entry<TimeoutData<T>>;
 
-type IntervalList<T> = Arc<TimeoutList<TimeoutData<T>>>;
+struct TimeoutQueueWrapper<T> {
+    inner: TimeoutQueue<TimeoutData<T>>,
+    in_use: AtomicUsize,
+}
+
+impl<T> TimeoutQueueWrapper<T> {
+    fn new() -> Self {
+        TimeoutQueueWrapper {
+            inner: TimeoutQueue::new(),
+            in_use: AtomicUsize::new(0),
+        }
+    }
+}
+
+type IntervalList<T> = Arc<TimeoutQueueWrapper<T>>;
 
 // this is the data type that used by the binary heap to get the latest timer
 struct IntervalEntry<T> {
@@ -75,10 +89,10 @@ impl<T> IntervalEntry<T> {
         F: Fn(T),
     {
         let p = |v: &TimeoutData<T>| v.time <= now;
-        while let Some(timeout) = self.list.pop_if(&p) {
+        while let Some(timeout) = self.list.inner.pop_if(&p) {
             f(timeout.data);
         }
-        self.list.peek().map(|t| t.time)
+        self.list.inner.peek().map(|t| t.time)
     }
 }
 
@@ -124,9 +138,9 @@ impl<T> TimeOutList<T> {
     }
 
     fn install_timer_bh(&self, entry: IntervalEntry<T>) {
-        let mut timer_bh = self.timer_bh.lock().unwrap();
-        (*timer_bh).push(entry);
-        // lock drop here
+        if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
+            self.timer_bh.lock().unwrap().push(entry);
+        }
     }
 
     // add a timeout event to the list
@@ -147,7 +161,7 @@ impl<T> TimeOutList<T> {
         };
 
         if let Some(interval_list) = interval_list {
-            let (handle, is_head) = interval_list.push(timeout);
+            let (handle, is_head) = interval_list.inner.push(timeout);
             if is_head {
                 // install the interval list to the binary heap
                 self.install_timer_bh(IntervalEntry {
@@ -164,7 +178,7 @@ impl<T> TimeOutList<T> {
         let mut interval_map_w = self.interval_map.write().unwrap();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
-            let (handle, is_head) = interval_list.push(timeout);
+            let (handle, is_head) = interval_list.inner.push(timeout);
             if is_head {
                 // this rarely happens
                 self.install_timer_bh(IntervalEntry {
@@ -176,8 +190,8 @@ impl<T> TimeOutList<T> {
             return (handle, is_head);
         }
 
-        let interval_list = Arc::new(TimeoutList::<TimeoutData<T>>::new());
-        let ret = interval_list.push(timeout).0;
+        let interval_list = Arc::new(TimeoutQueueWrapper::<T>::new());
+        let ret = interval_list.inner.push(timeout).0;
         (*interval_map_w).insert(interval, interval_list.clone());
         // drop the write lock here
         mem::drop(interval_map_w);
@@ -199,49 +213,52 @@ impl<T> TimeOutList<T> {
     pub fn schedule_timer<F: Fn(T)>(&self, now: u64, f: &F) -> Option<u64> {
         loop {
             // first peek the BH to see if there is any timeout event
-            {
-                let timer_bh = self.timer_bh.lock().unwrap();
-                match (*timer_bh).peek() {
-                    // the latest timeout event not happened yet
-                    Some(entry) if entry.time > now => return Some(entry.time - now),
-                    None => return None,
-                    _ => {}
-                }
-            }
-            // pop out the entry
             let mut entry = {
                 let mut timer_bh = self.timer_bh.lock().unwrap();
-                (*timer_bh).pop().unwrap()
+                match timer_bh.peek() {
+                    // the latest timeout event not happened yet
+                    Some(entry) => {
+                        if entry.time > now {
+                            return Some(entry.time - now);
+                        } else {
+                            // find out one entry
+                        }
+                    }
+                    None => return None,
+                }
+                let entry = timer_bh.pop().unwrap();
+                entry.list.in_use.store(0, Ordering::Release);
+                entry
             };
 
             // consume all the timeout event
-            // println!("interval = {:?}", entry.interval);
+            // the binary heap can be modified here
+            // during running the timeout handler
             match entry.pop_timeout(now, f) {
                 Some(time) => {
-                    entry.time = time;
-                    // re-push the entry
-                    let mut timer_bh = self.timer_bh.lock().unwrap();
-                    (*timer_bh).push(entry);
+                    if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
+                        // re-push the entry
+                        entry.time = time;
+                        self.timer_bh.lock().unwrap().push(entry);
+                    }
                 }
 
                 None => {
                     // if the interval list is empty, need to delete it
                     let mut interval_map_w = self.interval_map.write().unwrap();
                     // recheck if the interval list is empty, other thread may append data to it
-                    if entry.list.is_empty() {
+                    if entry.list.inner.is_empty() {
                         // if the len of the hash map is big enough just leave the queue there
                         if (*interval_map_w).len() > HASH_CAP {
                             // the list is really empty now, we can safely remove it
                             (*interval_map_w).remove(&entry.interval);
                         }
-                    } else {
+                    } else if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
                         // release the w lock first, we don't need it any more
                         mem::drop(interval_map_w);
                         // the list is push some data by other thread
-                        entry.time = entry.list.peek().unwrap().time;
-                        // re-push the entry
-                        let mut timer_bh = self.timer_bh.lock().unwrap();
-                        (*timer_bh).push(entry);
+                        entry.time = entry.list.inner.peek().unwrap().time;
+                        self.timer_bh.lock().unwrap().push(entry);
                     }
                 }
             }
