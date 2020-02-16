@@ -34,7 +34,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn send(&self, t: T) -> Result<(), T> {
-        if self.port_dropped.load(Ordering::SeqCst) {
+        if self.port_dropped.load(Ordering::Acquire) {
             return Err(t);
         }
         self.queue.push(t);
@@ -76,7 +76,7 @@ impl<T> InnerQueue<T> {
         match self.queue.pop() {
             Some(data) => Ok(data),
             None => {
-                match self.channels.load(Ordering::SeqCst) {
+                match self.channels.load(Ordering::Acquire) {
                     // there is no sender any more, should re-check
                     0 => self.queue.pop().ok_or_else(|| TryRecvError::Disconnected),
                     _ => Err(TryRecvError::Empty),
@@ -86,11 +86,11 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn clone_chan(&self) {
-        self.channels.fetch_add(1, Ordering::SeqCst);
+        self.channels.fetch_add(1, Ordering::AcqRel);
     }
 
     pub fn drop_chan(&self) {
-        match self.channels.fetch_sub(1, Ordering::SeqCst) {
+        match self.channels.fetch_sub(1, Ordering::AcqRel) {
             1 => self
                 .to_wake
                 .take(Ordering::Relaxed)
@@ -102,7 +102,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn drop_port(&self) {
-        self.port_dropped.store(true, Ordering::SeqCst);
+        self.port_dropped.store(true, Ordering::Release);
         // clear all the data
         while let Some(_) = self.queue.pop() {}
     }
@@ -110,7 +110,7 @@ impl<T> InnerQueue<T> {
 
 impl<T> Drop for InnerQueue<T> {
     fn drop(&mut self) {
-        assert_eq!(self.channels.load(Ordering::SeqCst), 0);
+        assert_eq!(self.channels.load(Ordering::Acquire), 0);
         assert_eq!(self.to_wake.is_none(), true);
     }
 }
