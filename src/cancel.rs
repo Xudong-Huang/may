@@ -116,6 +116,7 @@ impl<T: CancelIo> CancelImpl<T> {
     }
 
     // clear the cancel bit so that we can reuse the cancel
+    #[cfg(unix)]
     pub fn clear_cancel_bit(&self) {
         self.state.fetch_and(!1, Ordering::Release);
     }
