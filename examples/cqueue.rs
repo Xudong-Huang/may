@@ -10,7 +10,7 @@ use may::{coroutine, cqueue};
 // we are safe to share the data in bottom half since we run them orderly
 struct SyncCell<T>(T);
 impl<T> SyncCell<T> {
-    unsafe fn get(&self) -> &mut T {
+    unsafe fn get_mut(&mut self) -> &mut T {
         &mut *(&self.0 as *const _ as *mut T)
     }
 }
@@ -18,7 +18,7 @@ impl<T> SyncCell<T> {
 // sum ten data resources
 fn main() {
     let mut gv = vec![];
-    let total = SyncCell(0);
+    let mut total = SyncCell(0);
 
     // create the event producers
     for i in 0..10 {
@@ -48,7 +48,7 @@ fn main() {
                     // =====================================================
 
                     let delta = data - last;
-                    let total = unsafe { total.get() };
+                    let total = unsafe { total.get_mut() };
                     // bottom half that will run sequencially in the poller
                     println!(
                         "in selector: update from {}, delta={}, last_total={}",
@@ -66,7 +66,7 @@ fn main() {
             println!("poll time over!");
         });
 
-        let total = unsafe { total.get() };
+        let total = unsafe { total.get_mut() };
         // poll the event
         while let Ok(ev) = cqueue.poll(None) {
             if ev.token == 9999 {
