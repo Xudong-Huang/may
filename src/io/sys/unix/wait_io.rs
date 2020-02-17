@@ -4,7 +4,8 @@
 //!
 use std::sync::atomic::Ordering;
 
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::cancel::Cancel;
+use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
 use crate::io as io_impl;
 use crate::yield_now::yield_with;
 
@@ -20,12 +21,26 @@ impl<'a> RawIoBlock<'a> {
 
 impl<'a> EventSource for RawIoBlock<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
+        let handle = co_get_handle(&co);
         let io_data = (*self.io_data).clone();
         self.io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
             return io_data.schedule();
         }
+
+        let cancel = handle.get_cancel();
+        // register the cancel io data
+        cancel.set_io(io_data);
+        // re-check the cancel status
+        if cancel.is_canceled() {
+            unsafe { cancel.cancel() };
+        }
+    }
+
+    /// after yield back process
+    fn yield_back(&self, cancel: &'static Cancel) {
+        cancel.clear_cancel_bit();
     }
 }
 
