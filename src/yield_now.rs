@@ -1,5 +1,6 @@
 use std::thread;
 
+use crate::cancel::Cancel;
 use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
 use crate::scheduler::get_scheduler;
@@ -10,7 +11,12 @@ struct Yield {}
 impl EventSource for Yield {
     fn subscribe(&mut self, co: CoroutineImpl) {
         // just re-push the coroutine to the ready list
-        get_scheduler().schedule(co);
+        get_scheduler().schedule_global(co);
+    }
+
+    /// after yield back process
+    fn yield_back(&self, _cancel: &'static Cancel) {
+        // do nothing
     }
 }
 
