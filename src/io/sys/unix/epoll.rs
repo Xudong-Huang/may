@@ -116,6 +116,7 @@ impl Selector {
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
             // info!("select got event, data={:p}", data);
+            println!("set io flag");
             data.io_flag.store(true, Ordering::Release);
 
             // first check the atomic co, this may be grab by the worker first

@@ -180,7 +180,7 @@ impl Read for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
+            println!("non block read");
             return self.sys.read(buf);
         }
 
@@ -217,7 +217,7 @@ impl Write for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
+            println!("non block write");
             return self.sys.write(buf);
         }
 

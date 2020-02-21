@@ -31,6 +31,7 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     if cancel.is_canceled() {
         #[cold]
         {
+            println!("cancel detected!!");
             co_set_para(::std::io::Error::new(
                 ::std::io::ErrorKind::Other,
                 "Canceled",
@@ -41,6 +42,7 @@ pub fn yield_with<T: EventSource>(resource: &T) {
 
     let r = resource as &dyn EventSource as *const _ as *mut _;
     let es = EventSubscriber::new(r);
+    println!("yield out");
     co_yield_with(es);
 
     resource.yield_back(cancel);

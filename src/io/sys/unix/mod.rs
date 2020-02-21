@@ -113,7 +113,7 @@ impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd,
-            io_flag: AtomicBool::new(false),
+            io_flag: AtomicBool::new(true),
             timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
@@ -161,7 +161,12 @@ impl IoData {
     // clear the io flag
     #[inline]
     pub fn reset(&self) {
+        println!("reset io!!");
         self.io_flag.store(false, Ordering::Relaxed);
+    }
+
+    pub fn get(&self) -> bool {
+        self.io_flag.load(Ordering::Acquire)
     }
 }
 

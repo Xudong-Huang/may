@@ -50,6 +50,8 @@ pub trait WaitIo {
     fn reset_io(&self);
     /// block on read/write event
     fn wait_io(&self);
+    /// if io ready
+    fn io_ready(&self) -> bool;
 }
 
 impl<T: io_impl::AsIoData> WaitIo for T {
@@ -62,9 +64,14 @@ impl<T: io_impl::AsIoData> WaitIo for T {
         let io_data = self.as_io_data();
         // when io flag is set we do nothing
         if io_data.io_flag.load(Ordering::Relaxed) {
+            println!("earlier return for io_data true");
             return;
         }
         let blocker = RawIoBlock::new(self.as_io_data());
         yield_with(&blocker);
+    }
+
+    fn io_ready(&self) -> bool {
+        self.as_io_data().get()
     }
 }
