@@ -184,12 +184,12 @@ impl IoData {
 
     #[inline]
     pub fn is_read_wait(&self) -> bool {
-        (self.io_flag.load(Ordering::Acquire) & 4) != 0
+        (self.io_flag.load(Ordering::Relaxed) & 4) != 0
     }
 
     #[inline]
     pub fn is_write_wait(&self) -> bool {
-        (self.io_flag.load(Ordering::Acquire) & 8) != 0
+        (self.io_flag.load(Ordering::Relaxed) & 8) != 0
     }
 
     #[inline]

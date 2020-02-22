@@ -28,7 +28,8 @@ impl<'a> EventSource for RawIoBlock<'a> {
         let io_data = (*self.io_data).clone();
         self.io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) & 3 != 0 {
+        let flag = io_data.io_flag.load(Ordering::Acquire);
+        if (flag & 5) == 5 || (flag & 10) == 10 {
             return io_data.schedule();
         }
 
@@ -50,6 +51,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
 /// This is trait that can block on io events but doing nothong about io
 pub trait WaitIo {
     /// block on read/write event
+    /// return true if there is io
     fn wait_io(&self);
 
     /// directly read from the inner socket
@@ -63,7 +65,8 @@ impl<T: io_impl::AsIoData> WaitIo for T {
     fn wait_io(&self) {
         let io_data = self.as_io_data();
         // when io flag is set we do nothing
-        if io_data.io_flag.load(Ordering::Relaxed) & 3 != 0 {
+        let flag = io_data.io_flag.load(Ordering::Acquire);
+        if (flag & 5) == 5 || (flag & 10) == 10 {
             return;
         }
         let blocker = RawIoBlock::new(self.as_io_data());
