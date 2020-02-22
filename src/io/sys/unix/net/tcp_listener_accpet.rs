@@ -27,7 +27,6 @@ impl<'a> TcpListenerAccept<'a> {
 
             if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
                 self.io_data.reset_read();
-                self.io_data.clear_read_wait();
 
                 match self.socket.accept() {
                     Ok((s, a)) => {

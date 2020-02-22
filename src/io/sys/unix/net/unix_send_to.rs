@@ -35,7 +35,6 @@ impl<'a> UnixSendTo<'a> {
 
             if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
                 self.io_data.reset_write();
-                self.io_data.clear_write_wait();
 
                 match self.socket.send_to(self.buf, self.path) {
                     Ok(n) => return Ok(n),

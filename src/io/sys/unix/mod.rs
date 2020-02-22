@@ -101,8 +101,7 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub io_flag: AtomicUsize,
-    pub wait_flag: AtomicUsize,
+    pub io_flag: AtomicUsize, // ww | rw| wr| rr
     pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
@@ -115,7 +114,6 @@ impl EventData {
         EventData {
             fd,
             io_flag: AtomicUsize::new(0),
-            wait_flag: AtomicUsize::new(0),
             timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
@@ -163,13 +161,15 @@ impl IoData {
     // clear the read io flag
     #[inline]
     pub fn reset_read(&self) {
-        self.io_flag.fetch_and(!1, Ordering::Relaxed);
+        // clear both the read_ready and read_wait bit
+        self.io_flag.fetch_and(!5, Ordering::Relaxed);
     }
 
     // clear the write io flag
     #[inline]
     pub fn reset_write(&self) {
-        self.io_flag.fetch_and(!2, Ordering::Relaxed);
+        // clear both the write_ready and write_wait bit
+        self.io_flag.fetch_and(!10, Ordering::Relaxed);
     }
 
     #[inline]
@@ -184,33 +184,33 @@ impl IoData {
 
     #[inline]
     pub fn is_read_wait(&self) -> bool {
-        (self.wait_flag.load(Ordering::Acquire) & 1) != 0
+        (self.io_flag.load(Ordering::Acquire) & 4) != 0
     }
 
     #[inline]
     pub fn is_write_wait(&self) -> bool {
-        (self.wait_flag.load(Ordering::Acquire) & 2) != 0
+        (self.io_flag.load(Ordering::Acquire) & 8) != 0
     }
 
     #[inline]
     pub fn set_read_wait(&self) {
-        self.wait_flag.fetch_or(1, Ordering::Relaxed);
+        self.io_flag.fetch_or(4, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn set_write_wait(&self) {
-        self.wait_flag.fetch_or(2, Ordering::Relaxed);
+        self.io_flag.fetch_or(8, Ordering::Relaxed);
     }
 
-    #[inline]
-    pub fn clear_read_wait(&self) {
-        self.wait_flag.fetch_and(!1, Ordering::Relaxed);
-    }
+    // #[inline]
+    // pub fn clear_read_wait(&self) {
+    //     self.io_flag.fetch_and(!4, Ordering::Relaxed);
+    // }
 
-    #[inline]
-    pub fn clear_write_wait(&self) {
-        self.wait_flag.fetch_and(!2, Ordering::Relaxed);
-    }
+    // #[inline]
+    // pub fn clear_write_wait(&self) {
+    //     self.io_flag.fetch_and(!8, Ordering::Relaxed);
+    // }
 }
 
 impl Deref for IoData {

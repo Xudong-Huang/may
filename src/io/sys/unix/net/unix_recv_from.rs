@@ -33,7 +33,6 @@ impl<'a> UnixRecvFrom<'a> {
 
             if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
                 self.io_data.reset_read();
-                self.io_data.clear_read_wait();
 
                 match self.socket.recv_from(self.buf) {
                     Ok(n) => return Ok(n),

@@ -80,7 +80,6 @@ impl TcpStreamConnect {
 
             if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
                 self.io_data.reset_write();
-                self.io_data.clear_write_wait();
 
                 match self.stream.connect(&self.addr.into()) {
                     Ok(_) => return Ok(convert_to_stream(self)),

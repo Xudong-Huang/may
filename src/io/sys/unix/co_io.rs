@@ -156,7 +156,6 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
 
         if !self.io.is_read_wait() || self.io.is_read_ready() {
             self.io.reset_read();
-            self.io.clear_read_wait();
             // this is an earlier return try for nonblocking read
             // it's useful for server but not necessary for client
             match self.inner.read(buf) {
@@ -189,7 +188,6 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
 
         if !self.io.is_write_wait() || self.io.is_write_ready() {
             self.io.reset_write();
-            self.io.clear_write_wait();
             // this is an earlier return try for nonblocking write
             match self.inner.write(buf) {
                 Ok(n) => return Ok(n),

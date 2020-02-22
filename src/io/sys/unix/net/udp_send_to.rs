@@ -35,7 +35,6 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
             if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
                 self.io_data.reset_write();
-                self.io_data.clear_write_wait();
 
                 match self.socket.send_to(self.buf, &self.addr) {
                     Ok(n) => return Ok(n),

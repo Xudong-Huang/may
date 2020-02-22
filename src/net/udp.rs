@@ -88,7 +88,6 @@ impl UdpSocket {
         {
             if !self.io.is_write_wait() || self.io.is_write_ready() {
                 self.io.reset_write();
-                self.io.clear_write_wait();
                 // this is an earlier return try for nonblocking read
                 match self.sys.send_to(buf, &addr) {
                     Ok(n) => return Ok(n),
@@ -126,7 +125,6 @@ impl UdpSocket {
         {
             if !self.io.is_read_wait() || self.io.is_read_ready() {
                 self.io.reset_read();
-                self.io.clear_read_wait();
                 // this is an earlier return try for nonblocking read
                 match self.sys.recv_from(buf) {
                     Ok(n) => return Ok(n),
@@ -164,7 +162,6 @@ impl UdpSocket {
         {
             if !self.io.is_write_wait() || self.io.is_write_ready() {
                 self.io.reset_write();
-                self.io.clear_write_wait();
                 // this is an earlier return try for nonblocking write
                 match self.sys.send(buf) {
                     Ok(n) => return Ok(n),
@@ -202,7 +199,6 @@ impl UdpSocket {
         {
             if !self.io.is_read_wait() || self.io.is_read_ready() {
                 self.io.reset_read();
-                self.io.clear_read_wait();
                 // this is an earlier return try for nonblocking read
                 match self.sys.recv(buf) {
                     Ok(n) => return Ok(n),

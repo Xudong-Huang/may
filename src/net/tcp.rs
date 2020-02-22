@@ -188,7 +188,6 @@ impl Read for TcpStream {
         {
             if !self.io.is_read_wait() || self.io.is_read_ready() {
                 self.io.reset_read();
-                self.io.clear_read_wait();
                 // this is an earlier return try for nonblocking read
                 // it's useful for server but not necessary for client
                 match self.sys.read(buf) {
@@ -228,7 +227,6 @@ impl Write for TcpStream {
         {
             if !self.io.is_write_wait() || self.io.is_write_ready() {
                 self.io.reset_write();
-                self.io.clear_write_wait();
                 // this is an earlier return try for nonblocking write
                 match self.sys.write(buf) {
                     Ok(n) => return Ok(n),
@@ -266,7 +264,6 @@ impl Write for TcpStream {
         {
             if !self.io.is_write_wait() || self.io.is_write_ready() {
                 self.io.reset_write();
-                self.io.clear_write_wait();
                 // this is an earlier return try for nonblocking write
                 match self.sys.write_vectored(bufs) {
                     Ok(n) => return Ok(n),
@@ -393,7 +390,6 @@ impl TcpListener {
         {
             if !self.io.is_read_wait() || self.io.is_read_ready() {
                 self.io.reset_read();
-                self.io.clear_read_wait();
                 match self.sys.accept() {
                     Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
                     #[cold]

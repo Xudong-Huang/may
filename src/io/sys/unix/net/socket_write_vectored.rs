@@ -38,7 +38,6 @@ impl<'a> SocketWriteVectored<'a> {
 
             if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
                 self.io_data.reset_write();
-                self.io_data.clear_write_wait();
 
                 match self.socket.write_vectored(self.bufs) {
                     Ok(n) => return Ok(n),

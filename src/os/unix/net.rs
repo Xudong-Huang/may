@@ -415,7 +415,6 @@ impl UnixListener {
         let io = self.0.as_io_data();
         if !io.is_read_wait() || io.is_read_ready() {
             io.reset_read();
-            io.clear_read_wait();
             match self.0.inner().accept() {
                 Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
                 #[cold]
@@ -813,7 +812,6 @@ impl UnixDatagram {
         let io = self.0.as_io_data();
         if !io.is_read_wait() || io.is_read_ready() {
             io.reset_read();
-            io.clear_read_wait();
             // this is an earlier return try for nonblocking read
             match self.0.inner().recv_from(buf) {
                 Ok(n) => return Ok(n),
@@ -858,7 +856,6 @@ impl UnixDatagram {
         let io = self.0.as_io_data();
         if !io.is_read_wait() || io.is_read_ready() {
             io.reset_read();
-            io.clear_read_wait();
             // this is an earlier return try for nonblocking read
             match self.0.inner().recv(buf) {
                 Ok(n) => return Ok(n),
@@ -902,7 +899,6 @@ impl UnixDatagram {
         let io = self.0.as_io_data();
         if !io.is_write_wait() || io.is_write_ready() {
             io.reset_write();
-            io.clear_write_wait();
             // this is an earlier return try for nonblocking read
             match self.0.inner().send_to(buf, path.as_ref()) {
                 Ok(n) => return Ok(n),
@@ -950,7 +946,6 @@ impl UnixDatagram {
         let io = self.0.as_io_data();
         if !io.is_write_wait() || io.is_write_ready() {
             io.reset_write();
-            io.clear_write_wait();
             // this is an earlier return try for nonblocking write
             match self.0.inner().send(buf) {
                 Ok(n) => return Ok(n),

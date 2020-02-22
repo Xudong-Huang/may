@@ -30,7 +30,6 @@ impl<'a> SocketRead<'a> {
 
             if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
                 self.io_data.reset_read();
-                self.io_data.clear_read_wait();
 
                 // finish the read operation
                 match read(self.io_data.fd, self.buf) {
