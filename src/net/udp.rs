@@ -80,23 +80,27 @@ impl UdpSocket {
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             // this can't be nonblocking!!
+            #[cold]
             return self.sys.send_to(buf, addr);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking read
-            match self.sys.send_to(buf, &addr) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_write_wait() || self.io.is_write_ready() {
+                self.io.reset_write();
+                self.io.clear_write_wait();
+                // this is an earlier return try for nonblocking read
+                match self.sys.send_to(buf, &addr) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_write_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -114,23 +118,27 @@ impl UdpSocket {
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             // this can't be nonblocking!!
+            #[cold]
             return self.sys.recv_from(buf);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking read
-            match self.sys.recv_from(buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_read_wait() || self.io.is_read_ready() {
+                self.io.reset_read();
+                self.io.clear_read_wait();
+                // this is an earlier return try for nonblocking read
+                match self.sys.recv_from(buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_read_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -148,23 +156,27 @@ impl UdpSocket {
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             // this can't be nonblocking!!
+            #[cold]
             return self.sys.send(buf);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking write
-            match self.sys.send(buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_write_wait() || self.io.is_write_ready() {
+                self.io.reset_write();
+                self.io.clear_write_wait();
+                // this is an earlier return try for nonblocking write
+                match self.sys.send(buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_write_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -182,23 +194,27 @@ impl UdpSocket {
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
             // this can't be nonblocking!!
+            #[cold]
             return self.sys.recv(buf);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking read
-            match self.sys.recv(buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_read_wait() || self.io.is_read_ready() {
+                self.io.reset_read();
+                self.io.clear_read_wait();
+                // this is an earlier return try for nonblocking read
+                match self.sys.recv(buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_read_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }

@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
@@ -31,24 +31,26 @@ impl<'a> UdpRecvFrom<'a> {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
+                self.io_data.reset_read();
+                self.io_data.clear_read_wait();
 
-            match self.socket.recv_from(self.buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+                match self.socket.recv_from(self.buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io_data.set_read_wait()
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!1, Ordering::Relaxed) & 1) != 0 {
                 continue;
             }
 
@@ -60,9 +62,7 @@ impl<'a> UdpRecvFrom<'a> {
 
 impl<'a> EventSource for UdpRecvFrom<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
-        let io_data = (*self.io_data).clone();
+        let cancel = co_cancel_data(&co);
 
         if let Some(dur) = self.timeout {
             get_scheduler()
@@ -72,18 +72,15 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
-            return io_data.schedule();
+        if self.io_data.is_read_ready() {
+            return self.io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(io_data);
+        cancel.set_io((*self.io_data).clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

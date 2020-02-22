@@ -36,23 +36,25 @@ impl<'a> SocketWriteVectored<'a> {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
+                self.io_data.reset_write();
+                self.io_data.clear_write_wait();
 
-            match self.socket.write_vectored(self.bufs) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+                match self.socket.write_vectored(self.bufs) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io_data.set_write_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!2, Ordering::Relaxed) & 2) != 0 {
                 continue;
             }
 
@@ -64,8 +66,6 @@ impl<'a> SocketWriteVectored<'a> {
 
 impl<'a> EventSource for SocketWriteVectored<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let io_data = (*self.io_data).clone();
-
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -74,8 +74,8 @@ impl<'a> EventSource for SocketWriteVectored<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
-            io_data.schedule();
+        if self.io_data.is_write_ready() {
+            self.io_data.schedule();
         }
     }
 }

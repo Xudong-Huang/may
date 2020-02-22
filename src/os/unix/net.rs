@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::coroutine_impl::is_coroutine;
 use crate::io::sys::net as net_impl;
-use crate::io::CoIo;
+use crate::io::{AsIoData, CoIo};
 use crate::yield_now::yield_with;
 
 /// A Unix stream socket.
@@ -407,21 +407,26 @@ impl UnixListener {
     /// ```
     pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
         if !self.0.ctx_check()? {
+            #[cold]
             let (s, a) = self.0.inner().accept()?;
             return Ok((UnixStream(CoIo::new(s)?), a));
         }
 
-        self.0.io_reset();
-        match self.0.inner().accept() {
-            Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        let io = self.0.as_io_data();
+        if !io.is_read_wait() || io.is_read_ready() {
+            io.reset_read();
+            io.clear_read_wait();
+            match self.0.inner().accept() {
+                Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        io.set_read_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -801,21 +806,26 @@ impl UnixDatagram {
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         if !self.0.ctx_check()? {
             // this can't be nonblocking!!
+            #[cold]
             return self.0.inner().recv_from(buf);
         }
 
-        self.0.io_reset();
-        // this is an earlier return try for nonblocking read
-        match self.0.inner().recv_from(buf) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        let io = self.0.as_io_data();
+        if !io.is_read_wait() || io.is_read_ready() {
+            io.reset_read();
+            io.clear_read_wait();
+            // this is an earlier return try for nonblocking read
+            match self.0.inner().recv_from(buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        io.set_read_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -841,21 +851,26 @@ impl UnixDatagram {
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
         if !self.0.ctx_check()? {
             // this can't be nonblocking!!
+            #[cold]
             return self.0.inner().recv(buf);
         }
 
-        self.0.io_reset();
-        // this is an earlier return try for nonblocking read
-        match self.0.inner().recv(buf) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        let io = self.0.as_io_data();
+        if !io.is_read_wait() || io.is_read_ready() {
+            io.reset_read();
+            io.clear_read_wait();
+            // this is an earlier return try for nonblocking read
+            match self.0.inner().recv(buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        io.set_read_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -880,21 +895,26 @@ impl UnixDatagram {
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
         if !self.0.ctx_check()? {
             // this can't be nonblocking!!
+            #[cold]
             return self.0.inner().send_to(buf, path);
         }
 
-        self.0.io_reset();
-        // this is an earlier return try for nonblocking read
-        match self.0.inner().send_to(buf, path.as_ref()) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        let io = self.0.as_io_data();
+        if !io.is_write_wait() || io.is_write_ready() {
+            io.reset_write();
+            io.clear_write_wait();
+            // this is an earlier return try for nonblocking read
+            match self.0.inner().send_to(buf, path.as_ref()) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        io.set_write_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -923,21 +943,26 @@ impl UnixDatagram {
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         if !self.0.ctx_check()? {
             // this can't be nonblocking!!
+            #[cold]
             return self.0.inner().send(buf);
         }
 
-        self.0.io_reset();
-        // this is an earlier return try for nonblocking write
-        match self.0.inner().send(buf) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        let io = self.0.as_io_data();
+        if !io.is_write_wait() || io.is_write_ready() {
+            io.reset_write();
+            io.clear_write_wait();
+            // this is an earlier return try for nonblocking write
+            match self.0.inner().send(buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        io.set_write_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }

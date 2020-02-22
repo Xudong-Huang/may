@@ -28,22 +28,24 @@ impl<'a> SocketWrite<'a> {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
+                self.io_data.reset_write();
+                self.io_data.clear_write_wait();
 
-            match write(self.io_data.fd, self.buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
-                        // do nothing
-                    } else {
-                        return Err(from_nix_error(e));
+                match write(self.io_data.fd, self.buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
+                            self.io_data.set_write_wait();
+                        } else {
+                            return Err(from_nix_error(e));
+                        }
                     }
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!2, Ordering::Relaxed) & 2) != 0 {
                 continue;
             }
 
@@ -55,8 +57,6 @@ impl<'a> SocketWrite<'a> {
 
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let io_data = (*self.io_data).clone();
-
         if let Some(dur) = self.timeout {
             get_scheduler()
                 .get_selector()
@@ -65,8 +65,8 @@ impl<'a> EventSource for SocketWrite<'a> {
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
-            io_data.schedule();
+        if self.io_data.is_write_ready() {
+            self.io_data.schedule();
         }
     }
 }

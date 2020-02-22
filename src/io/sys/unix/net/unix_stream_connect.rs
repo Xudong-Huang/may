@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
 use crate::scheduler::get_scheduler;
@@ -62,20 +62,26 @@ impl UnixStreamConnect {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_write_wait() || self.io_data.is_write_ready() {
+                self.io_data.reset_write();
+                self.io_data.clear_write_wait();
 
-            match self.stream.connect(&self.path) {
-                Ok(_) => return Ok(convert_to_stream(self)),
-                Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
-                Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {}
-                Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
-                    return Ok(convert_to_stream(self));
+                match self.stream.connect(&self.path) {
+                    Ok(_) => return Ok(convert_to_stream(self)),
+                    Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {
+                        self.io_data.set_write_wait();
+                    }
+                    Err(ref e) if e.raw_os_error() == Some(libc::EALREADY) => {
+                        self.io_data.set_write_wait();
+                    }
+                    Err(ref e) if e.raw_os_error() == Some(libc::EISCONN) => {
+                        return Ok(convert_to_stream(self));
+                    }
+                    Err(e) => return Err(e),
                 }
-                Err(e) => return Err(e),
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!2, Ordering::Relaxed) & 2) != 0 {
                 continue;
             }
 
@@ -87,28 +93,23 @@ impl UnixStreamConnect {
 
 impl EventSource for UnixStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
-        let io_data = (*self.io_data).clone();
+        let cancel = co_cancel_data(&co);
 
         get_scheduler()
             .get_selector()
             .add_io_timer(&self.io_data, Duration::from_secs(2));
-        io_data.co.swap(co, Ordering::Release);
+        self.io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
-            return io_data.schedule();
+        if self.io_data.is_write_ready() {
+            return self.io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(io_data);
+        cancel.set_io((*self.io_data).clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

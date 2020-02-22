@@ -115,9 +115,15 @@ impl Selector {
                 }
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
+            let flag = event.events();
             // info!("select got event, data={:p}", data);
-            println!("set io flag");
-            data.io_flag.store(true, Ordering::Release);
+            if flag.contains(EpollFlags::EPOLLOUT) {
+                data.io_flag.fetch_or(2, Ordering::Release);
+            }
+
+            if flag.intersects(EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP) {
+                data.io_flag.fetch_or(1, Ordering::Release);
+            }
 
             // first check the atomic co, this may be grab by the worker first
             let co = match data.co.take(Ordering::Acquire) {

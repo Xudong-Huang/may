@@ -2,7 +2,7 @@ use std::io;
 use std::os::unix::net::{self, SocketAddr};
 use std::sync::atomic::Ordering;
 
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::sys::{co_io_result, IoData};
 use crate::io::{AsIoData, CoIo};
 use crate::os::unix::net::{UnixListener, UnixStream};
@@ -25,27 +25,29 @@ impl<'a> UnixListenerAccept<'a> {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
+                self.io_data.reset_read();
+                self.io_data.clear_read_wait();
 
-            match self.socket.accept() {
-                Ok((s, a)) => {
-                    let s = UnixStream::from_coio(CoIo::new(s)?);
-                    return Ok((s, a));
-                }
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+                match self.socket.accept() {
+                    Ok((s, a)) => {
+                        let s = UnixStream::from_coio(CoIo::new(s)?);
+                        return Ok((s, a));
+                    }
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io_data.set_read_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!1, Ordering::Relaxed) & 1) != 0 {
                 continue;
             }
 
@@ -57,26 +59,21 @@ impl<'a> UnixListenerAccept<'a> {
 
 impl<'a> EventSource for UnixListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
-        let io_data = (*self.io_data).clone();
+        let cancel = co_cancel_data(&co);
 
         // if there is no timer we don't need to call add_io_timer
         self.io_data.co.swap(co, Ordering::Release);
 
         // there is event happened
-        if io_data.io_flag.load(Ordering::Acquire) {
-            return io_data.schedule();
+        if self.io_data.is_read_ready() {
+            return self.io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(io_data);
+        cancel.set_io((*self.io_data).clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

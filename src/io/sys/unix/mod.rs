@@ -22,7 +22,7 @@ pub mod wait_io;
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{fmt, io, ptr};
 
@@ -101,7 +101,8 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub io_flag: AtomicBool,
+    pub io_flag: AtomicUsize,
+    pub wait_flag: AtomicUsize,
     pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
@@ -113,7 +114,8 @@ impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd,
-            io_flag: AtomicBool::new(true),
+            io_flag: AtomicUsize::new(0),
+            wait_flag: AtomicUsize::new(0),
             timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
@@ -158,15 +160,56 @@ impl IoData {
         IoData(event_data)
     }
 
-    // clear the io flag
+    // clear the read io flag
     #[inline]
-    pub fn reset(&self) {
-        println!("reset io!!");
-        self.io_flag.store(false, Ordering::Relaxed);
+    pub fn reset_read(&self) {
+        self.io_flag.fetch_and(!1, Ordering::Relaxed);
     }
 
-    pub fn get(&self) -> bool {
-        self.io_flag.load(Ordering::Acquire)
+    // clear the write io flag
+    #[inline]
+    pub fn reset_write(&self) {
+        self.io_flag.fetch_and(!2, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn is_read_ready(&self) -> bool {
+        (self.io_flag.load(Ordering::Acquire) & 1) != 0
+    }
+
+    #[inline]
+    pub fn is_write_ready(&self) -> bool {
+        (self.io_flag.load(Ordering::Acquire) & 2) != 0
+    }
+
+    #[inline]
+    pub fn is_read_wait(&self) -> bool {
+        (self.wait_flag.load(Ordering::Acquire) & 1) != 0
+    }
+
+    #[inline]
+    pub fn is_write_wait(&self) -> bool {
+        (self.wait_flag.load(Ordering::Acquire) & 2) != 0
+    }
+
+    #[inline]
+    pub fn set_read_wait(&self) {
+        self.wait_flag.fetch_or(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn set_write_wait(&self) {
+        self.wait_flag.fetch_or(2, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn clear_read_wait(&self) {
+        self.wait_flag.fetch_and(!1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn clear_write_wait(&self) {
+        self.wait_flag.fetch_and(!2, Ordering::Relaxed);
     }
 }
 

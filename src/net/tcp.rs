@@ -180,25 +180,28 @@ impl Read for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            println!("non block read");
+            #[cold]
             return self.sys.read(buf);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking read
-            // it's useful for server but not necessary for client
-            match self.sys.read(buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_read_wait() || self.io.is_read_ready() {
+                self.io.reset_read();
+                self.io.clear_read_wait();
+                // this is an earlier return try for nonblocking read
+                // it's useful for server but not necessary for client
+                match self.sys.read(buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_read_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -217,24 +220,27 @@ impl Write for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            println!("non block write");
+            #[cold]
             return self.sys.write(buf);
         }
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking write
-            match self.sys.write(buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_write_wait() || self.io.is_write_ready() {
+                self.io.reset_write();
+                self.io.clear_write_wait();
+                // this is an earlier return try for nonblocking write
+                match self.sys.write(buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_write_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -258,18 +264,21 @@ impl Write for TcpStream {
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            // this is an earlier return try for nonblocking write
-            match self.sys.write_vectored(bufs) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_write_wait() || self.io.is_write_ready() {
+                self.io.reset_write();
+                self.io.clear_write_wait();
+                // this is an earlier return try for nonblocking write
+                match self.sys.write_vectored(bufs) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_write_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }
@@ -382,17 +391,20 @@ impl TcpListener {
 
         #[cfg(unix)]
         {
-            self.io.reset();
-            match self.sys.accept() {
-                Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
-                #[cold]
-                Err(e) => {
-                    // raw_os_error is faster than kind
-                    let raw_err = e.raw_os_error();
-                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                        // do nothing here
-                    } else {
-                        return Err(e);
+            if !self.io.is_read_wait() || self.io.is_read_ready() {
+                self.io.reset_read();
+                self.io.clear_read_wait();
+                match self.sys.accept() {
+                    Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
+                    #[cold]
+                    Err(e) => {
+                        // raw_os_error is faster than kind
+                        let raw_err = e.raw_os_error();
+                        if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                            self.io.set_read_wait();
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
             }

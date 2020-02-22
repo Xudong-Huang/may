@@ -25,7 +25,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
         let io_data = (*self.io_data).clone();
         self.io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             return io_data.schedule();
         }
 
@@ -46,32 +46,25 @@ impl<'a> EventSource for RawIoBlock<'a> {
 
 /// This is trait that can block on io events but doing nothong about io
 pub trait WaitIo {
-    /// reset the io before io operation
-    fn reset_io(&self);
     /// block on read/write event
     fn wait_io(&self);
-    /// if io ready
-    fn io_ready(&self) -> bool;
+    /// get the internal io data
+    fn get_io_data(&self) -> &io_impl::IoData;
 }
 
 impl<T: io_impl::AsIoData> WaitIo for T {
-    fn reset_io(&self) {
-        let io_data = self.as_io_data();
-        io_data.reset();
+    fn get_io_data(&self) -> &io_impl::IoData {
+        self.as_io_data()
     }
 
     fn wait_io(&self) {
         let io_data = self.as_io_data();
         // when io flag is set we do nothing
-        if io_data.io_flag.load(Ordering::Relaxed) {
+        if io_data.io_flag.load(Ordering::Relaxed) != 0 {
             println!("earlier return for io_data true");
             return;
         }
         let blocker = RawIoBlock::new(self.as_io_data());
         yield_with(&blocker);
-    }
-
-    fn io_ready(&self) -> bool {
-        self.as_io_data().get()
     }
 }

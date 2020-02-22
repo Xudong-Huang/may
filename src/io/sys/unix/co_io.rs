@@ -97,11 +97,6 @@ impl<T: AsRawFd> CoIo<T> {
         }
     }
 
-    /// reset internal io data
-    pub(crate) fn io_reset(&self) {
-        self.io.reset()
-    }
-
     /// check current ctx
     pub(crate) fn ctx_check(&self) -> io::Result<bool> {
         self.ctx.check_nonblocking(|b| set_nonblocking(self, b))?;
@@ -159,19 +154,22 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
             return self.inner.read(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking read
-        // it's useful for server but not necessary for client
-        match self.inner.read(buf) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        if !self.io.is_read_wait() || self.io.is_read_ready() {
+            self.io.reset_read();
+            self.io.clear_read_wait();
+            // this is an earlier return try for nonblocking read
+            // it's useful for server but not necessary for client
+            match self.inner.read(buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        self.io.set_read_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }
@@ -189,18 +187,21 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
             return self.inner.write(buf);
         }
 
-        self.io.reset();
-        // this is an earlier return try for nonblocking write
-        match self.inner.write(buf) {
-            Ok(n) => return Ok(n),
-            #[cold]
-            Err(e) => {
-                // raw_os_error is faster than kind
-                let raw_err = e.raw_os_error();
-                if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
-                    // do nothing here
-                } else {
-                    return Err(e);
+        if !self.io.is_write_wait() || self.io.is_write_ready() {
+            self.io.reset_write();
+            self.io.clear_write_wait();
+            // this is an earlier return try for nonblocking write
+            match self.inner.write(buf) {
+                Ok(n) => return Ok(n),
+                #[cold]
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        self.io.set_write_wait();
+                    } else {
+                        return Err(e);
+                    }
                 }
             }
         }

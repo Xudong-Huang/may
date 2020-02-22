@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with;
@@ -28,23 +28,25 @@ impl<'a> SocketRead<'a> {
         loop {
             co_io_result()?;
 
-            // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            if !self.io_data.is_read_wait() || self.io_data.is_read_ready() {
+                self.io_data.reset_read();
+                self.io_data.clear_read_wait();
 
-            // finish the read operation
-            match read(self.io_data.fd, self.buf) {
-                Ok(n) => return Ok(n),
-                #[cold]
-                Err(e) => {
-                    if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
-                        // do nothing
-                    } else {
-                        return Err(from_nix_error(e));
+                // finish the read operation
+                match read(self.io_data.fd, self.buf) {
+                    Ok(n) => return Ok(n),
+                    #[cold]
+                    Err(e) => {
+                        if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
+                            self.io_data.set_read_wait();
+                        } else {
+                            return Err(from_nix_error(e));
+                        }
                     }
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if (self.io_data.io_flag.fetch_and(!1, Ordering::Relaxed) & 1) != 0 {
                 continue;
             }
 
@@ -56,9 +58,7 @@ impl<'a> SocketRead<'a> {
 
 impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
-        let io_data = (*self.io_data).clone();
+        let cancel = co_cancel_data(&co);
 
         if let Some(dur) = self.timeout {
             get_scheduler()
@@ -73,18 +73,15 @@ impl<'a> EventSource for SocketRead<'a> {
         // till here the io may be done in other thread
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
-            return io_data.schedule();
+        if self.io_data.is_read_ready() {
+            return self.io_data.schedule();
         }
 
         // register the cancel io data
-        cancel.set_io(io_data);
+        cancel.set_io((*self.io_data).clone());
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }
