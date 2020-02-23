@@ -43,8 +43,8 @@ struct Node<T> {
     value: Option<T>,
 }
 
-unsafe impl<T: Send> Send for Node<T> {}
-unsafe impl<T: Sync> Sync for Node<T> {}
+// unsafe impl<T: Send> Send for Node<T> {}
+// unsafe impl<T: Sync> Sync for Node<T> {}
 
 struct State<T> {
     enqueue_pos: CachePadded<AtomicUsize>,
@@ -54,7 +54,7 @@ struct State<T> {
 }
 
 unsafe impl<T: Send> Send for State<T> {}
-unsafe impl<T: Sync> Sync for State<T> {}
+unsafe impl<T: Send> Sync for State<T> {}
 
 pub struct Queue<T> {
     state: Arc<State<T>>,

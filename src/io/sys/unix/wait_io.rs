@@ -51,7 +51,6 @@ impl<'a> EventSource for RawIoBlock<'a> {
 /// This is trait that can block on io events but doing nothong about io
 pub trait WaitIo {
     /// block on read/write event
-    /// return true if there is io
     fn wait_io(&self);
 
     /// directly read from the inner socket
