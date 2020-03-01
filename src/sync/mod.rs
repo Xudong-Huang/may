@@ -17,6 +17,7 @@ pub(crate) mod atomic_dur;
 pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;
+pub mod spsc;
 pub use self::atomic_option::AtomicOption;
 pub use self::blocking::{Blocker, FastBlocker};
 pub use self::condvar::{Condvar, WaitTimeoutResult};
