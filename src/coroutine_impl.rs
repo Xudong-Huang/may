@@ -1,7 +1,6 @@
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::io;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,7 +11,7 @@ use crate::local::get_co_local_data;
 use crate::local::CoroutineLocal;
 use crate::park::Park;
 use crate::scheduler::get_scheduler;
-use crate::sync::AtomicOption;
+use crossbeam::atomic::AtomicCell;
 use generator::{Generator, Gn};
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -264,7 +263,7 @@ impl Builder {
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(UnsafeCell::new(None));
         let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
-        let packet = Arc::new(AtomicOption::none());
+        let packet = Arc::new(AtomicCell::new(None));
         let their_join = join.clone();
         let their_packet = packet.clone();
 
@@ -276,7 +275,7 @@ impl Builder {
             let join = unsafe { &mut *their_join.get() };
 
             // set the return packet
-            their_packet.swap(f(), Ordering::Release);
+            their_packet.swap(Some(f()));
 
             join.trigger();
             EventSubscriber { resource: done }

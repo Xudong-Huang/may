@@ -7,6 +7,7 @@ use std::thread::Result;
 
 use crate::coroutine_impl::Coroutine;
 use crate::sync::{AtomicOption, Blocker};
+use crossbeam::atomic::AtomicCell;
 use generator::Error;
 
 pub struct Join {
@@ -68,7 +69,7 @@ impl Join {
 pub struct JoinHandle<T> {
     co: Coroutine,
     join: Arc<UnsafeCell<Join>>,
-    packet: Arc<AtomicOption<T>>,
+    packet: Arc<AtomicCell<Option<T>>>,
     panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
 }
 
@@ -79,7 +80,7 @@ unsafe impl<T> Sync for JoinHandle<T> {}
 pub fn make_join_handle<T>(
     co: Coroutine,
     join: Arc<UnsafeCell<Join>>,
-    packet: Arc<AtomicOption<T>>,
+    packet: Arc<AtomicCell<Option<T>>>,
     panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
 ) -> JoinHandle<T> {
     JoinHandle {
@@ -114,7 +115,7 @@ impl<T> JoinHandle<T> {
         join.wait();
 
         // take the result
-        self.packet.take(Ordering::Acquire).ok_or_else(|| {
+        self.packet.take().ok_or_else(|| {
             let p = unsafe { &mut *self.panic.get() };
             p.take().unwrap_or_else(|| Box::new(Error::Cancel))
         })

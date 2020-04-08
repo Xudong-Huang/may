@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::sync::AtomicOption;
+use crossbeam::atomic::AtomicCell;
 use crossbeam::queue::SegQueue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
@@ -271,7 +271,7 @@ pub struct TimerThread<T> {
     // collect the remove request
     remove_list: mpsc<TimeoutHandle<T>>,
     // the timer thread wakeup handler
-    wakeup: AtomicOption<thread::Thread>,
+    wakeup: AtomicCell<Option<thread::Thread>>,
 }
 
 impl<T> TimerThread<T> {
@@ -279,7 +279,7 @@ impl<T> TimerThread<T> {
         TimerThread {
             timer_list: TimeOutList::new(),
             remove_list: mpsc::new(),
-            wakeup: AtomicOption::none(),
+            wakeup: AtomicCell::new(None),
         }
     }
 
@@ -287,7 +287,7 @@ impl<T> TimerThread<T> {
         let (h, is_recal) = self.timer_list.add_timer(dur, data);
         // wake up the timer thread if it's a new queue
         if is_recal {
-            if let Some(t) = self.wakeup.take(Ordering::Relaxed) {
+            if let Some(t) = self.wakeup.take() {
                 t.unpark();
             }
         }
@@ -296,7 +296,7 @@ impl<T> TimerThread<T> {
 
     pub fn del_timer(&self, handle: TimeoutHandle<T>) {
         self.remove_list.push(handle);
-        if let Some(t) = self.wakeup.take(Ordering::Acquire) {
+        if let Some(t) = self.wakeup.take() {
             t.unpark();
         }
     }
@@ -310,10 +310,10 @@ impl<T> TimerThread<T> {
             }
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
-            self.wakeup.swap(current_thread.clone(), Ordering::Relaxed);
+            self.wakeup.swap(Some(current_thread.clone()));
 
             if !self.remove_list.is_empty() {
-                if let Some(t) = self.wakeup.take(Ordering::Relaxed) {
+                if let Some(t) = self.wakeup.take() {
                     t.unpark();
                 }
             }

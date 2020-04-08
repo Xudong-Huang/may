@@ -5,13 +5,12 @@ use std::fmt;
 use std::mem;
 use std::panic;
 use std::rc::Rc;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
 use crate::coroutine_impl::{spawn, Coroutine};
 use crate::join::JoinHandle;
-use crate::sync::AtomicOption;
+use crossbeam::atomic::AtomicCell;
 
 /// Like `coroutine::spawn`, but without the closure bounds.
 pub unsafe fn spawn_unsafe<'a, F>(f: F) -> JoinHandle<()>
@@ -55,7 +54,7 @@ impl JoinState {
 /// A handle to a scoped coroutine
 pub struct ScopedJoinHandle<T> {
     inner: Rc<RefCell<JoinState>>,
-    packet: Arc<AtomicOption<T>>,
+    packet: Arc<AtomicCell<Option<T>>>,
     co: Coroutine,
 }
 
@@ -137,12 +136,12 @@ impl<'a> Scope<'a> {
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        let their_packet = Arc::new(AtomicOption::none());
+        let their_packet = Arc::new(AtomicCell::new(None));
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
             spawn_unsafe(move || {
-                their_packet.swap(f(), Ordering::Relaxed);
+                their_packet.swap(Some(f()));
             })
         };
 
@@ -182,7 +181,7 @@ impl<T> ScopedJoinHandle<T> {
     /// Join the scoped coroutine, returning the result it produced.
     pub fn join(self) -> T {
         self.inner.borrow_mut().join();
-        self.packet.take(Ordering::Relaxed).unwrap()
+        self.packet.take().unwrap()
     }
 
     /// Get the underlying coroutine handle.

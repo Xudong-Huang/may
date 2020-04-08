@@ -9,15 +9,15 @@ pub trait Wrapped {
     unsafe fn from_raw(_: *mut Self::Data) -> Self;
 }
 
-impl<T> Wrapped for T {
-    default type Data = T;
-    default fn into_raw(self) -> *mut Self::Data {
-        Box::into_raw(Box::new(self)) as _
-    }
-    default unsafe fn from_raw(p: *mut Self::Data) -> T {
-        *Box::from_raw(p as _)
-    }
-}
+// impl<T> Wrapped for T {
+//     default type Data = T;
+//     default fn into_raw(self) -> *mut Self::Data {
+//         Box::into_raw(Box::new(self)) as _
+//     }
+//     default unsafe fn from_raw(p: *mut Self::Data) -> T {
+//         *Box::from_raw(p as _)
+//     }
+// }
 
 impl<T> Wrapped for *mut T {
     type Data = T;
@@ -54,8 +54,8 @@ pub struct AtomicOption<T: Wrapped> {
     inner: AtomicPtr<T::Data>,
 }
 
-unsafe impl<T: Send> Send for AtomicOption<T> {}
-unsafe impl<T: Send> Sync for AtomicOption<T> {}
+unsafe impl<T: Wrapped + Send> Send for AtomicOption<T> {}
+unsafe impl<T: Wrapped + Send> Sync for AtomicOption<T> {}
 
 impl<T: Wrapped> AtomicOption<T> {
     pub fn none() -> AtomicOption<T> {

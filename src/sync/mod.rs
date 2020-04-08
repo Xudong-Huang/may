@@ -1,8 +1,3 @@
-#[cfg(nightly)]
-#[path = "atomic_option.rs"]
-mod atomic_option;
-#[cfg(not(nightly))]
-#[path = "atomic_option_stable.rs"]
 mod atomic_option;
 mod blocking;
 mod condvar;
