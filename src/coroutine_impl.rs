@@ -283,7 +283,7 @@ impl Builder {
 
         let mut co = if let Some(mut c) = _co {
             // re-init the closure
-            c.init(closure);
+            c.init_code(closure);
             c
         } else {
             Gn::new_opt(stack_size, closure)

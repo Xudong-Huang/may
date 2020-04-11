@@ -25,6 +25,7 @@ fn likely(e: bool) -> bool {
 // thread id, only workers are normal ones
 #[cfg(nightly)]
 #[thread_local]
+#[no_mangle]
 pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
 
 #[cfg(not(nightly))]

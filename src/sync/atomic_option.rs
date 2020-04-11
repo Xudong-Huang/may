@@ -2,6 +2,8 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
 
+use generator::Generator;
+
 // heap based wrapper for a type
 pub trait Wrapped {
     type Data;
@@ -46,6 +48,16 @@ impl<T> Wrapped for Box<T> {
     }
     unsafe fn from_raw(p: *mut T) -> Box<T> {
         Box::from_raw(p)
+    }
+}
+
+impl<'a, A, T> Wrapped for Generator<'a, A, T> {
+    type Data = usize;
+    fn into_raw(self) -> *mut usize {
+        Generator::into_raw(self)
+    }
+    unsafe fn from_raw(p: *mut usize) -> Self {
+        Generator::from_raw(p)
     }
 }
 
