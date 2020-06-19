@@ -215,6 +215,7 @@ fn yield_from_gen() {
 }
 
 #[test]
+#[allow(unused_assignments)]
 fn unpark() {
     let mut a = 0;
     coroutine::scope(|scope| {
