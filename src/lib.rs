@@ -23,8 +23,8 @@
 // #![deny(missing_docs)]
 #![allow(unused_extern_crates)]
 #![cfg_attr(nightly, feature(thread_local))]
-#![cfg_attr(nightly, feature(specialization))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
+#![cfg_attr(nightly, feature(min_specialization))]
 
 #[macro_use]
 extern crate log;
