@@ -38,7 +38,6 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
             match self.socket.send_to(self.buf, &self.addr) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();

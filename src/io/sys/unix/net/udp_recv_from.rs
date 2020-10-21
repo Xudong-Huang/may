@@ -36,7 +36,6 @@ impl<'a> UdpRecvFrom<'a> {
 
             match self.socket.recv_from(self.buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -80,10 +79,7 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

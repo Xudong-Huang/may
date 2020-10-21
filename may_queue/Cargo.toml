@@ -13,7 +13,7 @@ categories = ["concurrency"]
 build = "build.rs"
 
 [dependencies]
-crossbeam = "0.7"
+crossbeam = "0.8"
 
 [build-dependencies]
 rustc_version = "0.2"

@@ -38,7 +38,6 @@ impl<'a> UnixSendTo<'a> {
 
             match self.socket.send_to(self.buf, self.path) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();

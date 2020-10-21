@@ -83,7 +83,6 @@ impl ParkStatus {
     }
 }
 
-#[cold]
 #[inline(never)]
 fn init_scheduler() {
     let workers = config().get_workers();

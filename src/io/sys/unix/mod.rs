@@ -51,7 +51,6 @@ fn del_socket(io: &IoData) {
 fn co_io_result() -> io::Result<()> {
     match get_co_para() {
         None => Ok(()),
-        #[cold]
         Some(err) => Err(err),
     }
 }
@@ -62,7 +61,6 @@ fn from_nix_error(err: nix::Error) -> ::std::io::Error {
 
     match err {
         Sys(errno) => ::std::io::Error::from_raw_os_error(errno as i32),
-        #[cold]
         _ => ::std::io::Error::new(::std::io::ErrorKind::Other, "nix other error"),
     }
 }

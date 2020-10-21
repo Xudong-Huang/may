@@ -77,7 +77,6 @@ impl<T> Queue<T> {
                 }
                 i += 1;
                 if i > 100 {
-                    #[cold]
                     {
                         thread::yield_now();
                         i = 0;

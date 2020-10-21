@@ -38,7 +38,6 @@ macro_rules! t {
     ($e:expr) => {
         match $e {
             Ok(val) => val,
-            #[cold]
             Err(err) => return println!("err = {:?}", err),
         }
     };
@@ -54,7 +53,6 @@ fn handle_client(mut stream: TcpStream) {
         if n > 0 {
             t!(stream.write_all(&read[0..n]));
         } else {
-            #[cold]
             break;
         }
     }

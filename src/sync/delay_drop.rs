@@ -25,7 +25,6 @@ impl DelayDrop {
     pub fn reset(&self) {
         // wait the kernel finished
         while self.can_drop.load(Ordering::Acquire) == 2 {
-            #[cold]
             yield_now();
         }
 
@@ -44,7 +43,6 @@ impl Drop for DelayDrop {
     fn drop(&mut self) {
         // wait for drop
         while self.can_drop.load(Ordering::Acquire) == 2 {
-            #[cold]
             yield_now();
         }
     }

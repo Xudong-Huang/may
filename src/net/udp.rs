@@ -89,7 +89,6 @@ impl UdpSocket {
             // this is an earlier return try for nonblocking read
             match self.sys.send_to(buf, &addr) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -123,7 +122,6 @@ impl UdpSocket {
             // this is an earlier return try for nonblocking read
             match self.sys.recv_from(buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -157,7 +155,6 @@ impl UdpSocket {
             // this is an earlier return try for nonblocking write
             match self.sys.send(buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -191,7 +188,6 @@ impl UdpSocket {
             // this is an earlier return try for nonblocking read
             match self.sys.recv(buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();

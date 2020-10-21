@@ -49,7 +49,6 @@ macro_rules! t {
     ($e:expr) => {
         match $e {
             Ok(val) => val,
-            #[cold]
             Err(err) => return println!("call = {:?}\nerr = {:?}", stringify!($e), err),
         }
     };

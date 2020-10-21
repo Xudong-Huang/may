@@ -104,7 +104,6 @@ impl Selector {
 
         for event in events[..n].iter() {
             if event.data() == 0 {
-                #[cold]
                 {
                     // this is just a wakeup event, ignore it
                     let mut buf = [0u8; 8];

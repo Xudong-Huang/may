@@ -41,7 +41,6 @@ impl<'a> SocketWriteVectored<'a> {
 
             match self.socket.write_vectored(self.bufs) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     let raw_err = e.raw_os_error();
                     if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {

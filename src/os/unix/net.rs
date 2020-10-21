@@ -414,7 +414,6 @@ impl UnixListener {
         self.0.io_reset();
         match self.0.inner().accept() {
             Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();
@@ -808,7 +807,6 @@ impl UnixDatagram {
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv_from(buf) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();
@@ -848,7 +846,6 @@ impl UnixDatagram {
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv(buf) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();
@@ -887,7 +884,6 @@ impl UnixDatagram {
         // this is an earlier return try for nonblocking read
         match self.0.inner().send_to(buf, path.as_ref()) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();
@@ -930,7 +926,6 @@ impl UnixDatagram {
         // this is an earlier return try for nonblocking write
         match self.0.inner().send(buf) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();

@@ -33,7 +33,6 @@ impl<'a> TcpListenerAccept<'a> {
                     s.set_nonblocking(true)?;
                     return add_socket(&s).map(|io| (TcpStream::from_stream(s, io), a));
                 }
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -72,10 +71,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

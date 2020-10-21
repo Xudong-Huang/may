@@ -23,10 +23,7 @@ impl EventSource for Sleep {
         cancel.set_co(sleep_co);
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

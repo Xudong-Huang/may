@@ -29,7 +29,6 @@ impl EventLoop {
         loop {
             next_expire = match self.selector.select(id, &mut events_buf, next_expire) {
                 Ok(v) => v.or(Some(1_000_000_000)),
-                #[cold]
                 Err(e) => {
                     error!("selector error={:?}", e);
                     continue;

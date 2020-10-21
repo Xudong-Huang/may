@@ -54,7 +54,6 @@ impl IoContext {
     {
         // for coroutine context
         if self.nonblocking.load(Ordering::Relaxed) {
-            #[cold]
             {
                 if !self.blocked_io.load(Ordering::Relaxed) {
                     f(true)?;
@@ -75,7 +74,6 @@ impl IoContext {
     {
         // thread context
         if !is_coroutine() {
-            #[cold]
             {
                 if self.blocked_io.load(Ordering::Relaxed) {
                     f(false)?;
@@ -87,7 +85,6 @@ impl IoContext {
 
         // for coroutine context
         if !self.blocked_io.load(Ordering::Relaxed) {
-            #[cold]
             f(true)?;
             self.blocked_io.store(true, Ordering::Relaxed);
         }
@@ -108,7 +105,6 @@ impl<T> Deref for OptionCell<T> {
     fn deref(&self) -> &T {
         match self.0.as_ref() {
             Some(d) => d,
-            #[cold]
             None => panic!("no data to deref for OptionCell"),
         }
     }
@@ -122,7 +118,6 @@ impl<T> OptionCell<T> {
     pub fn take(&mut self) -> T {
         match self.0.take() {
             Some(d) => d,
-            #[cold]
             None => panic!("no data to take for OptionCell"),
         }
     }

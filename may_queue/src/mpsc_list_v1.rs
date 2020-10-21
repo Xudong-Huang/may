@@ -71,7 +71,6 @@ impl<T> Entry<T> {
             // when the link bit is cleared, next and prev is no longer valid
             if node.refs & !REF_COUNT_MASK == 0 {
                 // already removed
-                #[cold]
                 return None;
             }
 
@@ -107,7 +106,6 @@ impl<T> Entry<T> {
                 node.refs -= 1;
                 if node.refs == 0 {
                     // release the node only when the ref count becomes 0
-                    #[cold]
                     let _: Box<Node<T>> = Box::from_raw(node);
                 }
 
@@ -202,7 +200,6 @@ impl<T> Queue<T> {
                 }
                 i += 1;
                 if i > 500 {
-                    #[cold]
                     {
                         thread::yield_now();
                         i = 0;
@@ -299,7 +296,6 @@ impl<T> Queue<T> {
                 }
                 i += 1;
                 if i > 100 {
-                    #[cold]
                     {
                         thread::yield_now();
                         i = 0;

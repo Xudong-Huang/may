@@ -88,7 +88,6 @@ impl<T: CancelIo> CancelImpl<T> {
     // panic if cancel was set
     pub fn check_cancel(&self) {
         if self.state.load(Ordering::Acquire) == 1 {
-            #[cold]
             {
                 // before panic clear the last coroutine error
                 // this would affect future new coroutine that reuse the instance

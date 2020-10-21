@@ -180,7 +180,6 @@ impl Read for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
             return self.sys.read(buf);
         }
 
@@ -191,7 +190,6 @@ impl Read for TcpStream {
             // it's useful for server but not necessary for client
             match self.sys.read(buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -217,7 +215,6 @@ impl Write for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
             return self.sys.write(buf);
         }
 
@@ -227,7 +224,6 @@ impl Write for TcpStream {
             // this is an earlier return try for nonblocking write
             match self.sys.write(buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -252,7 +248,6 @@ impl Write for TcpStream {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
             return self.sys.write_vectored(bufs);
         }
 
@@ -262,7 +257,6 @@ impl Write for TcpStream {
             // this is an earlier return try for nonblocking write
             match self.sys.write_vectored(bufs) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();
@@ -373,7 +367,6 @@ impl TcpListener {
             .check_nonblocking(|b| self.sys.set_nonblocking(b))?
             || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
         {
-            #[cold]
             return self
                 .sys
                 .accept()
@@ -385,7 +378,6 @@ impl TcpListener {
             self.io.reset();
             match self.sys.accept() {
                 Ok((s, a)) => return TcpStream::new(s).map(|s| (s, a)),
-                #[cold]
                 Err(e) => {
                     // raw_os_error is faster than kind
                     let raw_err = e.raw_os_error();

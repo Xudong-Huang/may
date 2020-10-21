@@ -164,7 +164,6 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
         // it's useful for server but not necessary for client
         match self.inner.read(buf) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();
@@ -193,7 +192,6 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
         // this is an earlier return try for nonblocking write
         match self.inner.write(buf) {
             Ok(n) => return Ok(n),
-            #[cold]
             Err(e) => {
                 // raw_os_error is faster than kind
                 let raw_err = e.raw_os_error();

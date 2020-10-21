@@ -34,7 +34,6 @@ impl<'a> SocketRead<'a> {
             // finish the read operation
             match read(self.io_data.fd, self.buf) {
                 Ok(n) => return Ok(n),
-                #[cold]
                 Err(e) => {
                     if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
                         // do nothing
@@ -81,10 +80,7 @@ impl<'a> EventSource for SocketRead<'a> {
         cancel.set_io(io_data);
         // re-check the cancel status
         if cancel.is_canceled() {
-            #[cold]
-            unsafe {
-                cancel.cancel()
-            };
+            unsafe { cancel.cancel() };
         }
     }
 }

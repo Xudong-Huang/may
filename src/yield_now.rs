@@ -23,7 +23,6 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     // if cancel detected in user space
     // no need to get into kernel any more
     if cancel.is_canceled() {
-        #[cold]
         {
             co_set_para(::std::io::Error::new(
                 ::std::io::ErrorKind::Other,
@@ -56,7 +55,6 @@ pub fn get_co_para() -> Option<EventResult> {
 #[inline]
 pub fn yield_now() {
     if !is_coroutine() {
-        #[cold]
         return thread::yield_now();
     }
     let y = Yield {};
