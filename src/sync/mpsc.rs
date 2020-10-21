@@ -78,7 +78,7 @@ impl<T> InnerQueue<T> {
             None => {
                 match self.channels.load(Ordering::Acquire) {
                     // there is no sender any more, should re-check
-                    0 => self.queue.pop().ok_or_else(|| TryRecvError::Disconnected),
+                    0 => self.queue.pop().ok_or(TryRecvError::Disconnected),
                     _ => Err(TryRecvError::Empty),
                 }
             }
@@ -104,7 +104,7 @@ impl<T> InnerQueue<T> {
     pub fn drop_port(&self) {
         self.port_dropped.store(true, Ordering::Release);
         // clear all the data
-        while let Some(_) = self.queue.pop() {}
+        while self.queue.pop().is_some() {}
     }
 }
 

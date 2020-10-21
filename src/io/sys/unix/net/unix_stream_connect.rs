@@ -9,7 +9,6 @@ use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with;
-use libc;
 use socket2::{Domain, SockAddr, Socket, Type};
 
 pub struct UnixStreamConnect {

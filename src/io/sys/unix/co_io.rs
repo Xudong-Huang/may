@@ -12,7 +12,6 @@ use self::io_impl::net as net_impl;
 use crate::io as io_impl;
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with;
-use libc;
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {

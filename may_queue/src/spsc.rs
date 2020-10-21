@@ -53,7 +53,10 @@ impl<T> Queue<T> {
     }
 
     /// peek the head
-    /// safety: not safe if you pop out the head value when hold the data ref
+    ///
+    /// # Safety
+    ///
+    /// not safe if you pop out the head value when hold the data ref
     pub unsafe fn peek(&self) -> Option<&T> {
         let index = self.pop_index.load(Ordering::Relaxed);
         let push_index = self.push_index.load(Ordering::Relaxed);

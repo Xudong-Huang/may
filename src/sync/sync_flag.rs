@@ -67,7 +67,7 @@ impl SyncFlag {
 
     #[inline]
     fn wakeup_all(&self) {
-        while let Ok(w) = self.to_wake.pop() {
+        while let Some(w) = self.to_wake.pop() {
             w.unpark();
             if w.take_release() {
                 self.fire();

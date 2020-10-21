@@ -241,8 +241,8 @@ impl Cqueue {
         let deadline = timeout.map(|dur| Instant::now() + dur);
         loop {
             match self.ev_queue.pop() {
-                Ok(mut ev) => run_ev!(ev),
-                Err(_) => {
+                Some(mut ev) => run_ev!(ev),
+                None => {
                     if self.cnt.load(Ordering::Relaxed) == 0 {
                         return Err(PollError::Finished);
                     }
@@ -254,10 +254,10 @@ impl Cqueue {
             self.to_wake.swap(cur.clone(), Ordering::Release);
             // re-check the queue
             match self.ev_queue.pop() {
-                Err(_) => {
+                None => {
                     cur.park(timeout).ok();
                 }
-                Ok(mut ev) => {
+                Some(mut ev) => {
                     if let Some(w) = self.to_wake.take(Ordering::Relaxed) {
                         w.unpark();
                     }

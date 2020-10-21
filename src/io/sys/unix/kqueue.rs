@@ -8,7 +8,6 @@ use crate::coroutine_impl::run_coroutine;
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 use crossbeam::queue::SegQueue as mpsc;
-use libc;
 use smallvec::SmallVec;
 
 use super::{timeout_handler, EventData, IoData, TimerList};
@@ -282,7 +281,7 @@ impl Selector {
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
         let free_ev = &unsafe { self.vec.get_unchecked(id) }.free_ev;
-        while let Ok(_) = free_ev.pop() {}
+        while free_ev.pop().is_some() {}
     }
 
     // register the io request to the timeout list

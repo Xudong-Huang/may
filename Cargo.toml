@@ -30,11 +30,11 @@ socket2 = { version = "0.3", features = ["unix", "reuseport"] }
 num_cpus = "1.1"
 smallvec = "1.2"
 generator = "0.6"
-crossbeam = "0.7"
+crossbeam = "0.8"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.18"
+nix = "0.19"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
@@ -42,7 +42,7 @@ miow = "0.3"
 winapi = "0.3"
 
 [dev-dependencies]
-bytes = "0.5"
+bytes = "0.6"
 serde = "1.0"
 docopt = "1.0"
 tempdir = "0.3"

@@ -32,8 +32,8 @@ impl CoroutinePool {
     #[inline]
     pub fn get(&self) -> CoroutineImpl {
         match self.pool.pop() {
-            Ok(co) => co,
-            Err(_) => Self::create_dummy_coroutine(),
+            Some(co) => co,
+            None => Self::create_dummy_coroutine(),
         }
     }
 

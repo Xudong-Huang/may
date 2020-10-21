@@ -31,7 +31,6 @@ use crate::scheduler::get_scheduler;
 use crate::sync::AtomicOption;
 use crate::timeout_list::{TimeOutList, TimeoutHandle};
 use crate::yield_now::{get_co_para, set_co_para};
-use nix;
 
 pub use self::select::{Selector, SysEvent};
 

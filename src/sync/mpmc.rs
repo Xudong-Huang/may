@@ -64,8 +64,8 @@ impl<T> InnerQueue<T> {
         }
 
         match self.queue.pop() {
-            Ok(data) => Ok(data),
-            Err(_) => match self.tx_ports.load(Ordering::Acquire) {
+            Some(data) => Ok(data),
+            None => match self.tx_ports.load(Ordering::Acquire) {
                 0 => Err(RecvTimeoutError::Disconnected),
                 _n => unreachable!("mpmc recv found no data"),
             },
@@ -81,8 +81,8 @@ impl<T> InnerQueue<T> {
         }
 
         match self.queue.pop() {
-            Ok(data) => Ok(data),
-            Err(_) => match self.tx_ports.load(Ordering::Acquire) {
+            Some(data) => Ok(data),
+            None => match self.tx_ports.load(Ordering::Acquire) {
                 0 => Err(TryRecvError::Disconnected),
                 _ => unreachable!("mpmc try_recv found no data"),
             },
@@ -115,7 +115,7 @@ impl<T> InnerQueue<T> {
         match self.rx_ports.fetch_sub(1, Ordering::SeqCst) {
             1 => {
                 // there is no receiver any more, clear the data
-                while let Ok(_) = self.queue.pop() {}
+                while self.queue.pop().is_some() {}
             }
             n if n > 1 => {}
             n => panic!("bad number of rx_ports left {}", n),

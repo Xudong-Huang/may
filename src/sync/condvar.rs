@@ -40,11 +40,7 @@ impl Condvar {
     }
 
     // return false if timeout happened
-    pub fn wait_impl<'a, T>(
-        &self,
-        lock: &'a Mutex<T>,
-        dur: Option<Duration>,
-    ) -> Result<(), ParkError> {
+    pub fn wait_impl<T>(&self, lock: &Mutex<T>, dur: Option<Duration>) -> Result<(), ParkError> {
         let cancel = if crate::coroutine_impl::is_coroutine() {
             Some(crate::coroutine_impl::current_cancel_data())
         } else {

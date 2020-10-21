@@ -139,13 +139,18 @@ impl Coroutine {
     }
 
     /// cancel a coroutine
+    /// # Safety
+    ///
+    /// This function would force a coroutine exist when next scheduling
+    /// And would drop all the resource tha the coroutine currently holding
+    /// This may have unexpected side effects if you are not fully aware it
     pub unsafe fn cancel(&self) {
         self.inner.cancel.cancel();
     }
 
     /// Gets the coroutine name.
     pub fn name(&self) -> Option<&str> {
-        self.inner.name.as_ref().map(|s| &**s)
+        self.inner.name.as_deref()
     }
 
     /// Get the internal cancel
@@ -310,7 +315,7 @@ impl Builder {
     /// `io::Result` to capture any failure to create the thread at
     /// the OS level.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     ///  - Access [`TLS`] in coroutine may trigger undefined behavior.
     ///  - If the coroutine exceed the stack during execution, this would trigger
@@ -354,6 +359,12 @@ impl Builder {
 
     /// first run the coroutine in current thread, you should allways use
     /// `spawn` instead of this API.
+    ///
+    /// # Safety
+    ///
+    /// Cancel would drop all the resource of the coroutine.
+    /// Normally this is safe but for some cases you should
+    /// take care of the side effect
     pub unsafe fn spawn_local<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T + Send + 'static,
@@ -386,7 +397,7 @@ impl Builder {
 /// This API has the same semantic as the `std::thread::spawn` API, except that
 /// it is an unsafe method.
 ///
-/// # Unsafety
+/// # Safety
 ///
 ///  - Access [`TLS`] in coroutine may trigger undefined behavior.
 ///  - If the coroutine exceed the stack during execution, this would trigger

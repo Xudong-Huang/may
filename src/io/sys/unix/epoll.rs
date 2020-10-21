@@ -212,7 +212,7 @@ impl Selector {
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
         let free_ev = &unsafe { self.vec.get_unchecked(id) }.free_ev;
-        while let Ok(_) = free_ev.pop() {}
+        while free_ev.pop().is_some() {}
     }
 
     // register the io request to the timeout list

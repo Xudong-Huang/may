@@ -31,8 +31,10 @@ pub struct Entry<T>(ptr::NonNull<Node<T>>);
 unsafe impl<T: Sync> Sync for Entry<T> {}
 
 impl<T> Entry<T> {
-    // get the internal data mut ref
-    // must make sure it's not popped by the consumer
+    /// get the internal data mut ref
+    /// # Safety
+    ///
+    /// must make sure it's not popped by the consumer
     #[inline]
     pub unsafe fn with_mut_data<F>(&self, f: F)
     where
@@ -58,6 +60,9 @@ impl<T> Entry<T> {
     }
 
     #[inline]
+    /// # Safety
+    ///
+    /// Must use the ptr that from `Entry::into_ptr`
     pub unsafe fn from_ptr(ptr: *mut Self) -> Self {
         Entry(ptr::NonNull::new_unchecked(ptr as *mut Node<T>))
     }
@@ -331,7 +336,7 @@ impl<T> Default for Queue<T> {
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        while let Some(_) = self.pop() {}
+        while self.pop().is_some() {}
         // release the stub
         let _: Box<Node<T>> = unsafe { Box::from_raw(*self.tail.get()) };
     }

@@ -112,12 +112,7 @@ impl<T> PartialOrd for IntervalEntry<T> {
 
 impl<T> cmp::Ord for IntervalEntry<T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        if self.time < other.time {
-            return cmp::Ordering::Greater;
-        } else if self.time > other.time {
-            return cmp::Ordering::Less;
-        }
-        cmp::Ordering::Equal
+        other.time.cmp(&self.time)
     }
 }
 
@@ -305,7 +300,7 @@ impl<T> TimerThread<T> {
     pub fn run<F: Fn(T)>(&self, f: &F) {
         let current_thread = thread::current();
         loop {
-            while let Ok(h) = self.remove_list.pop() {
+            while let Some(h) = self.remove_list.pop() {
                 h.remove();
             }
             // we must register the thread handle first

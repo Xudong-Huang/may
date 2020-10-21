@@ -3,8 +3,6 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use num_cpus;
-
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
 const DEFAULT_STACK_SIZE: usize = 0x1000;

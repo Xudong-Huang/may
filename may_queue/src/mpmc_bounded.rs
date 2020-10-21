@@ -94,21 +94,20 @@ impl<T: Send> State<T> {
         loop {
             let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
             let seq = node.sequence.load(Acquire);
-            let diff: isize = seq as isize - pos as isize;
 
-            if diff == 0 {
-                let enqueue_pos = self.enqueue_pos.compare_and_swap(pos, pos + 1, Relaxed);
-                if enqueue_pos == pos {
-                    node.value = Some(value);
-                    node.sequence.store(pos + 1, Release);
-                    break;
-                } else {
-                    pos = enqueue_pos;
+            match seq.cmp(&pos) {
+                std::cmp::Ordering::Equal => {
+                    let enqueue_pos = self.enqueue_pos.compare_and_swap(pos, pos + 1, Relaxed);
+                    if enqueue_pos == pos {
+                        node.value = Some(value);
+                        node.sequence.store(pos + 1, Release);
+                        break;
+                    } else {
+                        pos = enqueue_pos;
+                    }
                 }
-            } else if diff < 0 {
-                return Err(value);
-            } else {
-                pos = self.enqueue_pos.load(Relaxed);
+                std::cmp::Ordering::Less => return Err(value),
+                std::cmp::Ordering::Greater => pos = self.enqueue_pos.load(Relaxed),
             }
         }
         Ok(())
@@ -120,20 +119,20 @@ impl<T: Send> State<T> {
         loop {
             let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
             let seq = node.sequence.load(Acquire);
-            let diff: isize = seq as isize - (pos + 1) as isize;
-            if diff == 0 {
-                let dequeue_pos = self.dequeue_pos.compare_and_swap(pos, pos + 1, Relaxed);
-                if dequeue_pos == pos {
-                    let value = node.value.take();
-                    node.sequence.store(pos + mask + 1, Release);
-                    return value;
-                } else {
-                    pos = dequeue_pos;
+
+            match seq.cmp(&(pos + 1)) {
+                std::cmp::Ordering::Equal => {
+                    let dequeue_pos = self.dequeue_pos.compare_and_swap(pos, pos + 1, Relaxed);
+                    if dequeue_pos == pos {
+                        let value = node.value.take();
+                        node.sequence.store(pos + mask + 1, Release);
+                        return value;
+                    } else {
+                        pos = dequeue_pos;
+                    }
                 }
-            } else if diff < 0 {
-                return None;
-            } else {
-                pos = self.dequeue_pos.load(Relaxed);
+                std::cmp::Ordering::Less => return None,
+                std::cmp::Ordering::Greater => pos = self.dequeue_pos.load(Relaxed),
             }
         }
     }

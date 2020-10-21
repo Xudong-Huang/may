@@ -9,7 +9,6 @@ use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with;
-use libc;
 use socket2::Socket;
 
 pub struct TcpStreamConnect {
