@@ -94,6 +94,8 @@ pub struct EventSender<'a> {
     cqueue: &'a Cqueue,
 }
 
+unsafe impl<'a> Send for EventSender<'a> {}
+
 impl<'a> EventSender<'a> {
     /// get the token
     pub fn get_token(&self) -> usize {

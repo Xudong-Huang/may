@@ -24,6 +24,10 @@ pub struct EventSubscriber {
     resource: *mut dyn EventSource,
 }
 
+// the EventSource is usually a heap obj that resides within the
+// generator, it should be safe to send between threads.
+unsafe impl Send for EventSubscriber {}
+
 impl EventSubscriber {
     pub fn new(r: *mut dyn EventSource) -> Self {
         EventSubscriber { resource: r }
