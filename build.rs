@@ -1,8 +1,12 @@
-use rustc_version::{version_meta, Channel};
+#[rustversion::nightly]
+const NIGHTLY: bool = true;
+
+#[rustversion::not(nightly)]
+const NIGHTLY: bool = false;
 
 fn main() {
     // Set cfg flags depending on release channel
-    if let Channel::Nightly = version_meta().unwrap().channel {
+    if NIGHTLY {
         println!("cargo:rustc-cfg=nightly");
     }
 }

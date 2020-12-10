@@ -56,7 +56,7 @@ serde_derive = "1.0"
 lto = true
 
 [build-dependencies]
-rustc_version = "0.2"
+rustversion = "1.0"
 
 [workspace]
 members = ["may_queue"]

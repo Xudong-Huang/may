@@ -16,5 +16,5 @@ build = "build.rs"
 crossbeam = "0.8"
 
 [build-dependencies]
-rustc_version = "0.2"
+rustversion = "1.0"
 
