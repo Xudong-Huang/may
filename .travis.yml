@@ -4,7 +4,12 @@ language: rust
 
 os:
  - linux
+ - windows
  - osx
+
+arch:
+- amd64
+# - arm64
 
 rust:
   - stable

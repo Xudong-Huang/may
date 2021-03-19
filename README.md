@@ -3,9 +3,6 @@
     <a href="https://travis-ci.org/Xudong-Huang/may">
         <img src="https://travis-ci.org/Xudong-Huang/may.svg?branch=master">
     </a>
-    <a href="https://ci.appveyor.com/project/Xudong-Huang/may/branch/master">
-        <img src="https://ci.appveyor.com/api/projects/status/7gv4kw3b0m0y1iy6/branch/master?svg=true">
-    </a>
     <a href="https://crates.io/crates/may">
         <img src="https://img.shields.io/crates/v/may.svg">
     </a>
