@@ -13,7 +13,7 @@
         <img src="https://img.shields.io/badge/doc-may-green.svg">
     </a>
     
-May is a high-performant library for programming stackful coroutines with which you can easily develop and maintain massive concurrent programs. It can be thought as the Rust version of the popular [Goroutine][go].
+May is a high-performance library for programming stackful coroutines with which you can easily develop and maintain massive concurrent programs. It can be thought as the Rust version of the popular [Goroutine][go].
 </div>
 
 ----------
@@ -32,18 +32,18 @@ May is a high-performant library for programming stackful coroutines with which 
 ----------
 
 ## Features
-* The stackful coroutine's implementation is based on [generator][generator];
+* The stackful coroutine implementation is based on [generator][generator];
 * Support schedule on a configurable number of threads for multi-core systems;
-* Support coroutine's version of a local storage ([CLS][cls]);
+* Support coroutine version of a local storage ([CLS][cls]);
 * Support efficient asynchronous network I/O;
 * Support efficient timer management;
 * Support standard synchronization primitives, a semaphore, an MPMC channel, etc;
 * Support cancellation of coroutines;
 * Support graceful panic handling that will not affect other coroutines;
 * Support scoped coroutine creation;
-* Support general selection for all the coroutine's API;
-* All the coroutine's API are compatible with the standard library semantics;
-* All the coroutine's API can be safely called in multi-threaded context;
+* Support general selection for all the coroutine API;
+* All the coroutine API are compatible with the standard library semantics;
+* All the coroutine API can be safely called in multi-threaded context;
 * Both stable, beta, and nightly channels are supported;
 * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
@@ -106,7 +106,7 @@ There is a detailed [document][caveat] that describes May's main restrictions. I
 > It's considered **unsafe** with the following pattern:
 > ```rust
 > set_tls();
-> // Or another coroutine's API that would cause scheduling:
+> // Or another coroutine API that would cause scheduling:
 > coroutine::yield_now(); 
 > use_tls();
 > ```
@@ -116,12 +116,12 @@ There is a detailed [document][caveat] that describes May's main restrictions. I
 * Don't exceed the coroutine stack. There is a guard page for each coroutine stack. When stack overflow occurs, it will trigger segment fault error.
 
 **Note:**
-> The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine's stack size, make sure it's big enough for your applications. 
+> The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine stack size, make sure it's big enough for your applications. 
 
 ----------
 
 ## How to tune a stack size
-If you want to tune your coroutine's stack size, please check out [this document][stack].
+If you want to tune your coroutine stack size, please check out [this document][stack].
 
 ----------
 

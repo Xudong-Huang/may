@@ -177,14 +177,14 @@ impl Condvar {
     }
 
     fn verify(&self, addr: usize) {
-        match self.mutex.compare_and_swap(0, addr, Ordering::SeqCst) {
+        match self.mutex.compare_exchange(0, addr, Ordering::SeqCst, Ordering::SeqCst) {
             // If we got out 0, then we have successfully bound the mutex to
             // this condvar.
-            0 => {}
+            Ok(0) => {}
 
             // If we get out a value that's the same as `addr`, then someone
             // already beat us to the punch.
-            n if n == addr => {}
+            Err(n) if n == addr => {}
 
             // Anything else and we're using more than one mutex on this condvar,
             // which is currently disallowed.

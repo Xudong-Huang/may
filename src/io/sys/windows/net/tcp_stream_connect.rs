@@ -56,7 +56,7 @@ impl TcpStreamConnect {
 
                 socket
                     .bind(&any.into())
-                    .and_then(|_| Ok(socket.into()))
+                    .map(|_| socket.into())
                     .and_then(|s: std::net::TcpStream| {
                         // must register io first
                         s.set_nonblocking(true)?;

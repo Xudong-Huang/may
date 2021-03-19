@@ -1,6 +1,6 @@
 use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{spin_loop_hint, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::thread;
 
 use crossbeam::utils::CachePadded;
@@ -82,7 +82,7 @@ impl<T> Queue<T> {
                         i = 0;
                     }
                 } else {
-                    spin_loop_hint()
+                    std::hint::spin_loop()
                 }
             }
             // value is not an atomic operation it may read out old shadow value
