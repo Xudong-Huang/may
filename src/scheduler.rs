@@ -90,10 +90,10 @@ fn init_scheduler() {
     unsafe {
         SCHED = Box::into_raw(b);
     }
+    filter_cancel_panic();
 
     // timer thread
     thread::spawn(move || {
-        filter_cancel_panic();
         let s = unsafe { &*SCHED };
         // timer function
         let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
@@ -112,7 +112,6 @@ fn init_scheduler() {
     // io event loop thread
     for id in 0..workers {
         thread::spawn(move || {
-            filter_cancel_panic();
             let s = unsafe { &*SCHED };
             s.event_loop.run(id).unwrap_or_else(|e| {
                 panic!("event_loop failed running, err={}", e);
