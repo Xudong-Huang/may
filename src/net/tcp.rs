@@ -341,8 +341,8 @@ impl TcpListener {
         let mut addrs = addr.to_socket_addrs()?;
         let addr = addrs.next().unwrap();
         let listener = match &addr {
-            SocketAddr::V4(_) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
-            SocketAddr::V6(_) => Socket::new(Domain::ipv6(), Type::stream(), None)?,
+            SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+            SocketAddr::V6(_) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
 
         // windows not have reuset port but reuse address is not safe
@@ -357,7 +357,7 @@ impl TcpListener {
         }
         listener.listen(256)?;
 
-        let s = listener.into_tcp_listener();
+        let s = listener.into();
         TcpListener::new(s)
     }
 

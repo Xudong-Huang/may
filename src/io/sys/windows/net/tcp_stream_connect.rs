@@ -33,8 +33,8 @@ impl TcpStreamConnect {
             .fold(Err(err), |prev, addr| {
                 prev.or_else(|_| {
                     let socket = match addr {
-                        SocketAddr::V4(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
-                        SocketAddr::V6(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+                        SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+                        SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
                     };
                     Ok((socket, addr))
                 })
@@ -56,8 +56,8 @@ impl TcpStreamConnect {
 
                 socket
                     .bind(&any.into())
-                    .and_then(|_| Ok(socket.into_tcp_stream()))
-                    .and_then(|s| {
+                    .and_then(|_| Ok(socket.into()))
+                    .and_then(|s: std::net::TcpStream| {
                         // must register io first
                         s.set_nonblocking(true)?;
                         add_socket(&s).map(|_io| TcpStreamConnect {

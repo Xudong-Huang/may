@@ -28,8 +28,8 @@ impl TcpStreamConnect {
             .fold(Err(err), |prev, addr| {
                 prev.or_else(|_| {
                     let stream = match addr {
-                        SocketAddr::V4(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
-                        SocketAddr::V6(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+                        SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+                        SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
                     };
                     Ok((stream, addr))
                 })
@@ -65,7 +65,7 @@ impl TcpStreamConnect {
 
     pub fn done(&mut self) -> io::Result<TcpStream> {
         fn convert_to_stream(s: &mut TcpStreamConnect) -> TcpStream {
-            let stream = s.stream.take().into_tcp_stream();
+            let stream = s.stream.take().into();
             TcpStream::from_stream(stream, s.io_data.take())
         }
 

@@ -26,10 +26,10 @@ impl<'a> TcpListenerAccept<'a> {
 
         let local_addr = socket.local_addr()?;
         let stream = match local_addr {
-            SocketAddr::V4(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
-            SocketAddr::V6(..) => Socket::new(Domain::ipv4(), Type::stream(), None)?,
+            SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+            SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
         };
-        let stream = stream.into_tcp_stream();
+        let stream = stream.into();
 
         Ok(TcpListenerAccept {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),

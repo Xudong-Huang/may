@@ -21,7 +21,7 @@ pub struct UnixStreamConnect {
 impl UnixStreamConnect {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = SockAddr::unix(path)?;
-        let socket = Socket::new(Domain::unix(), Type::stream(), None)?;
+        let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
         // before yield we must set the socket to nonblocking mode and registe to selector
         socket.set_nonblocking(true)?;
         add_socket(&socket).map(|io| UnixStreamConnect {
@@ -49,7 +49,7 @@ impl UnixStreamConnect {
 
     pub fn done(&mut self) -> io::Result<UnixStream> {
         fn convert_to_stream(s: &mut UnixStreamConnect) -> UnixStream {
-            let stream = s.stream.take().into_unix_stream();
+            let stream = s.stream.take().into();
             UnixStream::from_coio(CoIo::from_raw(stream, s.io_data.take()))
         }
 
