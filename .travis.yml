@@ -9,7 +9,7 @@ os:
 
 arch:
 - amd64
-# - arm64
+- arm64
 
 rust:
   - stable
