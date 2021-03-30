@@ -27,8 +27,8 @@ pub struct Queue<T> {
     tail: UnsafeCell<*mut Node<T>>,
 }
 
-unsafe impl<T> Send for Queue<T> {}
-unsafe impl<T> Sync for Queue<T> {}
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Send> Sync for Queue<T> {}
 
 impl<T> Queue<T> {
     /// Creates a new queue that is safe to share among multiple producers and
