@@ -1,4 +1,3 @@
-use std::cell::UnsafeCell;
 use std::fmt;
 use std::io;
 use std::sync::Arc;
@@ -267,27 +266,28 @@ impl Builder {
             None
         };
 
-        let done = &DONE as &dyn EventSource as *const _ as *mut dyn EventSource;
-
         // create a join resource, shared by waited coroutine and *this* coroutine
-        let panic = Arc::new(UnsafeCell::new(None));
-        let join = Arc::new(UnsafeCell::new(Join::new(panic.clone())));
+        let panic = Arc::new(AtomicCell::new(None));
+        let join = Arc::new(Join::new(panic.clone()));
         let packet = Arc::new(AtomicCell::new(None));
         let their_join = join.clone();
         let their_packet = packet.clone();
+
+        let subscriber = EventSubscriber {
+            resource: &DONE as &dyn EventSource as *const _ as *mut dyn EventSource,
+        };
 
         let closure = move || {
             // trigger the JoinHandler
             // we must declare the variable before calling f so that stack is prepared
             // to unwind these local data. for the panic err we would set it in the
             // coroutine local data so that can return from the packet variable
-            let join = unsafe { &mut *their_join.get() };
 
             // set the return packet
             their_packet.swap(Some(f()));
 
-            join.trigger();
-            EventSubscriber { resource: done }
+            their_join.trigger();
+            subscriber
         };
 
         let mut co = if let Some(mut c) = _co {
@@ -512,7 +512,7 @@ pub(crate) fn run_coroutine(mut co: CoroutineImpl) {
         None => {
             // panic happened here
             let local = unsafe { &mut *get_co_local(&co) };
-            let join = unsafe { &mut *local.get_join().get() };
+            let join = local.get_join();
             // set the panic data
             if let Some(panic) = co.get_panic_data() {
                 join.set_panic_data(panic);

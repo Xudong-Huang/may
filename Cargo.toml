@@ -29,7 +29,7 @@ log = "0.4"
 socket2 = { version = "0.4", features = ["all"] }
 num_cpus = "1.1"
 smallvec = "1.2"
-generator = "0.6"
+generator = "0.7"
 crossbeam = "0.8"
 may_queue = { version = "0.1", path = "may_queue" }
 

@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -21,12 +20,12 @@ pub struct Join {
     // this is the only place that could set the panic Error
     // we use to communicate with JoinHandle so that can return the panic info
     // this must be ready before the trigger
-    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
+    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
 }
 
 // this is the join resource type
 impl Join {
-    pub fn new(panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>) -> Self {
+    pub fn new(panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>) -> Self {
         Join {
             to_wake: AtomicOption::none(),
             state: AtomicBool::new(true),
@@ -35,19 +34,18 @@ impl Join {
     }
 
     // the the panic for the coroutine
-    pub fn set_panic_data(&mut self, panic: Box<dyn Any + Send>) {
-        let p = unsafe { &mut *self.panic.get() };
-        *p = Some(panic);
+    pub fn set_panic_data(&self, panic: Box<dyn Any + Send>) {
+        self.panic.swap(Some(panic));
     }
 
-    pub fn trigger(&mut self) {
+    pub fn trigger(&self) {
         self.state.store(false, Ordering::Release);
         if let Some(w) = self.to_wake.take(Ordering::Acquire) {
             w.unpark();
         }
     }
 
-    fn wait(&mut self) {
+    fn wait(&self) {
         if self.state.load(Ordering::Acquire) {
             let cur = Blocker::current();
             // register the blocker first
@@ -68,9 +66,9 @@ impl Join {
 /// A join handle to a coroutine
 pub struct JoinHandle<T> {
     co: Coroutine,
-    join: Arc<UnsafeCell<Join>>,
+    join: Arc<Join>,
     packet: Arc<AtomicCell<Option<T>>>,
-    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
+    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
 }
 
 unsafe impl<T> Send for JoinHandle<T> {}
@@ -79,9 +77,9 @@ unsafe impl<T> Sync for JoinHandle<T> {}
 /// create a JoinHandle
 pub fn make_join_handle<T>(
     co: Coroutine,
-    join: Arc<UnsafeCell<Join>>,
+    join: Arc<Join>,
     packet: Arc<AtomicCell<Option<T>>>,
-    panic: Arc<UnsafeCell<Option<Box<dyn Any + Send>>>>,
+    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
 ) -> JoinHandle<T> {
     JoinHandle {
         co,
@@ -99,26 +97,22 @@ impl<T> JoinHandle<T> {
 
     /// return true if the coroutine is finished
     pub fn is_done(&self) -> bool {
-        let join = unsafe { &*self.join.get() };
-        !join.state.load(Ordering::Acquire)
+        !self.join.state.load(Ordering::Acquire)
     }
 
     /// block until the coroutine is done
     pub fn wait(&self) {
-        let join = unsafe { &mut *self.join.get() };
-        join.wait();
+        self.join.wait();
     }
 
     /// Join the coroutine, returning the result it produced.
     pub fn join(self) -> Result<T> {
-        let join = unsafe { &mut *self.join.get() };
-        join.wait();
+        self.join.wait();
 
         // take the result
-        self.packet.take().ok_or_else(|| {
-            let p = unsafe { &mut *self.panic.get() };
-            p.take().unwrap_or_else(|| Box::new(Error::Cancel))
-        })
+        self.packet
+            .take()
+            .ok_or_else(|| self.panic.take().unwrap_or_else(|| Box::new(Error::Cancel)))
     }
 }
 

@@ -1,5 +1,5 @@
 use std::any::TypeId;
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::ptr::NonNull;
@@ -17,14 +17,14 @@ pub struct CoroutineLocal {
     // current coroutine handle
     co: Coroutine,
     // when panic happens, we need to trigger the join here
-    join: Arc<UnsafeCell<Join>>,
+    join: Arc<Join>,
     // real local data hash map
     local_data: LocalMap,
 }
 
 impl CoroutineLocal {
     /// create coroutine local storage
-    pub fn new(co: Coroutine, join: Arc<UnsafeCell<Join>>) -> Box<Self> {
+    pub fn new(co: Coroutine, join: Arc<Join>) -> Box<Self> {
         Box::new(CoroutineLocal {
             co,
             join,
@@ -38,7 +38,7 @@ impl CoroutineLocal {
     }
 
     // get the join handle
-    pub fn get_join(&self) -> Arc<UnsafeCell<Join>> {
+    pub fn get_join(&self) -> Arc<Join> {
         self.join.clone()
     }
 }

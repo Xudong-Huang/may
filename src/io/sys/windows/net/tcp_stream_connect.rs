@@ -54,10 +54,8 @@ impl TcpStreamConnect {
                     }
                 };
 
-                socket
-                    .bind(&any.into())
-                    .map(|_| socket.into())
-                    .and_then(|s: std::net::TcpStream| {
+                socket.bind(&any.into()).map(|_| socket.into()).and_then(
+                    |s: std::net::TcpStream| {
                         // must register io first
                         s.set_nonblocking(true)?;
                         add_socket(&s).map(|_io| TcpStreamConnect {
@@ -67,7 +65,8 @@ impl TcpStreamConnect {
                             timeout,
                             can_drop: DelayDrop::new(),
                         })
-                    })
+                    },
+                )
             })
     }
 
