@@ -135,7 +135,10 @@ pub fn get_scheduler() -> &'static Scheduler {
 #[inline]
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
     static GLOBABLE_LOCK: AtomicUsize = AtomicUsize::new(0);
-    if GLOBABLE_LOCK.compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+    if GLOBABLE_LOCK
+        .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
+        .is_err()
+    {
         return None;
     }
 
@@ -252,7 +255,7 @@ impl Scheduler {
     pub fn schedule_global(&self, co: CoroutineImpl) {
         self.global_queue.push(co);
         // signal one waiting thread if any
-        self.workers.wake_one(&self);
+        self.workers.wake_one(self);
     }
 
     #[inline]

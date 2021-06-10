@@ -111,7 +111,7 @@ impl<T> InnerQueue<T> {
 impl<T> Drop for InnerQueue<T> {
     fn drop(&mut self) {
         assert_eq!(self.channels.load(Ordering::Acquire), 0);
-        assert_eq!(self.to_wake.is_none(), true);
+        assert!(self.to_wake.is_none());
     }
 }
 

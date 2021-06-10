@@ -17,13 +17,14 @@ impl EventLoop {
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
     pub fn run(&self, id: usize) -> io::Result<()> {
+        use std::mem::MaybeUninit;
         #[cfg(nightly)]
         WORKER_ID.store(id, Ordering::Relaxed);
         #[cfg(not(nightly))]
         WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
 
-        let mut events_buf: [SysEvent; 1024] =
-            unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        let events_buf: MaybeUninit<[SysEvent; 1024]> = MaybeUninit::uninit();
+        let mut events_buf = unsafe { events_buf.assume_init() };
         // wake up every 1 second
         let mut next_expire = Some(1_000_000_000);
         loop {

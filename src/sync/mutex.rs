@@ -231,7 +231,7 @@ pub fn unlock_mutex<T: ?Sized>(lock: &Mutex<T>) {
 }
 
 pub fn guard_lock<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a Mutex<T> {
-    &guard.__lock
+    guard.__lock
 }
 
 pub fn guard_poison<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a poison::Flag {

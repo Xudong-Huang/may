@@ -177,7 +177,10 @@ impl Condvar {
     }
 
     fn verify(&self, addr: usize) {
-        match self.mutex.compare_exchange(0, addr, Ordering::SeqCst, Ordering::SeqCst) {
+        match self
+            .mutex
+            .compare_exchange(0, addr, Ordering::SeqCst, Ordering::SeqCst)
+        {
             // If we got out 0, then we have successfully bound the mutex to
             // this condvar.
             Ok(0) => {}

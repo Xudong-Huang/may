@@ -97,7 +97,10 @@ impl<T: Send> State<T> {
 
             match seq.cmp(&pos) {
                 std::cmp::Ordering::Equal => {
-                    match self.enqueue_pos.compare_exchange(pos, pos + 1, Relaxed, Relaxed) {
+                    match self
+                        .enqueue_pos
+                        .compare_exchange(pos, pos + 1, Relaxed, Relaxed)
+                    {
                         Ok(_) => {
                             node.value = Some(value);
                             node.sequence.store(pos + 1, Release);
@@ -122,7 +125,10 @@ impl<T: Send> State<T> {
 
             match seq.cmp(&(pos + 1)) {
                 std::cmp::Ordering::Equal => {
-                    match self.dequeue_pos.compare_exchange(pos, pos + 1, Relaxed, Relaxed) {
+                    match self
+                        .dequeue_pos
+                        .compare_exchange(pos, pos + 1, Relaxed, Relaxed)
+                    {
                         Ok(_) => {
                             let value = node.value.take();
                             node.sequence.store(pos + mask + 1, Release);
