@@ -21,7 +21,6 @@
 //! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
 // #![deny(missing_docs)]
-#![allow(non_fmt_panic)]
 #![allow(unused_extern_crates)]
 #![cfg_attr(nightly, feature(thread_local))]
 #![cfg_attr(nightly, feature(core_intrinsics))]

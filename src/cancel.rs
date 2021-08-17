@@ -25,7 +25,7 @@ pub fn trigger_cancel_panic() -> ! {
     // so that we can avoid the re-panic problem?
     // currently this is not used in any drop implementation
     // current_cancel_data().state.store(0, Ordering::Release);
-    panic!(Error::Cancel);
+    std::panic::panic_any(Error::Cancel);
 }
 
 pub trait CancelIo {
