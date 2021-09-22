@@ -1,7 +1,7 @@
 <div align="center">
     <h1>May</h1>
-    <a href="https://travis-ci.org/Xudong-Huang/may">
-        <img src="https://travis-ci.org/Xudong-Huang/may.svg?branch=master">
+    <a href="https://app.travis-ci.com/github/Xudong-Huang/may">
+        <img src="https://app.travis-ci.com/Xudong-Huang/generator-rs.svg?branch=master">
     </a>
     <a href="https://crates.io/crates/may">
         <img src="https://img.shields.io/crates/v/may.svg">
