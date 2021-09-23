@@ -59,7 +59,8 @@ pub struct ParkStatus {
 
 impl ParkStatus {
     fn new(workers: usize) -> Self {
-        let parked = AtomicU64::new((1 << workers) - 1);
+        assert!(workers <= 64);
+        let parked = AtomicU64::new(((1u128 << workers) - 1) as u64);
         ParkStatus { parked, workers }
     }
 
