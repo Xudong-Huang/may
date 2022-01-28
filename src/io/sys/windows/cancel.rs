@@ -9,6 +9,8 @@ pub struct CancelIoData {
     ev_data: *mut EventData,
 }
 
+unsafe impl Send for CancelIoData {}
+
 impl CancelIoData {
     pub fn new(ev_data: &EventData) -> Self {
         CancelIoData {

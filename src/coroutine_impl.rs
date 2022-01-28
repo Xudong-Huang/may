@@ -116,8 +116,6 @@ pub struct Coroutine {
     inner: Arc<Inner>,
 }
 
-unsafe impl Send for Coroutine {}
-
 impl Coroutine {
     // Used only internally to construct a coroutine object without spawning
     fn new(name: Option<String>, stack_size: usize) -> Coroutine {

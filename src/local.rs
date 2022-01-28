@@ -81,14 +81,9 @@ pub struct LocalKey<T> {
     pub __init: fn() -> T,
 }
 
+#[derive(Default)]
 pub struct IdHasher {
     id: u64,
-}
-
-impl Default for IdHasher {
-    fn default() -> IdHasher {
-        IdHasher { id: 0 }
-    }
 }
 
 impl Hasher for IdHasher {

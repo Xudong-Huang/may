@@ -71,8 +71,8 @@ pub struct JoinHandle<T> {
     panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
 }
 
-unsafe impl<T> Send for JoinHandle<T> {}
-unsafe impl<T> Sync for JoinHandle<T> {}
+unsafe impl<T: Send> Send for JoinHandle<T> {}
+unsafe impl<T: Sync> Sync for JoinHandle<T> {}
 
 /// create a JoinHandle
 pub fn make_join_handle<T>(
