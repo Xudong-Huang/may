@@ -1,7 +1,7 @@
 <div align="center">
     <h1>May</h1>
-    <a href="https://app.travis-ci.com/github/Xudong-Huang/may">
-        <img src="https://app.travis-ci.com/Xudong-Huang/generator-rs.svg?branch=master">
+    <a href="https://github.com/Xudong-Huang/may/actions?query=workflow%3ACI+branch%3Amaster">
+        <img src="https://github.com/Xudong-Huang/may/workflows/CI/badge.svg">
     </a>
     <a href="https://crates.io/crates/may">
         <img src="https://img.shields.io/crates/v/may.svg">
@@ -42,7 +42,7 @@ May is a high-performance library for programming stackful coroutines with which
 * All the coroutine API are compatible with the standard library semantics;
 * All the coroutine API can be safely called in multi-threaded context;
 * Both stable, beta, and nightly channels are supported;
-* x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac, aarch64 Linux OS are supported.
+* x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac, AArch64 Linux OS are supported.
 
 ----------
 
