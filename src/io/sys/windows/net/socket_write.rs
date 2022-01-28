@@ -6,7 +6,7 @@ use super::super::{co_io_result, EventData};
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
 use miow::net::TcpStreamExt;
-use winapi::shared::ntdef::*;
+use windows_sys::Win32::Foundation::*;
 
 pub struct SocketWrite<'a> {
     io_data: EventData,

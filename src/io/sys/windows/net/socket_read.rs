@@ -8,7 +8,7 @@ use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
 use miow::net::TcpStreamExt;
-use winapi::shared::ntdef::*;
+use windows_sys::Win32::Foundation::*;
 
 pub struct SocketRead<'a> {
     io_data: EventData,

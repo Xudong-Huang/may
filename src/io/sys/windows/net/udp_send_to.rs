@@ -8,7 +8,7 @@ use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
 use miow::net::UdpSocketExt;
-use winapi::shared::ntdef::*;
+use windows_sys::Win32::Foundation::*;
 
 pub struct UdpSendTo<'a> {
     io_data: EventData,

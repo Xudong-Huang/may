@@ -135,13 +135,10 @@ pub fn get_scheduler() -> &'static Scheduler {
 
 #[inline]
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
-    static GLOBABLE_LOCK: AtomicUsize = AtomicUsize::new(0);
-    if GLOBABLE_LOCK
+    static GLOBAL_LOCK: AtomicUsize = AtomicUsize::new(0);
+    GLOBAL_LOCK
         .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
-        .is_err()
-    {
-        return None;
-    }
+        .ok()?;
 
     let backoff = Backoff::new();
     let ret = loop {
@@ -151,7 +148,7 @@ fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Opt
             deque::Steal::Retry => backoff.snooze(),
         }
     };
-    GLOBABLE_LOCK.store(0, Ordering::Relaxed);
+    GLOBAL_LOCK.store(0, Ordering::Relaxed);
     ret
 }
 

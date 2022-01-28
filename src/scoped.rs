@@ -19,7 +19,7 @@ where
 {
     let closure: Box<dyn FnOnce() + 'a> = Box::new(f);
     let closure: Box<dyn FnOnce() + Send> = mem::transmute(closure);
-    spawn(move || closure())
+    spawn(closure)
 }
 
 pub struct Scope<'a> {

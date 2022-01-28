@@ -17,7 +17,7 @@ impl CancelIoData {
     }
 
     pub unsafe fn cancel(&self) -> io::Result<()> {
-        use winapi::um::ioapiset::CancelIoEx;
+        use windows_sys::Win32::System::IO::CancelIoEx;
 
         let ev = &mut *self.ev_data;
         let handle = ev.handle;

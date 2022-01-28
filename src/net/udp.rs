@@ -9,7 +9,7 @@ use crate::yield_now::yield_with;
 
 #[derive(Debug)]
 pub struct UdpSocket {
-    io: io_impl::IoData,
+    _io: io_impl::IoData,
     sys: net::UdpSocket,
     ctx: io_impl::IoContext,
     read_timeout: AtomicDuration,
@@ -24,7 +24,7 @@ impl UdpSocket {
         s.set_nonblocking(true)?;
 
         io_impl::add_socket(&s).map(|io| UdpSocket {
-            io,
+            _io: io,
             sys: s,
             ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
@@ -65,7 +65,7 @@ impl UdpSocket {
         s.set_nonblocking(true)?;
         io_impl::add_socket(&s).ok();
         Ok(UdpSocket {
-            io: io_impl::IoData::new(0),
+            _io: io_impl::IoData::new(0),
             sys: s,
             ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(self.read_timeout.get()),

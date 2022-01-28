@@ -10,7 +10,7 @@ use crate::net::{TcpListener, TcpStream};
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
 use miow::net::{AcceptAddrsBuf, TcpListenerExt};
-use winapi::shared::ntdef::*;
+use windows_sys::Win32::Foundation::*;
 
 pub struct TcpListenerAccept<'a> {
     io_data: EventData,
@@ -49,7 +49,7 @@ impl<'a> TcpListenerAccept<'a> {
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
         })?;
 
-        let addr = self.addr.parse(&self.socket).and_then(|a| {
+        let addr = self.addr.parse(self.socket).and_then(|a| {
             a.remote().ok_or_else(|| {
                 io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
             })

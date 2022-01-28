@@ -34,12 +34,25 @@ crossbeam = "0.8"
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.21"
+nix = "0.23"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-miow = "0.3"
-winapi = "0.3"
+miow = "0.4"
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.28"
+features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming"
+]
+
 
 [dev-dependencies]
 bytes = "1.0"
@@ -48,7 +61,7 @@ docopt = "1.0"
 tempdir = "0.3"
 httparse = "1.1"
 native-tls = "0.2"
-tungstenite = "0.13"
+tungstenite = "0.16"
 serde_derive = "1.0"
 
 
