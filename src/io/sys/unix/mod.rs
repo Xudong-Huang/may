@@ -56,12 +56,7 @@ fn co_io_result() -> io::Result<()> {
 
 #[inline]
 fn from_nix_error(err: nix::Error) -> ::std::io::Error {
-    use nix::Error::*;
-
-    match err {
-        Sys(errno) => ::std::io::Error::from_raw_os_error(errno as i32),
-        _ => ::std::io::Error::new(::std::io::ErrorKind::Other, "nix other error"),
-    }
+    std::io::Error::from_raw_os_error(err as i32)
 }
 
 fn timeout_handler(data: TimerData) {

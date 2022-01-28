@@ -34,7 +34,7 @@ impl<'a> SocketWrite<'a> {
             match write(self.io_data.fd, self.buf) {
                 Ok(n) => return Ok(n),
                 Err(e) => {
-                    if e == nix::Error::Sys(nix::errno::Errno::EAGAIN) {
+                    if e == nix::errno::Errno::EAGAIN {
                         // do nothing
                     } else {
                         return Err(from_nix_error(e));
