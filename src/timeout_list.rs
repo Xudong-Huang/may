@@ -37,10 +37,10 @@ pub fn ns_to_ms(ns: u64) -> u64 {
 
 #[inline]
 fn get_instant() -> &'static Instant {
-    use std::mem::MaybeUninit;
-    // NOTICE: the static bss seems always zeroed
-    static START_TIME: MaybeUninit<Instant> = MaybeUninit::uninit();
-    unsafe { &*START_TIME.as_ptr() }
+    lazy_static::lazy_static! {
+        static ref START_TIME: Instant = Instant::now();
+    }
+    &START_TIME
 }
 // get the current wall clock in ns
 #[inline]

@@ -73,7 +73,7 @@ impl<T: ?Sized> Mutex<T> {
                 Ok(_) => {
                     break;
                 }
-                Err(ParkError::Timeout) => unreachable!("mutext timeout"),
+                Err(ParkError::Timeout) => unreachable!("mutex timeout"),
                 Err(ParkError::Canceled) => {
                     let b_ignore = if crate::coroutine_impl::is_coroutine() {
                         let cancel = crate::coroutine_impl::current_cancel_data();
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_mutex_arc_nested() {
-        // Tests nested mutexes and access
+        // Tests nested mutex and access
         // to underlying data.
         let arc = Arc::new(Mutex::new(1));
         let arc2 = Arc::new(Mutex::new(arc));
@@ -531,8 +531,8 @@ mod tests {
 
         let h1 = go!(move || {
             let mut g = mutex2.lock().unwrap();
-            // test cancel when holding the mutext
-            // this should not be poision
+            // test cancel when holding the mutex
+            // this should not be poison
             sleep(Duration::from_secs(10000));
             *g += 1;
         });
