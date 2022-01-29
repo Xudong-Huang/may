@@ -4,10 +4,18 @@ use std::sync::Arc;
 
 use generator::Generator;
 
-// heap based wrapper for a type
-pub trait Wrapped {
+/// Wrapper for a pinter type
+pub trait PointerType {
+    /// underlying type
     type Data;
+
+    /// convert Self to the underlying type raw pointer
     fn into_raw(self) -> *mut Self::Data;
+
+    /// convert Self from the underlying type raw pointer
+    /// # Safety
+    ///
+    /// You must make sure the raw pointer comes from call of `into_raw`
     unsafe fn from_raw(_: *mut Self::Data) -> Self;
 }
 
@@ -21,7 +29,7 @@ pub trait Wrapped {
 //     }
 // }
 
-impl<T> Wrapped for *mut T {
+impl<T> PointerType for *mut T {
     type Data = T;
     fn into_raw(self) -> *mut T {
         self
@@ -31,7 +39,7 @@ impl<T> Wrapped for *mut T {
     }
 }
 
-impl<T> Wrapped for Arc<T> {
+impl<T> PointerType for Arc<T> {
     type Data = T;
     fn into_raw(self) -> *mut T {
         Arc::into_raw(self) as *mut _
@@ -41,7 +49,7 @@ impl<T> Wrapped for Arc<T> {
     }
 }
 
-impl<T> Wrapped for Box<T> {
+impl<T> PointerType for Box<T> {
     type Data = T;
     fn into_raw(self) -> *mut T {
         Box::into_raw(self)
@@ -51,7 +59,7 @@ impl<T> Wrapped for Box<T> {
     }
 }
 
-impl<'a, A, T> Wrapped for Generator<'a, A, T> {
+impl<'a, A, T> PointerType for Generator<'a, A, T> {
     type Data = usize;
     fn into_raw(self) -> *mut usize {
         Generator::into_raw(self)
@@ -62,14 +70,14 @@ impl<'a, A, T> Wrapped for Generator<'a, A, T> {
 }
 
 #[derive(Debug)]
-pub struct AtomicOption<T: Wrapped> {
+pub struct AtomicOption<T: PointerType> {
     inner: AtomicPtr<T::Data>,
 }
 
-unsafe impl<T: Wrapped + Send> Send for AtomicOption<T> {}
-unsafe impl<T: Wrapped + Send> Sync for AtomicOption<T> {}
+unsafe impl<T: PointerType + Send> Send for AtomicOption<T> {}
+unsafe impl<T: PointerType + Send> Sync for AtomicOption<T> {}
 
-impl<T: Wrapped> AtomicOption<T> {
+impl<T: PointerType> AtomicOption<T> {
     pub fn none() -> AtomicOption<T> {
         AtomicOption {
             inner: AtomicPtr::new(ptr::null_mut()),
@@ -108,13 +116,13 @@ impl<T: Wrapped> AtomicOption<T> {
     }
 }
 
-impl<T: Wrapped> Default for AtomicOption<T> {
+impl<T: PointerType> Default for AtomicOption<T> {
     fn default() -> Self {
         Self::none()
     }
 }
 
-impl<T: Wrapped> Drop for AtomicOption<T> {
+impl<T: PointerType> Drop for AtomicOption<T> {
     fn drop(&mut self) {
         self.take(Ordering::Acquire);
     }

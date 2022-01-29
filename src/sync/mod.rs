@@ -12,7 +12,7 @@ pub(crate) mod atomic_dur;
 pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;
-pub use self::atomic_option::AtomicOption;
+pub use self::atomic_option::{AtomicOption, PointerType};
 pub use self::blocking::{Blocker, FastBlocker};
 pub use self::condvar::{Condvar, WaitTimeoutResult};
 pub use self::mutex::{Mutex, MutexGuard};
