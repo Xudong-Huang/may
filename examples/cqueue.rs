@@ -37,7 +37,7 @@ fn main() {
 
     // the select body that monitor the rx event and recalc the new total
     cqueue::scope(|cqueue| {
-        // registe select coroutines
+        // register select coroutines
         for t in 0..10 {
             go!(cqueue, t, |es| {
                 let mut last = 0;
@@ -49,7 +49,7 @@ fn main() {
 
                     let delta = data - last;
                     let total = unsafe { total.get_mut() };
-                    // bottom half that will run sequencially in the poller
+                    // bottom half that will run sequentially in the poller
                     println!(
                         "in selector: update from {}, delta={}, last_total={}",
                         token, delta, total

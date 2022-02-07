@@ -81,7 +81,7 @@ fn cqueue_panic() {
 fn cqueue_panic_in_select() {
     cqueue::scope(|cqueue| {
         go!(cqueue, 0, |_es| {
-            panic!("painc in selector");
+            panic!("panic in selector");
         });
     });
 

@@ -1597,7 +1597,7 @@ mod tests {
           fn send4() {
               let (tx, rx) = sync_channel::<i32>(0);
               let tx2 = tx.clone();
-              let (done, donerx) = channel();
+              let (done, done_rx) = channel();
               let done2 = done.clone();
               let _t = thread::spawn(move || {
                   assert!(tx.send(1).is_err());
@@ -1608,8 +1608,8 @@ mod tests {
                   done2.send(()).unwrap();
               });
               drop(rx);
-              donerx.recv().unwrap();
-              donerx.recv().unwrap();
+              done_rx.recv().unwrap();
+              done_rx.recv().unwrap();
           }
 
           // #[test]

@@ -7,11 +7,11 @@ use std::time::Duration;
 use may::io::CoIo;
 
 // create the io object that can be used in coroutine
-// note that we can only access the io ojbect in one thread/coroutin
+// note that we can only access the io object in one thread/coroutine
 // this example can't run on windows
-// because stdin/stdout can't resiger on IOCP
+// because stdin/stdout can't register on IOCP
 fn main() {
-    // run every thing in a single thread to verify the aysnc io
+    // run every thing in a single thread to verify the async io
     may::config().set_workers(1);
     let b_run = true;
 

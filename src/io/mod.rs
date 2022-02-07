@@ -45,7 +45,7 @@ impl IoContext {
         }
     }
 
-    // return Ok(ture) if it's a nonblocking request
+    // return Ok(true) if it's a nonblocking request
     // f is a closure to set the actual inner io nonblocking mode
     #[inline]
     pub fn check_nonblocking<F>(&self, f: F) -> io::Result<bool>
@@ -65,7 +65,7 @@ impl IoContext {
         Ok(false)
     }
 
-    // return Ok(ture) if it's a coroutine context
+    // return Ok(true) if it's a coroutine context
     // f is a closure to set the actual inner io nonblocking mode
     #[inline]
     pub fn check_context<F>(&self, f: F) -> io::Result<bool>

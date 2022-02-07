@@ -123,7 +123,7 @@ impl<T> Entry<T> {
 }
 
 impl<T> Drop for Entry<T> {
-    // only call this drop in the same thread, or you must make sure it happens with no contension
+    // only call this drop in the same thread, or you must make sure it happens with no contention
     // running in a coroutine is a kind of sequential operation, so it can safely drop there after
     // returning from "kernel"
     fn drop(&mut self) {

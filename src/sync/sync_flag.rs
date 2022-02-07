@@ -16,7 +16,7 @@ use crossbeam::queue::SegQueue;
 /// A SyncFlag is an boolean value
 /// When the SyncFlag is false, any thread or coroutine wait on it would
 /// block until it's value becomes true
-/// When the SyncFalg is true, any thread or coroutine wait on it would
+/// When the SyncFlag is true, any thread or coroutine wait on it would
 /// return immediately.
 ///
 /// After the SyncFlag becomes true, it will never becomes false again.

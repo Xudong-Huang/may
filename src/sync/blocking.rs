@@ -103,7 +103,7 @@ impl Blocker {
 // only used for coroutine that would schedule immediately
 // when unparked. which means not push to the task queue
 // but run the coroutine right away in the current thread
-// this is an optimized blocker especially usefull for waiting io
+// this is an optimized blocker especially useful for waiting io
 #[derive(Debug, Default)]
 pub struct FastBlocker(Park);
 

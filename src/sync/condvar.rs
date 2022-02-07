@@ -91,7 +91,7 @@ impl Condvar {
         }
 
         // drop the parker here without panic!
-        // it may paniced in the drop of Park
+        // it may panic in the drop of Park
         drop(cur);
 
         // enable cancel panic
@@ -279,7 +279,7 @@ mod tests {
 
         let g = m.lock().unwrap();
         let (g, _no_timeout) = c.wait_timeout(g, Duration::from_millis(1)).unwrap();
-        // spurious wakeups mean this isn't necessarily true
+        // spurious wakeup mean this isn't necessarily true
         // assert!(!no_timeout);
         let _t = thread::spawn(move || {
             let _g = m2.lock().unwrap();
@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn two_mutexes() {
+    fn two_mutex() {
         let m = Arc::new(Mutex::new(()));
         let m2 = m.clone();
         let c = Arc::new(Condvar::new());

@@ -359,7 +359,7 @@ impl Builder {
         Ok(handle)
     }
 
-    /// first run the coroutine in current thread, you should allways use
+    /// first run the coroutine in current thread, you should always use
     /// `spawn` instead of this API.
     ///
     /// # Safety
@@ -439,7 +439,7 @@ where
 }
 
 /// Gets a handle to the coroutine that invokes it.
-/// it will panic if you call it in a thead context
+/// it will panic if you call it in a thread context
 #[inline]
 pub fn current() -> Coroutine {
     match get_co_local_data() {

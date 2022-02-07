@@ -13,7 +13,7 @@ impl<T> Error<T> {
         Error { err, data }
     }
 
-    /// convert to inneral data
+    /// convert to inner data
     pub fn into_data(self) -> T {
         self.data
     }
