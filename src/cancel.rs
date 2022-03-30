@@ -17,9 +17,9 @@ use generator::Error;
 // the thread panicking status
 #[inline]
 pub fn trigger_cancel_panic() -> ! {
-    if thread::panicking() {
-        eprintln!("trigger another panic while panicking");
-    }
+    // if thread::panicking() {
+    //     eprintln!("trigger another panic while panicking");
+    // }
 
     // should we clear the cancel flag to let other API continue?
     // so that we can avoid the re-panic problem?
@@ -92,6 +92,10 @@ impl<T: CancelIo> CancelImpl<T> {
                 // before panic clear the last coroutine error
                 // this would affect future new coroutine that reuse the instance
                 get_co_para();
+                // when in panic we use the stack unwind to clear resources
+                if thread::panicking() {
+                    return;
+                }
                 trigger_cancel_panic();
             }
         }
