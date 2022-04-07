@@ -85,7 +85,7 @@ impl<T: AsRawFd> CoIo<T> {
         })
     }
 
-    /// create from raw io ojbect which is already registered
+    /// create from raw io object which is already registered
     pub(crate) fn from_raw(io: T, io_data: io_impl::IoData) -> Self {
         CoIo {
             inner: io,

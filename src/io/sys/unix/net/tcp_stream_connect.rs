@@ -35,7 +35,7 @@ impl TcpStreamConnect {
                 })
             })
             .and_then(|(stream, addr)| {
-                // before yield we must set the socket to nonblocking mode and registe to selector
+                // before yield we must set the socket to nonblocking mode and register to selector
                 stream.set_nonblocking(true)?;
 
                 add_socket(&stream).map(|io| TcpStreamConnect {
@@ -49,7 +49,7 @@ impl TcpStreamConnect {
     }
 
     #[inline]
-    // return ture if it's connected
+    // return true if it's connected
     pub fn check_connected(&mut self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system

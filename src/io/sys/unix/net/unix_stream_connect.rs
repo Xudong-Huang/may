@@ -22,7 +22,7 @@ impl UnixStreamConnect {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = SockAddr::unix(path)?;
         let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
-        // before yield we must set the socket to nonblocking mode and registe to selector
+        // before yield we must set the socket to nonblocking mode and register to selector
         socket.set_nonblocking(true)?;
         add_socket(&socket).map(|io| UnixStreamConnect {
             io_data: OptionCell::new(io),
@@ -33,7 +33,7 @@ impl UnixStreamConnect {
     }
 
     #[inline]
-    // return ture if it's connected
+    // return true if it's connected
     pub fn check_connected(&mut self) -> io::Result<bool> {
         // unix connect is some like completion mode
         // we must give the connect request first to the system

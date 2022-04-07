@@ -119,7 +119,7 @@ impl EventData {
 
     #[inline]
     pub fn schedule(&self) {
-        info!("event schedul");
+        info!("event schedule");
         let co = match self.co.take(Ordering::Acquire) {
             None => return, // it's already take by selector
             Some(co) => co,

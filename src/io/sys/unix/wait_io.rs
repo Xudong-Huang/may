@@ -44,7 +44,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
     }
 }
 
-/// This is trait that can block on io events but doing nothong about io
+/// This is trait that can block on io events but doing nothing about io
 pub trait WaitIo {
     /// reset the io before io operation
     fn reset_io(&self);
