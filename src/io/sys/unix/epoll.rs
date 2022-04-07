@@ -104,14 +104,12 @@ impl Selector {
 
         for event in events[..n].iter() {
             if event.data() == 0 {
-                {
-                    // this is just a wakeup event, ignore it
-                    let mut buf = [0u8; 8];
-                    // clear the eventfd, ignore the result
-                    read(single_selector.evfd, &mut buf).ok();
-                    // info!("got wakeup event in select, id={}", id);
-                    continue;
-                }
+                // this is just a wakeup event, ignore it
+                let mut buf = [0u8; 8];
+                // clear the eventfd, ignore the result
+                read(single_selector.evfd, &mut buf).ok();
+                // info!("got wakeup event in select, id={}", id);
+                continue;
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
             // info!("select got event, data={:p}", data);

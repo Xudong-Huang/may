@@ -54,13 +54,11 @@ impl IoContext {
     {
         // for coroutine context
         if self.nonblocking.load(Ordering::Relaxed) {
-            {
-                if !self.blocked_io.load(Ordering::Relaxed) {
-                    f(true)?;
-                    self.blocked_io.store(true, Ordering::Relaxed);
-                }
-                return Ok(true);
+            if !self.blocked_io.load(Ordering::Relaxed) {
+                f(true)?;
+                self.blocked_io.store(true, Ordering::Relaxed);
             }
+            return Ok(true);
         }
         Ok(false)
     }
