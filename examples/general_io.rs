@@ -13,7 +13,6 @@ use may::io::CoIo;
 fn main() {
     // run every thing in a single thread to verify the async io
     may::config().set_workers(1);
-    let b_run = true;
 
     join!(
         {
@@ -22,15 +21,15 @@ fn main() {
 
             // the CoIo object will not block the thread.
             let mut stdin = CoIo::new(io::stdin()).expect("failed to create stdio");
-            while b_run {
+            loop {
                 let mut msg = [0, 4];
-                stdin.read(&mut msg).expect("failed ot read stdio");
+                let _n = stdin.read(&mut msg).expect("failed ot read stdio");
                 println!("another coroutine, msg={:?}", msg);
             }
         },
         {
             let mut stdout = CoIo::new(io::stdout()).expect("failed to create stdout");
-            while b_run {
+            loop {
                 write!(stdout, "write from coroutine\n").expect("failed to write");
                 may::coroutine::sleep(Duration::from_millis(500));
             }

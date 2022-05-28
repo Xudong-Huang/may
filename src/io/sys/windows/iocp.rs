@@ -251,6 +251,4 @@ pub fn timeout_handler(data: TimerData) {
         cancel_io(event_data.handle, event_data.get_overlapped())
             .unwrap_or_else(|e| error!("CancelIoEx failed! e = {}", e));
     }
-
-    drop(data); // explicitly consume the data
 }

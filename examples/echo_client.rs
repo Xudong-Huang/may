@@ -79,7 +79,7 @@ fn main() {
 
     let err = io::Error::new(io::ErrorKind::Other, "can't resolve socket addresses");
     let addr = t!(target_addr.to_socket_addrs())
-        .fold(Err(err), |prev, addr| prev.or_else(|_| Ok(addr)))
+        .fold(Err(err), |prev, addr| prev.or(Ok(addr)))
         .unwrap();
 
     coroutine::scope(|scope| {

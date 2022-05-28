@@ -16,7 +16,7 @@ fn main() {
                     // sleep in the coroutine context
                     // simulate the timeout event as event iterator
                     coroutine::sleep(Duration::from_millis(100));
-                    b = a + b;
+                    b += a;
                     scope.yield_(b);
                 }
                 a + b

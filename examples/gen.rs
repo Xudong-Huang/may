@@ -15,7 +15,7 @@ fn main() {
                     std::mem::swap(&mut a, &mut b);
                     // this is yield from the generator context!
                     yield_now();
-                    b = a + b;
+                    b += a;
                     scope.yield_(b);
                 }
                 a + b
