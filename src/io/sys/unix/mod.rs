@@ -78,7 +78,6 @@ fn timeout_handler(data: TimerData) {
 
     // resume the coroutine with timeout error
     run_coroutine(co);
-    drop(data); // explicitly consume the data
 }
 
 // the timeout data

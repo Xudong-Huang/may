@@ -214,7 +214,8 @@ impl<T> TimeOutList<T> {
             // first peek the BH to see if there is any timeout event
             let mut entry = {
                 let mut timer_bh = self.timer_bh.lock().unwrap();
-                match timer_bh.peek() {
+                let top_entry = timer_bh.peek();
+                match top_entry {
                     // the latest timeout event not happened yet
                     Some(entry) => {
                         if entry.time > now {
