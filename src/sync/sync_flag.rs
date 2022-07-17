@@ -210,7 +210,7 @@ mod tests {
 
         let h1 = go!(move || {
             let r = flag2.wait_timeout(Duration::from_millis(10));
-            assert_eq!(r, false);
+            assert!(!r);
         });
 
         let h2 = go!(move || {
@@ -236,7 +236,7 @@ mod tests {
 
         let h1 = thread::spawn(move || {
             let r = flag2.wait_timeout(Duration::from_millis(10));
-            assert_eq!(r, false);
+            assert!(!r);
         });
 
         let h2 = thread::spawn(move || {

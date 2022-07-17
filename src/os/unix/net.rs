@@ -1122,7 +1122,7 @@ mod test {
         let thread = go!(move || {
             let mut stream = or_panic!(listener.accept()).0;
             let mut buf = [0; 5];
-            or_panic!(stream.read(&mut buf));
+            or_panic!(stream.read_exact(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
             or_panic!(stream.write_all(msg2));
         });
@@ -1150,7 +1150,7 @@ mod test {
         let thread = go!(move || {
             // s1 must be moved in or the test will hang!
             let mut buf = [0; 5];
-            or_panic!(s1.read(&mut buf));
+            or_panic!(s1.read_exact(&mut buf));
             assert_eq!(&msg1[..], &buf[..]);
             or_panic!(s1.write_all(msg2));
         });
@@ -1182,9 +1182,9 @@ mod test {
         let mut stream2 = or_panic!(stream.try_clone());
 
         let mut buf = [0; 5];
-        or_panic!(stream.read(&mut buf));
+        or_panic!(stream.read_exact(&mut buf));
         assert_eq!(&msg1[..], &buf[..]);
-        or_panic!(stream2.read(&mut buf));
+        or_panic!(stream2.read_exact(&mut buf));
         assert_eq!(&msg2[..], &buf[..]);
 
         thread.join().unwrap();
@@ -1199,7 +1199,7 @@ mod test {
         let thread = go!(move || for stream in listener.incoming().take(2) {
             let mut stream = or_panic!(stream);
             let mut buf = [0];
-            or_panic!(stream.read(&mut buf));
+            or_panic!(stream.read_exact(&mut buf));
         });
 
         for _ in 0..2 {
@@ -1274,7 +1274,7 @@ mod test {
         or_panic!(stream.set_read_timeout(Some(Duration::from_millis(1000))));
 
         let mut buf = [0; 10];
-        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        let kind = stream.read(&mut buf).expect_err("expected error").kind();
         assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 
@@ -1292,10 +1292,13 @@ mod test {
         or_panic!(other_end.write_all(b"hello world"));
 
         let mut buf = [0; 11];
-        or_panic!(stream.read(&mut buf));
+        or_panic!(stream.read_exact(&mut buf));
         assert_eq!(b"hello world", &buf[..]);
 
-        let kind = stream.read(&mut buf).err().expect("expected error").kind();
+        let kind = stream
+            .read_exact(&mut buf)
+            .expect_err("expected error")
+            .kind();
         assert!(kind == io::ErrorKind::WouldBlock || kind == io::ErrorKind::TimedOut);
     }
 

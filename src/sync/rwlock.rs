@@ -317,6 +317,7 @@ impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use crate::sync::mpsc::channel;
     use crate::sync::{Condvar, Mutex, RwLock};
@@ -460,7 +461,7 @@ mod tests {
     fn test_rw_arc_access_in_unwind() {
         let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
-        let _ = thread::spawn(move || -> () {
+        let _ = thread::spawn(move || {
             struct Unwinder {
                 i: Arc<RwLock<isize>>,
             }
@@ -498,11 +499,8 @@ mod tests {
         let write_result = lock.try_write();
         match write_result {
             Err(TryLockError::WouldBlock) => (),
-            Ok(_) => assert!(
-                false,
-                "try_write should not succeed while read_guard is in scope"
-            ),
-            Err(_) => assert!(false, "unexpected error"),
+            Ok(_) => panic!("try_write should not succeed while read_guard is in scope"),
+            Err(_) => panic!("unexpected error"),
         }
 
         drop(read_guard);
@@ -636,7 +634,7 @@ mod tests {
             // println!("recv id = {:?}", id);
         }
 
-        assert_eq!(rx.try_recv().is_err(), true);
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]
@@ -680,6 +678,6 @@ mod tests {
         drop(wlock);
         let a = rx.recv().unwrap();
         assert_eq!(a, 10);
-        assert_eq!(rx.try_recv().is_err(), true);
+        assert!(rx.try_recv().is_err());
     }
 }

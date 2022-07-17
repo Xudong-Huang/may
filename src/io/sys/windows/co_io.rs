@@ -191,6 +191,6 @@ mod tests {
         let a = Hd;
         let mut io = CoIo::new(a).unwrap();
         let mut buf = [0u8; 100];
-        io.read(&mut buf).unwrap();
+        io.read_exact(&mut buf).unwrap();
     }
 }

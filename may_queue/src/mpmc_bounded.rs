@@ -92,7 +92,7 @@ impl<T: Send> State<T> {
         let mask = self.mask;
         let mut pos = self.enqueue_pos.load(Relaxed);
         loop {
-            let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
+            let node = unsafe { &mut *((self.buffer[pos & mask]).get()) };
             let seq = node.sequence.load(Acquire);
 
             match seq.cmp(&pos) {
@@ -120,7 +120,7 @@ impl<T: Send> State<T> {
         let mask = self.mask;
         let mut pos = self.dequeue_pos.load(Relaxed);
         loop {
-            let node = unsafe { &mut *((&self.buffer[pos & mask]).get()) };
+            let node = unsafe { &mut *((self.buffer[pos & mask]).get()) };
             let seq = node.sequence.load(Acquire);
 
             match seq.cmp(&(pos + 1)) {

@@ -293,6 +293,7 @@ impl<T> fmt::Debug for Receiver<T> {
 }
 
 #[cfg(test)]
+#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::env;
@@ -450,9 +451,8 @@ mod tests {
             for _ in 0..AMT * NTHREADS {
                 assert_eq!(rx.recv().unwrap(), 1);
             }
-            match rx.try_recv() {
-                Ok(..) => panic!(),
-                _ => {}
+            if rx.try_recv().is_ok() {
+                panic!();
             }
         });
 
@@ -935,7 +935,7 @@ mod tests {
         };
         assert_eq!(iter.next().unwrap(), 1);
         assert_eq!(iter.next().unwrap(), 2);
-        assert_eq!(iter.next().is_none(), true);
+        assert!(iter.next().is_none());
     }
 
     #[test]
@@ -947,7 +947,7 @@ mod tests {
         let mut iter = (&rx).into_iter();
         assert_eq!(iter.next().unwrap(), 1);
         assert_eq!(iter.next().unwrap(), 2);
-        assert_eq!(iter.next().is_none(), true);
+        assert!(iter.next().is_none());
     }
 
     #[test]

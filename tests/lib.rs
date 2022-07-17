@@ -16,7 +16,7 @@ fn panic_coroutine() {
     match j.join() {
         Ok(_) => panic!("test should return panic"),
         Err(panic) => match panic.downcast_ref::<&str>() {
-            Some(e) => return println!("Panicked inside: {:?}", e),
+            Some(e) => println!("Panicked inside: {:?}", e),
             None => panic!("panic type wrong"),
         },
     }
@@ -43,7 +43,7 @@ fn cancel_coroutine() {
         Err(panic) => {
             use generator::Error;
             match panic.downcast_ref::<Error>() {
-                Some(&Error::Cancel) => return println!("coroutine cancelled"),
+                Some(&Error::Cancel) => println!("coroutine cancelled"),
                 _ => panic!("panic type wrong"),
             }
         }
@@ -74,7 +74,7 @@ fn cancel_io_coroutine() {
         Err(panic) => {
             use generator::Error;
             match panic.downcast_ref::<Error>() {
-                Some(&Error::Cancel) => return println!("coroutine cancelled"),
+                Some(&Error::Cancel) => println!("coroutine cancelled"),
                 _ => panic!("panic type wrong"),
             }
         }
@@ -308,8 +308,8 @@ fn join_macro() {
         }
     );
 
-    assert_eq!(rx1.try_recv().is_err(), true);
-    assert_eq!(rx2.try_recv().is_err(), true);
+    assert!(rx1.try_recv().is_err());
+    assert!(rx2.try_recv().is_err());
 }
 
 #[test]

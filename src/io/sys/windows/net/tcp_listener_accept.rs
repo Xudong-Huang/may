@@ -71,7 +71,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             self.socket
-                .accept_overlapped(&*self.ret, &mut self.addr, self.io_data.get_overlapped())
+                .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
         });
 
         // register the cancel io data
