@@ -1,6 +1,6 @@
 [package]
 name = "may"
-version = "0.3.21"
+version = "0.3.22"
 edition = "2021"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 license = "MIT/Apache-2.0"
@@ -28,7 +28,7 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 log = "0.4"
 num_cpus = "1.1"
 smallvec = "1.2"
-generator = "0.7"
+generator = ">= 0.7.1"
 crossbeam = "0.8"
 lazy_static = "1"
 socket2 = { version = "0.4", features = ["all"] }
