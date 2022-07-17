@@ -36,20 +36,6 @@ thread_local! { pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1); }
 type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
 
-// filter out the cancel panic, don't print anything for it
-fn filter_cancel_panic() {
-    use generator::Error;
-    use std::panic;
-    let old = panic::take_hook();
-    ::std::panic::set_hook(Box::new(move |info| {
-        if let Some(&Error::Cancel) = info.payload().downcast_ref::<Error>() {
-            // this is not an error at all, ignore it
-            return;
-        }
-        old(info);
-    }));
-}
-
 static mut SCHED: *const Scheduler = std::ptr::null();
 
 pub struct ParkStatus {
@@ -91,7 +77,6 @@ fn init_scheduler() {
     unsafe {
         SCHED = Box::into_raw(b);
     }
-    filter_cancel_panic();
 
     // timer thread
     thread::spawn(move || {
