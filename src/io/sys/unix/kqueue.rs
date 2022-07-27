@@ -200,7 +200,7 @@ impl Selector {
 
         let ret = unsafe { libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null()) };
 
-        info!("wakeup id={:?}, ret={:?}", id, ret);
+        trace!("wakeup id={:?}, ret={:?}", id, ret);
     }
 
     // register io event to the selector

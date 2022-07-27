@@ -154,7 +154,7 @@ impl Selector {
     pub fn wakeup(&self, id: usize) {
         let buf = unsafe { ::std::slice::from_raw_parts(&1u64 as *const u64 as _, 8) };
         let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd, buf);
-        info!("wakeup id={:?}, ret={:?}", id, ret);
+        trace!("wakeup id={:?}, ret={:?}", id, ret);
     }
 
     // register io event to the selector
