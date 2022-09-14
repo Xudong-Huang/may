@@ -79,7 +79,7 @@ fn main() {
                 // println!("recv_from: len={:?} addr={:?}", len, addr);
                 let mut rest = len;
                 while rest > 0 {
-                    let i = t!(sock.send_to(&buf[(len - rest)..len], &addr));
+                    let i = t!(sock.send_to(&buf[(len - rest)..len], addr));
                     rest -= i;
                 }
             }

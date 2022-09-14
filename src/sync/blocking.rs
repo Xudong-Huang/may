@@ -1,6 +1,7 @@
+use parking_lot::{Condvar, Mutex};
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 use crate::coroutine_impl::is_coroutine;
@@ -24,19 +25,17 @@ impl ThreadPark {
 
     fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
         let mut result = Ok(());
-        let mut guard = self.lock.lock().unwrap();
+        let mut guard = self.lock.lock();
         while !*guard && result.is_ok() {
-            let g = match dur {
-                None => self.cvar.wait(guard).unwrap(),
+            match dur {
+                None => self.cvar.wait(&mut guard),
                 Some(t) => {
-                    let (g, t) = self.cvar.wait_timeout(guard, t).unwrap();
+                    let t = self.cvar.wait_for(&mut guard, t);
                     if t.timed_out() {
                         result = Err(ParkError::Timeout);
                     }
-                    g
                 }
             };
-            guard = g;
         }
         // must clear the status
         *guard = false;
@@ -44,7 +43,7 @@ impl ThreadPark {
     }
 
     fn unpark(&self) {
-        let mut guard = self.lock.lock().unwrap();
+        let mut guard = self.lock.lock();
         if !*guard {
             *guard = true;
             self.cvar.notify_one();

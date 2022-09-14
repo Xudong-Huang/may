@@ -2,7 +2,7 @@ use std::cmp;
 use std::collections::{BinaryHeap, HashMap};
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,6 +10,7 @@ use crossbeam::atomic::AtomicCell;
 use crossbeam::queue::SegQueue as mpsc;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
+use parking_lot::{Mutex, RwLock};
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
@@ -138,7 +139,7 @@ impl<T> TimeOutList<T> {
 
     fn install_timer_bh(&self, entry: IntervalEntry<T>) {
         if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
-            self.timer_bh.lock().unwrap().push(entry);
+            self.timer_bh.lock().push(entry);
         }
     }
 
@@ -154,7 +155,7 @@ impl<T> TimeOutList<T> {
 
         let interval_list = {
             // use the read lock protect
-            let interval_map_r = self.interval_map.read().unwrap();
+            let interval_map_r = self.interval_map.read();
             (*interval_map_r).get(&interval).cloned()
             // drop the read lock here
         };
@@ -174,7 +175,7 @@ impl<T> TimeOutList<T> {
 
         // if the interval list is not there, get the write locker to install the list
         // use the write lock protect
-        let mut interval_map_w = self.interval_map.write().unwrap();
+        let mut interval_map_w = self.interval_map.write();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
             let (handle, is_head) = interval_list.inner.push(timeout);
@@ -213,7 +214,7 @@ impl<T> TimeOutList<T> {
         loop {
             // first peek the BH to see if there is any timeout event
             let mut entry = {
-                let mut timer_bh = self.timer_bh.lock().unwrap();
+                let mut timer_bh = self.timer_bh.lock();
                 let top_entry = timer_bh.peek();
                 match top_entry {
                     // the latest timeout event not happened yet
@@ -239,13 +240,13 @@ impl<T> TimeOutList<T> {
                     if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
                         // re-push the entry
                         entry.time = time;
-                        self.timer_bh.lock().unwrap().push(entry);
+                        self.timer_bh.lock().push(entry);
                     }
                 }
 
                 None => {
                     // if the interval list is empty, need to delete it
-                    let mut interval_map_w = self.interval_map.write().unwrap();
+                    let mut interval_map_w = self.interval_map.write();
                     // recheck if the interval list is empty, other thread may append data to it
                     if entry.list.inner.is_empty() {
                         // if the len of the hash map is big enough just leave the queue there
@@ -258,7 +259,7 @@ impl<T> TimeOutList<T> {
                         mem::drop(interval_map_w);
                         // the list is push some data by other thread
                         entry.time = entry.list.inner.peek().unwrap().time;
-                        self.timer_bh.lock().unwrap().push(entry);
+                        self.timer_bh.lock().push(entry);
                     }
                 }
             }
