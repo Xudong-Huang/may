@@ -30,7 +30,7 @@ fn main() {
         {
             let mut stdout = CoIo::new(io::stdout()).expect("failed to create stdout");
             loop {
-                write!(stdout, "write from coroutine\n").expect("failed to write");
+                writeln!(stdout, "write from coroutine").expect("failed to write");
                 may::coroutine::sleep(Duration::from_millis(500));
             }
         }

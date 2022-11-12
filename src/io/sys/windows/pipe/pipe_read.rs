@@ -22,7 +22,7 @@ impl<'a> PipeRead<'a> {
     pub fn new<T: AsRawHandle>(s: &T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
         let pipe = s.as_raw_handle();
         PipeRead {
-            io_data: EventData::new(pipe),
+            io_data: EventData::new(pipe as isize),
             buf,
             pipe,
             timeout,

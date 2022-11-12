@@ -56,7 +56,7 @@ impl EventData {
 
     pub fn get_io_size(&self) -> usize {
         let ol = unsafe { &*self.overlapped.get() };
-        ol.InternalHigh as usize
+        ol.InternalHigh
     }
 }
 
@@ -207,7 +207,7 @@ impl Selector {
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle
         let fd = (t.as_raw_socket() as usize) >> 2;
-        let id = fd as usize % self.vec.len();
+        let id = fd % self.vec.len();
         unsafe { self.vec.get_unchecked(id) }.port.add_socket(fd, t)
     }
 

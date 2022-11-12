@@ -18,7 +18,7 @@ impl<'a> PipeWrite<'a> {
     pub fn new<T: AsRawHandle>(s: &T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
         let pipe = s.as_raw_handle();
         PipeWrite {
-            io_data: EventData::new(pipe),
+            io_data: EventData::new(pipe as isize),
             buf,
             pipe,
             timeout,

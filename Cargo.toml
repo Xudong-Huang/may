@@ -40,9 +40,9 @@ nix = "0.25"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-miow = "0.4"
+miow = "0.5"
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.28"
+version = "0.42"
 features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
