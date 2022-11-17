@@ -5,7 +5,7 @@
 use std::sync::atomic::Ordering;
 
 use crate::cancel::Cancel;
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io as io_impl;
 use crate::yield_now::yield_with;
 
@@ -15,6 +15,9 @@ pub struct RawIoBlock<'a> {
 
 impl<'a> RawIoBlock<'a> {
     fn new(io_data: &'a io_impl::IoData) -> Self {
+        if !is_coroutine() {
+            panic!("can not block io in non-coroutine context");
+        }
         RawIoBlock { io_data }
     }
 }
