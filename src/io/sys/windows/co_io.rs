@@ -10,6 +10,7 @@ use std::time::Duration;
 use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 use crate::io as io_impl;
+use crate::likely::unlikely;
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with;
 
@@ -66,11 +67,11 @@ impl<T: AsRawHandle> CoIo<T> {
         self.io.reset()
     }
 
-    /// check current ctx
-    pub(crate) fn ctx_check(&self) -> io::Result<bool> {
+    /// check current nonblocking
+    pub(crate) fn check_nonblocking(&self) -> bool {
         // FIXME: overlappened doesn't depend on the nonblocking?
         // self.ctx.check_nonblocking(|_| Ok(()))?;
-        self.ctx.check_context(|_| Ok(()))
+        self.ctx.check_nonblocking()
     }
 
     /// get inner ref
@@ -120,7 +121,7 @@ impl<T: AsRawHandle> CoIo<T> {
 
 impl<T: AsRawHandle + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx_check()? {
+        if unlikely(!self.check_nonblocking()) {
             return self.inner.read(buf);
         }
 
@@ -133,7 +134,7 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
 
 impl<T: AsRawHandle + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx_check()? {
+        if unlikely(!self.check_nonblocking()) {
             return self.inner.write(buf);
         }
 

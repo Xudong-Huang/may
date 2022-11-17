@@ -4,7 +4,7 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, EventData, IoData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::io::OptionCell;
 use crate::net::TcpStream;
@@ -19,6 +19,7 @@ pub struct TcpStreamConnect {
     timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
+    is_coroutine: bool,
 }
 
 impl TcpStreamConnect {
@@ -64,6 +65,7 @@ impl TcpStreamConnect {
                             stream: OptionCell::new(s),
                             timeout,
                             can_drop: DelayDrop::new(),
+                            is_coroutine: is_coroutine(),
                         })
                     },
                 )
@@ -71,7 +73,7 @@ impl TcpStreamConnect {
     }
 
     pub fn done(&mut self) -> io::Result<TcpStream> {
-        co_io_result(&self.io_data)?;
+        co_io_result(&self.io_data, self.is_coroutine)?;
         let stream = self.stream.take();
         stream.connect_complete()?;
         Ok(TcpStream::from_stream(stream, IoData))

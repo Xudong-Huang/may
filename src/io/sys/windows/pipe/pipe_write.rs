@@ -3,7 +3,7 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle}
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
 use miow::pipe::NamedPipe;
 
@@ -12,6 +12,7 @@ pub struct PipeWrite<'a> {
     buf: &'a [u8],
     pipe: RawHandle,
     timeout: Option<Duration>,
+    is_coroutine: bool,
 }
 
 impl<'a> PipeWrite<'a> {
@@ -22,11 +23,12 @@ impl<'a> PipeWrite<'a> {
             buf,
             pipe,
             timeout,
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
-        co_io_result(&self.io_data)
+        co_io_result(&self.io_data, self.is_coroutine)
     }
 }
 

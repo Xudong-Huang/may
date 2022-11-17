@@ -4,7 +4,7 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
 use miow::net::UdpSocketExt;
@@ -16,6 +16,7 @@ pub struct UdpSendTo<'a> {
     socket: &'a ::std::net::UdpSocket,
     addr: SocketAddr,
     timeout: Option<Duration>,
+    is_coroutine: bool,
 }
 
 impl<'a> UdpSendTo<'a> {
@@ -33,11 +34,12 @@ impl<'a> UdpSendTo<'a> {
                 socket: socket.inner(),
                 addr,
                 timeout: socket.write_timeout().unwrap(),
+                is_coroutine: is_coroutine(),
             })
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
-        co_io_result(&self.io_data)
+        co_io_result(&self.io_data, self.is_coroutine)
     }
 }
 

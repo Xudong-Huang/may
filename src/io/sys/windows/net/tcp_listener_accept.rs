@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
 
 use super::super::{add_socket, co_io_result, EventData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::io::OptionCell;
 use crate::net::{TcpListener, TcpStream};
@@ -18,6 +18,7 @@ pub struct TcpListenerAccept<'a> {
     ret: OptionCell<::std::net::TcpStream>,
     addr: AcceptAddrsBuf,
     can_drop: DelayDrop,
+    is_coroutine: bool,
 }
 
 impl<'a> TcpListenerAccept<'a> {
@@ -37,11 +38,12 @@ impl<'a> TcpListenerAccept<'a> {
             ret: OptionCell::new(stream),
             addr: AcceptAddrsBuf::new(),
             can_drop: DelayDrop::new(),
+            is_coroutine: is_coroutine(),
         })
     }
 
     pub fn done(&mut self) -> io::Result<(TcpStream, SocketAddr)> {
-        co_io_result(&self.io_data)?;
+        co_io_result(&self.io_data, self.is_coroutine)?;
         let socket = &self.socket;
         let ss = self.ret.take();
         let s = socket.accept_complete(&ss).and_then(|_| {

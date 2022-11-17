@@ -18,10 +18,14 @@ mod iocp;
 pub mod net;
 mod pipe;
 
+use std::os::windows::io::AsRawSocket;
+use std::sync::atomic::Ordering;
+use std::{fmt, io};
+
+use super::thread::ASSOCIATED_IO_RET;
+use crate::likely::likely;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::get_co_para;
-use std::os::windows::io::AsRawSocket;
-use std::{fmt, io};
 
 pub use self::iocp::{EventData, Selector, SysEvent};
 
@@ -55,9 +59,18 @@ pub fn add_socket<T: AsRawSocket + ?Sized>(t: &T) -> io::Result<IoData> {
 
 // deal with the io result
 #[inline]
-fn co_io_result(io: &EventData) -> io::Result<usize> {
-    match get_co_para() {
-        Some(err) => Err(err),
-        None => Ok(io.get_io_size()),
+fn co_io_result(io: &EventData, is_coroutine: bool) -> io::Result<usize> {
+    if likely(is_coroutine) {
+        match get_co_para() {
+            None => Ok(io.get_io_size()),
+            Some(err) => Err(err),
+        }
+    } else {
+        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
+        println!("retrieve error: {:?}", err);
+        match err {
+            None => Ok(io.get_io_size()),
+            Some(err) => Err(*err),
+        }
     }
 }

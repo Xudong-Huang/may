@@ -3,7 +3,7 @@ use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket}
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
 use miow::net::TcpStreamExt;
 use windows_sys::Win32::Foundation::*;
@@ -13,6 +13,7 @@ pub struct SocketWrite<'a> {
     buf: &'a [u8],
     socket: RawSocket,
     timeout: Option<Duration>,
+    is_coroutine: bool,
 }
 
 impl<'a> SocketWrite<'a> {
@@ -23,11 +24,12 @@ impl<'a> SocketWrite<'a> {
             buf,
             socket,
             timeout,
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
-        co_io_result(&self.io_data)
+        co_io_result(&self.io_data, self.is_coroutine)
     }
 }
 

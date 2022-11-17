@@ -3,7 +3,7 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle}
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -16,6 +16,7 @@ pub struct PipeRead<'a> {
     pipe: RawHandle,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
+    is_coroutine: bool,
 }
 
 impl<'a> PipeRead<'a> {
@@ -27,11 +28,12 @@ impl<'a> PipeRead<'a> {
             pipe,
             timeout,
             can_drop: DelayDrop::new(),
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
-        match co_io_result(&self.io_data) {
+        match co_io_result(&self.io_data, self.is_coroutine) {
             // we should treat the broken pipe as read to end
             Err(ref e) if Some(ERROR_BROKEN_PIPE as i32) == e.raw_os_error() => Ok(0),
             ret => ret,

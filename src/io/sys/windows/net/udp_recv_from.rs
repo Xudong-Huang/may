@@ -4,7 +4,7 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{co_cancel_data, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
@@ -19,6 +19,7 @@ pub struct UdpRecvFrom<'a> {
     addr: SocketAddrBuf,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
+    is_coroutine: bool,
 }
 
 impl<'a> UdpRecvFrom<'a> {
@@ -30,11 +31,12 @@ impl<'a> UdpRecvFrom<'a> {
             addr: SocketAddrBuf::new(),
             timeout: socket.read_timeout().unwrap(),
             can_drop: DelayDrop::new(),
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<(usize, SocketAddr)> {
-        let size = co_io_result(&self.io_data)?;
+        let size = co_io_result(&self.io_data, self.is_coroutine)?;
         let addr = self.addr.to_socket_addr().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
         })?;
