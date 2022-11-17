@@ -56,7 +56,6 @@ pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
             tx.send(es).unwrap();
         });
         std::thread::park();
-        println!("come back!")
     }
 }
 

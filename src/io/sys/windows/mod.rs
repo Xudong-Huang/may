@@ -67,7 +67,6 @@ fn co_io_result(io: &EventData, is_coroutine: bool) -> io::Result<usize> {
         }
     } else {
         let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
-        println!("retrieve error: {:?}", err);
         match err {
             None => Ok(io.get_io_size()),
             Some(err) => Err(*err),

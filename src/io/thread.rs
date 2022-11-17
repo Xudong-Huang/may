@@ -22,19 +22,13 @@ thread_local! {
         let _co = unsafe { spawn(move || {
             // the coroutine would be gone if the thread exit
             while let Ok(es) = rx.recv() {
-                println!("got a request");
                 co_yield_with(es);
-
                 if let Some(r) = co_get_yield::<EventResult>() {
-                    println!("set rsp error: {:?}", r);
                     io_ret.swap(Box::new(r), Ordering::Relaxed);
-                } else {
-                    println!("set rsp with no error");
                 }
                 // wake up the master thread
                 parker.unpark();
             }
-            println!("proxy coroutine exit");
         })};
         tx
     };

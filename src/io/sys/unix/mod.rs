@@ -57,7 +57,6 @@ fn co_io_result(is_coroutine: bool) -> io::Result<()> {
         }
     } else {
         let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
-        println!("retrieve error: {:?}", err);
         match err {
             None => Ok(()),
             Some(err) => Err(*err),
