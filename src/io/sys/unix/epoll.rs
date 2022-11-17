@@ -38,10 +38,20 @@ impl SingleSelector {
         let mut info = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, 0);
 
         let epfd = epoll_create().map_err(from_nix_error)?;
-        let evfd = create_eventfd()?;
+        let evfd = match create_eventfd() {
+            Ok(fd) => fd,
+            Err(err) => {
+                let _ = close(epfd);
+                return Err(err);
+            }
+        };
 
         // add the eventfd to the epfd
-        epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut info).map_err(from_nix_error)?;
+        if let Err(e) = epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut info) {
+            let _ = close(evfd);
+            let _ = close(epfd);
+            return Err(from_nix_error(e));
+        };
 
         Ok(SingleSelector {
             epfd,

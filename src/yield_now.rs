@@ -43,7 +43,7 @@ pub fn yield_with<T: EventSource>(resource: &T) {
 #[cfg(not(windows))]
 #[inline]
 pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
-    if likely(is_coroutine) {
+    if crate::likely::likely(is_coroutine) {
         yield_with(resource);
     } else {
         // for thread is only park the thread

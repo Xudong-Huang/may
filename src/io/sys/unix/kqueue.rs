@@ -54,6 +54,7 @@ impl SingleSelector {
 
         let ret = unsafe { libc::kevent(kqfd, &kev, 1, ptr::null_mut(), 0, ptr::null()) };
         if ret < 0 {
+            unsafe { libc::close(kqfd) };
             return Err(io::Error::last_os_error());
         }
 
