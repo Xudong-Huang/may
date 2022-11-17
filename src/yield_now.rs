@@ -1,6 +1,6 @@
 use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
-use crate::likely::{likely, unlikely};
+use crate::likely::unlikely;
 use crate::scheduler::get_scheduler;
 
 use generator::{co_get_yield, co_set_para, co_yield_with};
@@ -19,28 +19,25 @@ impl EventSource for Yield {
 /// just like return the ref of a struct member
 #[inline]
 pub fn yield_with<T: EventSource>(resource: &T) {
-    if likely(is_coroutine()) {
-        let cancel = current_cancel_data();
-        // if cancel detected in user space
-        // no need to get into kernel any more
-        if cancel.is_canceled() {
-            {
-                co_set_para(::std::io::Error::new(
-                    ::std::io::ErrorKind::Other,
-                    "Canceled",
-                ));
-                return resource.yield_back(cancel);
-            }
+    let cancel = current_cancel_data();
+    // if cancel detected in user space
+    // no need to get into kernel any more
+    if cancel.is_canceled() {
+        {
+            co_set_para(::std::io::Error::new(
+                ::std::io::ErrorKind::Other,
+                "Canceled",
+            ));
+            return resource.yield_back(cancel);
         }
-
-        let r = resource as &dyn EventSource as *const _ as *mut _;
-        let es = EventSubscriber::new(r);
-        co_yield_with(es);
-
-        resource.yield_back(cancel);
-        cancel.clear();
-    } else {
     }
+
+    let r = resource as &dyn EventSource as *const _ as *mut _;
+    let es = EventSubscriber::new(r);
+    co_yield_with(es);
+
+    resource.yield_back(cancel);
+    cancel.clear();
 }
 
 #[cfg(not(windows))]
