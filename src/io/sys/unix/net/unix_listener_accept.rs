@@ -2,15 +2,16 @@ use std::io;
 use std::os::unix::net::{self, SocketAddr};
 use std::sync::atomic::Ordering;
 
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::sys::{co_io_result, IoData};
 use crate::io::{AsIoData, CoIo};
 use crate::os::unix::net::{UnixListener, UnixStream};
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 pub struct UnixListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a net::UnixListener,
+    is_coroutine: bool,
 }
 
 impl<'a> UnixListenerAccept<'a> {
@@ -18,12 +19,13 @@ impl<'a> UnixListenerAccept<'a> {
         Ok(UnixListenerAccept {
             io_data: socket.0.as_io_data(),
             socket: socket.0.inner(),
+            is_coroutine: is_coroutine(),
         })
     }
 
     pub fn done(&mut self) -> io::Result<(UnixStream, SocketAddr)> {
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -49,7 +51,7 @@ impl<'a> UnixListenerAccept<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

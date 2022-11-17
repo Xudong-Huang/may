@@ -11,7 +11,7 @@ use self::io_impl::co_io_err::Error;
 use self::io_impl::net as net_impl;
 use crate::io as io_impl;
 use crate::sync::atomic_dur::AtomicDuration;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {
@@ -101,10 +101,9 @@ impl<T: AsRawFd> CoIo<T> {
         self.io.reset()
     }
 
-    /// check current ctx
-    pub(crate) fn ctx_check(&self) -> io::Result<bool> {
-        self.ctx.check_nonblocking(|b| set_nonblocking(self, b))?;
-        self.ctx.check_context(|b| set_nonblocking(self, b))
+    /// check current blocking mode
+    pub(crate) fn check_nonblocking(&self) -> bool {
+        self.ctx.check_nonblocking()
     }
 
     /// get inner ref
@@ -153,7 +152,7 @@ impl<T: AsRawFd> CoIo<T> {
 
 impl<T: AsRawFd + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.ctx_check()? {
+        if self.check_nonblocking() {
             // this can't be nonblocking!!
             return self.inner.read(buf);
         }
@@ -175,14 +174,14 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
         }
 
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 }
 
 impl<T: AsRawFd + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.ctx_check()? {
+        if self.check_nonblocking() {
             // this can't be nonblocking!!
             return self.inner.write(buf);
         }
@@ -203,7 +202,7 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
         }
 
         let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 

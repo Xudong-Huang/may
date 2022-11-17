@@ -3,14 +3,15 @@ use std::sync::atomic::Ordering;
 use std::{self, io};
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::{TcpListener, TcpStream};
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 pub struct TcpListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a std::net::TcpListener,
+    is_coroutine: bool,
 }
 
 impl<'a> TcpListenerAccept<'a> {
@@ -18,12 +19,13 @@ impl<'a> TcpListenerAccept<'a> {
         Ok(TcpListenerAccept {
             io_data: socket.as_io_data(),
             socket: socket.inner(),
+            is_coroutine: is_coroutine(),
         })
     }
 
     pub fn done(&mut self) -> io::Result<(TcpStream, SocketAddr)> {
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -49,7 +51,7 @@ impl<'a> TcpListenerAccept<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

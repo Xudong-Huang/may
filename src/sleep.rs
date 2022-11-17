@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
+use crate::likely::unlikely;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::{get_co_para, yield_with};
 
@@ -30,7 +31,7 @@ impl EventSource for Sleep {
 
 /// block the current coroutine until timeout
 pub fn sleep(dur: Duration) {
-    if !is_coroutine() {
+    if unlikely(!is_coroutine()) {
         return thread::sleep(dur);
     }
 

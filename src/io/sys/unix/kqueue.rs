@@ -4,13 +4,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{io, ptr};
 
+use super::{timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::run_coroutine;
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur};
+
 use crossbeam::queue::SegQueue as mpsc;
 use smallvec::SmallVec;
-
-use super::{timeout_handler, EventData, IoData, TimerList};
 
 pub type SysEvent = libc::kevent;
 

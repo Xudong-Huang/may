@@ -4,11 +4,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 use socket2::Socket;
 
 pub struct TcpStreamConnect {
@@ -17,6 +17,7 @@ pub struct TcpStreamConnect {
     timeout: Option<Duration>,
     addr: SocketAddr,
     is_connected: bool,
+    is_coroutine: bool,
 }
 
 impl TcpStreamConnect {
@@ -44,6 +45,7 @@ impl TcpStreamConnect {
                     timeout,
                     addr,
                     is_connected: false,
+                    is_coroutine: is_coroutine(),
                 })
             })
     }
@@ -75,7 +77,7 @@ impl TcpStreamConnect {
         }
 
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -95,7 +97,7 @@ impl TcpStreamConnect {
             }
 
             // the result is still EINPROGRESS, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

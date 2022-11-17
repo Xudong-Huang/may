@@ -7,20 +7,13 @@ use std::time::Duration;
 use crate::config::config;
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::io::{EventLoop, Selector};
+use crate::likely::likely;
 use crate::pool::CoroutinePool;
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 use crossbeam::deque;
 use crossbeam::utils::Backoff;
-
-#[cfg(nightly)]
-use std::intrinsics::likely;
-#[cfg(not(nightly))]
-#[inline]
-fn likely(e: bool) -> bool {
-    e
-}
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]

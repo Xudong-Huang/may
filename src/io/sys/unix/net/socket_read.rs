@@ -3,16 +3,17 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 use nix::unistd::read;
 
 pub struct SocketRead<'a> {
     io_data: &'a IoData,
     buf: &'a mut [u8],
     timeout: Option<Duration>,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketRead<'a> {
@@ -21,12 +22,13 @@ impl<'a> SocketRead<'a> {
             io_data: s.as_io_data(),
             buf,
             timeout,
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -48,7 +50,7 @@ impl<'a> SocketRead<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

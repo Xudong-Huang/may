@@ -4,17 +4,18 @@ use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 pub struct UdpRecvFrom<'a> {
     io_data: &'a IoData,
     buf: &'a mut [u8],
     socket: &'a std::net::UdpSocket,
     timeout: Option<Duration>,
+    is_coroutine: bool,
 }
 
 impl<'a> UdpRecvFrom<'a> {
@@ -24,12 +25,13 @@ impl<'a> UdpRecvFrom<'a> {
             buf,
             socket: socket.inner(),
             timeout: socket.read_timeout().unwrap(),
+            is_coroutine: is_coroutine(),
         }
     }
 
     pub fn done(&mut self) -> io::Result<(usize, SocketAddr)> {
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -52,7 +54,7 @@ impl<'a> UdpRecvFrom<'a> {
             }
 
             // the result is still WouldBlock, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

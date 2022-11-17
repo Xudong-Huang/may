@@ -27,6 +27,8 @@ use std::sync::Arc;
 use std::{fmt, io, ptr};
 
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
+use crate::io::thread::ASSOCIATED_IO_RET;
+use crate::likely::likely;
 use crate::scheduler::get_scheduler;
 use crate::sync::AtomicOption;
 use crate::timeout_list::{TimeOutList, TimeoutHandle};
@@ -47,10 +49,19 @@ fn del_socket(io: &IoData) {
 
 // deal with the io result
 #[inline]
-fn co_io_result() -> io::Result<()> {
-    match get_co_para() {
-        None => Ok(()),
-        Some(err) => Err(err),
+fn co_io_result(is_coroutine: bool) -> io::Result<()> {
+    if likely(is_coroutine) {
+        match get_co_para() {
+            None => Ok(()),
+            Some(err) => Err(err),
+        }
+    } else {
+        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
+        println!("retrieve error: {:?}", err);
+        match err {
+            None => Ok(()),
+            Some(err) => Err(*err),
+        }
     }
 }
 

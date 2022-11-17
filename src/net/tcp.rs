@@ -2,7 +2,6 @@ use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
-use crate::coroutine_impl::is_coroutine;
 use crate::io as io_impl;
 use crate::io::net as net_impl;
 use crate::sync::atomic_dur::AtomicDuration;
@@ -42,13 +41,6 @@ impl TcpStream {
     }
 
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        if !is_coroutine() {
-            let s = net::TcpStream::connect(addr)?;
-            s.set_nonblocking(true)?;
-            let io = io_impl::add_socket(&s)?;
-            return Ok(TcpStream::from_stream(s, io));
-        }
-
         let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
 
         #[cfg(unix)]
@@ -63,13 +55,6 @@ impl TcpStream {
     }
 
     pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
-        if !is_coroutine() {
-            let s = net::TcpStream::connect_timeout(addr, timeout)?;
-            s.set_nonblocking(true)?;
-            let io = io_impl::add_socket(&s)?;
-            return Ok(TcpStream::from_stream(s, io));
-        }
-
         let mut c = net_impl::TcpStreamConnect::new(addr, Some(timeout))?;
 
         #[cfg(unix)]
@@ -175,11 +160,7 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self
-            .ctx
-            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
-            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
-        {
+        if self.ctx.check_nonblocking() {
             return self.sys.read(buf);
         }
 
@@ -210,11 +191,7 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self
-            .ctx
-            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
-            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
-        {
+        if self.ctx.check_nonblocking() {
             return self.sys.write(buf);
         }
 
@@ -243,11 +220,7 @@ impl Write for TcpStream {
 
     #[cfg(unix)]
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
-        if self
-            .ctx
-            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
-            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
-        {
+        if self.ctx.check_nonblocking() {
             return self.sys.write_vectored(bufs);
         }
 
@@ -362,11 +335,7 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if self
-            .ctx
-            .check_nonblocking(|b| self.sys.set_nonblocking(b))?
-            || !self.ctx.check_context(|b| self.sys.set_nonblocking(b))?
-        {
+        if self.ctx.check_nonblocking() {
             return self
                 .sys
                 .accept()

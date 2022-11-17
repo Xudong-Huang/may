@@ -21,7 +21,6 @@
 //! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
 // #![deny(missing_docs)]
-#![allow(unused_extern_crates)]
 #![cfg_attr(nightly, feature(thread_local))]
 #![cfg_attr(nightly, feature(core_intrinsics))]
 
@@ -31,6 +30,7 @@ extern crate log;
 mod cancel;
 mod config;
 mod join;
+mod likely;
 mod local;
 mod park;
 mod pool;

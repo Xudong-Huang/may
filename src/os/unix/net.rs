@@ -168,7 +168,7 @@ impl UnixStream {
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// ```
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
-        self.0.inner().set_read_timeout(timeout)?;
+        // self.0.inner().set_read_timeout(timeout)?;
         self.0.set_read_timeout(timeout)
     }
 
@@ -406,7 +406,7 @@ impl UnixListener {
     /// }
     /// ```
     pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
-        if !self.0.ctx_check()? {
+        if self.0.check_nonblocking() {
             let (s, a) = self.0.inner().accept()?;
             return Ok((UnixStream(CoIo::new(s)?), a));
         }
@@ -798,8 +798,7 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if !self.0.ctx_check()? {
-            // this can't be nonblocking!!
+        if self.0.check_nonblocking() {
             return self.0.inner().recv_from(buf);
         }
 
@@ -837,8 +836,7 @@ impl UnixDatagram {
     /// sock.recv(buf.as_mut_slice()).expect("recv function failed");
     /// ```
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.0.ctx_check()? {
-            // this can't be nonblocking!!
+        if self.0.check_nonblocking() {
             return self.0.inner().recv(buf);
         }
 
@@ -875,8 +873,7 @@ impl UnixDatagram {
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
     /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
-        if !self.0.ctx_check()? {
-            // this can't be nonblocking!!
+        if self.0.check_nonblocking() {
             return self.0.inner().send_to(buf, path);
         }
 
@@ -917,8 +914,7 @@ impl UnixDatagram {
     /// sock.send(b"omelette au fromage").expect("send_to function failed");
     /// ```
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if !self.0.ctx_check()? {
-            // this can't be nonblocking!!
+        if self.0.check_nonblocking() {
             return self.0.inner().send(buf);
         }
 
@@ -1308,7 +1304,7 @@ mod test {
         let path1 = dir.path().join("sock1");
         let path2 = dir.path().join("sock2");
 
-        let sock1 = or_panic!(UnixDatagram::bind(&path1));
+        let sock1 = or_panic!(UnixDatagram::bind(path1));
         let sock2 = or_panic!(UnixDatagram::bind(&path2));
 
         let msg = b"hello world";

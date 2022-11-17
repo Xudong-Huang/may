@@ -4,11 +4,11 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 use socket2::{Domain, SockAddr, Socket, Type};
 
 pub struct UnixStreamConnect {
@@ -16,6 +16,7 @@ pub struct UnixStreamConnect {
     stream: OptionCell<Socket>,
     path: SockAddr,
     is_connected: bool,
+    is_coroutine: bool,
 }
 
 impl UnixStreamConnect {
@@ -29,6 +30,7 @@ impl UnixStreamConnect {
             stream: OptionCell::new(socket),
             path,
             is_connected: false,
+            is_coroutine: is_coroutine(),
         })
     }
 
@@ -59,7 +61,7 @@ impl UnixStreamConnect {
         }
 
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -79,7 +81,7 @@ impl UnixStreamConnect {
             }
 
             // the result is still EINPROGRESS, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }

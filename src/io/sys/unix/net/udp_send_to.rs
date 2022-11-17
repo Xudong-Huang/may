@@ -4,11 +4,11 @@ use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     io_data: &'a IoData,
@@ -16,6 +16,7 @@ pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     socket: &'a std::net::UdpSocket,
     addr: A,
     timeout: Option<Duration>,
+    is_coroutine: bool,
 }
 
 impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
@@ -26,12 +27,13 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             socket: socket.inner(),
             addr,
             timeout: socket.write_timeout().unwrap(),
+            is_coroutine: is_coroutine(),
         })
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
         loop {
-            co_io_result()?;
+            co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
@@ -54,7 +56,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             }
 
             // the result is still WouldBlock, need to try again
-            yield_with(self);
+            yield_with_io(self, self.is_coroutine);
         }
     }
 }
