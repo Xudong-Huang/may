@@ -17,7 +17,7 @@ pub struct TcpStreamConnect {
     timeout: Option<Duration>,
     addr: SocketAddr,
     is_connected: bool,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl TcpStreamConnect {

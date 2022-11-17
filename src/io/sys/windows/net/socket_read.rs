@@ -16,7 +16,7 @@ pub struct SocketRead<'a> {
     socket: RawSocket,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketRead<'a> {

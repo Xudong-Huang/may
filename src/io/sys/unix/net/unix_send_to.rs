@@ -16,7 +16,7 @@ pub struct UnixSendTo<'a> {
     socket: &'a std::os::unix::net::UnixDatagram,
     path: &'a Path,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> UnixSendTo<'a> {

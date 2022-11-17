@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::io as io_impl;
 use crate::io::net as net_impl;
 use crate::sync::atomic_dur::AtomicDuration;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 #[derive(Debug)]
 pub struct UdpSocket {
@@ -97,7 +97,7 @@ impl UdpSocket {
         }
 
         let mut writer = net_impl::UdpSendTo::new(self, buf, addr)?;
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 
@@ -125,7 +125,7 @@ impl UdpSocket {
         }
 
         let mut reader = net_impl::UdpRecvFrom::new(self, buf);
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 
@@ -153,7 +153,7 @@ impl UdpSocket {
         }
 
         let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 
@@ -181,7 +181,7 @@ impl UdpSocket {
         }
 
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 

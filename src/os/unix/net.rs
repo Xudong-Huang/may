@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::coroutine_impl::is_coroutine;
 use crate::io::sys::net as net_impl;
 use crate::io::CoIo;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 /// A Unix stream socket.
 ///
@@ -76,7 +76,7 @@ impl UnixStream {
             return c.done();
         }
 
-        yield_with(&c);
+        yield_with_io(&c, c.is_coroutine);
         c.done()
     }
 
@@ -426,7 +426,7 @@ impl UnixListener {
         }
 
         let mut a = net_impl::UnixListenerAccept::new(self)?;
-        yield_with(&a);
+        yield_with_io(&a, a.is_coroutine);
         a.done()
     }
 
@@ -818,7 +818,7 @@ impl UnixDatagram {
         }
 
         let mut reader = net_impl::UnixRecvFrom::new(self, buf);
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 
@@ -856,7 +856,7 @@ impl UnixDatagram {
         }
 
         let mut reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 
@@ -893,7 +893,7 @@ impl UnixDatagram {
         }
 
         let mut writer = net_impl::UnixSendTo::new(self, buf, path.as_ref())?;
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 
@@ -934,7 +934,7 @@ impl UnixDatagram {
         }
 
         let mut writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 

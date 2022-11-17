@@ -1,6 +1,6 @@
 use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::coroutine_impl::{CoroutineImpl, EventResult, EventSource, EventSubscriber};
-use crate::likely::unlikely;
+use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
 
 use generator::{co_get_yield, co_set_para, co_yield_with};
@@ -40,10 +40,8 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     cancel.clear();
 }
 
-#[cfg(not(windows))]
-#[inline]
 pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
-    if crate::likely::likely(is_coroutine) {
+    if likely(is_coroutine) {
         yield_with(resource);
     } else {
         // for thread is only park the thread

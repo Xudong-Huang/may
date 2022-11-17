@@ -13,7 +13,7 @@ pub struct SocketWriteVectored<'a> {
     bufs: &'a [IoSlice<'a>],
     socket: &'a std::net::TcpStream,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketWriteVectored<'a> {

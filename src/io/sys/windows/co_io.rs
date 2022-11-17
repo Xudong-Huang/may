@@ -11,7 +11,7 @@ use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 use crate::io as io_impl;
 use crate::sync::atomic_dur::AtomicDuration;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 /// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
 /// this type can be used in coroutine context without blocking the thread
@@ -126,7 +126,7 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
 
         self.io.reset();
         let mut reader = PipeRead::new(self, buf, self.read_timeout.get());
-        yield_with(&reader);
+        yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 }
@@ -139,7 +139,7 @@ impl<T: AsRawHandle + Write> Write for CoIo<T> {
 
         self.io.reset();
         let mut writer = PipeWrite::new(self, buf, self.write_timeout.get());
-        yield_with(&writer);
+        yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
 

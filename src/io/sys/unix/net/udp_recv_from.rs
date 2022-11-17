@@ -15,7 +15,7 @@ pub struct UdpRecvFrom<'a> {
     buf: &'a mut [u8],
     socket: &'a std::net::UdpSocket,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> UdpRecvFrom<'a> {

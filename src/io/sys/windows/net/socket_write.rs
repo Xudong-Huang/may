@@ -13,7 +13,7 @@ pub struct SocketWrite<'a> {
     buf: &'a [u8],
     socket: RawSocket,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketWrite<'a> {

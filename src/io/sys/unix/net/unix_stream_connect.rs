@@ -16,7 +16,7 @@ pub struct UnixStreamConnect {
     stream: OptionCell<Socket>,
     path: SockAddr,
     is_connected: bool,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl UnixStreamConnect {

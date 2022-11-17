@@ -19,7 +19,7 @@ pub struct UdpRecvFrom<'a> {
     addr: SocketAddrBuf,
     timeout: Option<Duration>,
     can_drop: DelayDrop,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> UdpRecvFrom<'a> {

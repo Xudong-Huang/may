@@ -15,7 +15,7 @@ pub struct UnixRecvFrom<'a> {
     buf: &'a mut [u8],
     socket: &'a std::os::unix::net::UnixDatagram,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> UnixRecvFrom<'a> {

@@ -16,7 +16,7 @@ pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     socket: &'a std::net::UdpSocket,
     addr: A,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {

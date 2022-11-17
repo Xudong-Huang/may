@@ -12,7 +12,7 @@ pub struct PipeWrite<'a> {
     buf: &'a [u8],
     pipe: RawHandle,
     timeout: Option<Duration>,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> PipeWrite<'a> {

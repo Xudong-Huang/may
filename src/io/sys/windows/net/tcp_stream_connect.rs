@@ -19,7 +19,7 @@ pub struct TcpStreamConnect {
     timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl TcpStreamConnect {

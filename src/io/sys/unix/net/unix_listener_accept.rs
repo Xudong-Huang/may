@@ -11,7 +11,7 @@ use crate::yield_now::yield_with_io;
 pub struct UnixListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a net::UnixListener,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> UnixListenerAccept<'a> {

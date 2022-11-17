@@ -18,7 +18,7 @@ pub struct TcpListenerAccept<'a> {
     ret: OptionCell<::std::net::TcpStream>,
     addr: AcceptAddrsBuf,
     can_drop: DelayDrop,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> TcpListenerAccept<'a> {

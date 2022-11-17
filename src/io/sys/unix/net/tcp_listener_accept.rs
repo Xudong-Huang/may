@@ -11,7 +11,7 @@ use crate::yield_now::yield_with_io;
 pub struct TcpListenerAccept<'a> {
     io_data: &'a IoData,
     socket: &'a std::net::TcpListener,
-    is_coroutine: bool,
+    pub(crate) is_coroutine: bool,
 }
 
 impl<'a> TcpListenerAccept<'a> {
