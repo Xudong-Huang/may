@@ -10,7 +10,7 @@ use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-use may_queue::mpsc_list::Queue as WaitList;
+use crossbeam::queue::SegQueue;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex};
@@ -23,7 +23,7 @@ pub struct RwLock<T: ?Sized> {
     // below two variables consist a global mutex
     // we need to deal with the cancel logic differently
     // the waiting blocker list
-    to_wake: WaitList<Arc<SyncBlocker>>,
+    to_wake: SegQueue<Arc<SyncBlocker>>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
 
@@ -57,7 +57,7 @@ pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
 impl<T> RwLock<T> {
     pub fn new(t: T) -> RwLock<T> {
         RwLock {
-            to_wake: WaitList::new(),
+            to_wake: SegQueue::new(),
             cnt: AtomicUsize::new(0),
             rlock: Mutex::new(0),
             poison: poison::Flag::new(),

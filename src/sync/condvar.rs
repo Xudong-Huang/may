@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::sync::{LockResult, PoisonError};
 use std::time::Duration;
 
-use crate::cancel::trigger_cancel_panic;
-use crate::park::ParkError;
-use may_queue::spsc;
-
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex, MutexGuard};
+use crate::cancel::trigger_cancel_panic;
+use crate::park::ParkError;
+
+use crossbeam::queue::SegQueue;
 
 /// A type indicating whether a timed wait on a condition variable returned
 /// due to a time out or not.
@@ -26,7 +26,7 @@ impl WaitTimeoutResult {
 
 pub struct Condvar {
     // the waiting blocker list
-    to_wake: Mutex<spsc::Queue<Arc<SyncBlocker>>>,
+    to_wake: Mutex<SegQueue<Arc<SyncBlocker>>>,
     // used to verify the same mutex instance
     mutex: AtomicUsize,
 }
@@ -34,7 +34,7 @@ pub struct Condvar {
 impl Condvar {
     pub fn new() -> Condvar {
         Condvar {
-            to_wake: Mutex::new(spsc::Queue::new()),
+            to_wake: Mutex::new(SegQueue::new()),
             mutex: AtomicUsize::new(0),
         }
     }
