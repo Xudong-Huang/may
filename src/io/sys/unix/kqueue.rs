@@ -9,7 +9,7 @@ use crate::coroutine_impl::run_coroutine;
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
-use crossbeam::queue::SegQueue as mpsc;
+use crossbeam::queue::SegQueue;
 use smallvec::SmallVec;
 
 pub type SysEvent = libc::kevent;
@@ -33,7 +33,7 @@ macro_rules! kevent {
 struct SingleSelector {
     kqfd: RawFd,
     timer_list: TimerList,
-    free_ev: mpsc<Arc<EventData>>,
+    free_ev: SegQueue<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -60,7 +60,7 @@ impl SingleSelector {
 
         Ok(SingleSelector {
             kqfd: kqfd,
-            free_ev: mpsc::new(),
+            free_ev: SegQueue::new(),
             timer_list: TimerList::new(),
         })
     }

@@ -9,7 +9,7 @@ use crate::coroutine_impl::run_coroutine;
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::{now, ns_to_ms};
 
-use crossbeam::queue::SegQueue as mpsc;
+use crossbeam::queue::SegQueue;
 use libc::{eventfd, EFD_NONBLOCK};
 use nix::sys::epoll::*;
 use nix::unistd::{close, read, write};
@@ -29,7 +29,7 @@ struct SingleSelector {
     epfd: RawFd,
     evfd: RawFd,
     timer_list: TimerList,
-    free_ev: mpsc<Arc<EventData>>,
+    free_ev: SegQueue<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -56,7 +56,7 @@ impl SingleSelector {
         Ok(SingleSelector {
             epfd,
             evfd,
-            free_ev: mpsc::new(),
+            free_ev: SegQueue::new(),
             timer_list: TimerList::new(),
         })
     }

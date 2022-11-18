@@ -13,7 +13,7 @@ use crate::sync::Mutex;
 use crate::sync::{AtomicOption, Blocker};
 use crate::yield_now::yield_with;
 
-use crossbeam::queue::SegQueue as Queue;
+use crossbeam::queue::SegQueue;
 
 /// This enumeration is the list of the possible reasons that `poll`
 /// could not return Event when called.
@@ -150,7 +150,7 @@ impl<'a> Drop for EventSender<'a> {
 /// cqueue interface for general select model
 pub struct Cqueue {
     // the mpsc queue that transfer event
-    ev_queue: Queue<Event>,
+    ev_queue: SegQueue<Event>,
     // thread/coroutine for wake up
     to_wake: AtomicOption<Arc<Blocker>>,
     // track how many coroutines left
@@ -317,7 +317,7 @@ where
     F: FnOnce(&Cqueue) -> R + 'a,
 {
     let cqueue = Cqueue {
-        ev_queue: Queue::new(),
+        ev_queue: SegQueue::new(),
         to_wake: AtomicOption::none(),
         cnt: AtomicUsize::new(0),
         selectors: Mutex::new(Vec::new()),

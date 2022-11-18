@@ -6,7 +6,7 @@ use std::time::Duration;
 use super::blocking::SyncBlocker;
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-use crossbeam::queue::SegQueue as WaitList;
+use crossbeam::queue::SegQueue;
 
 /// Semphore primitive
 ///
@@ -44,7 +44,7 @@ pub struct Semphore {
     // if it's negative means how many threads are waiting for
     cnt: AtomicIsize,
     // the waiting blocker list, must be mpmc
-    to_wake: WaitList<Arc<SyncBlocker>>,
+    to_wake: SegQueue<Arc<SyncBlocker>>,
 }
 
 impl Semphore {
@@ -52,7 +52,7 @@ impl Semphore {
     pub fn new(init: usize) -> Self {
         assert!(init < ::std::isize::MAX as usize);
         Semphore {
-            to_wake: WaitList::new(),
+            to_wake: SegQueue::new(),
             cnt: AtomicIsize::new(init as isize),
         }
     }
