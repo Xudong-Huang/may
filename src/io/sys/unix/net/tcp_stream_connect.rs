@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
@@ -104,8 +104,7 @@ impl TcpStreamConnect {
 
 impl EventSource for TcpStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
+        let cancel = co_cancel_data(&co);
         let io_data = self.io_data.clone();
 
         if let Some(dur) = self.timeout {

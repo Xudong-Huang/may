@@ -5,6 +5,7 @@ use std::thread;
 
 use crate::coroutine_impl::CoroutineImpl;
 use crate::io::cancel::CancelIoImpl;
+use crate::likely::unlikely;
 use crate::scheduler::get_scheduler;
 use crate::sync::AtomicOption;
 use crate::yield_now::{get_co_para, set_co_para};
@@ -15,6 +16,7 @@ use generator::Error;
 // to call Any coroutine API in the drop any more because
 // it would trigger another Cancel panic so here we check
 // the thread panicking status
+#[cold]
 #[inline]
 pub fn trigger_cancel_panic() -> ! {
     // if thread::panicking() {
@@ -87,21 +89,19 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // panic if cancel was set
     pub fn check_cancel(&self) {
-        if self.state.load(Ordering::Acquire) == 1 {
-            {
-                // before panic clear the last coroutine error
-                // this would affect future new coroutine that reuse the instance
-                get_co_para();
-                // when in panic we use the stack unwind to clear resources
-                if thread::panicking() {
-                    return;
-                }
+        if unlikely(self.state.load(Ordering::Acquire) == 1) {
+            // before panic clear the last coroutine error
+            // this would affect future new coroutine that reuse the instance
+            get_co_para();
+            // when in panic we use the stack unwind to clear resources
+            if !thread::panicking() {
                 trigger_cancel_panic();
             }
         }
     }
 
     // async cancel for a coroutine
+    #[cold]
     pub unsafe fn cancel(&self) {
         self.state.fetch_or(1, Ordering::Release);
         match self.co.take(Ordering::Acquire) {

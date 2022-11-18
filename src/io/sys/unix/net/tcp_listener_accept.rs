@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use std::{self, io};
 
 use super::super::{add_socket, co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::{TcpListener, TcpStream};
 use crate::yield_now::yield_with_io;
@@ -58,11 +58,10 @@ impl<'a> TcpListenerAccept<'a> {
 
 impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
+        let cancel = co_cancel_data(&co);
         let io_data = (*self.io_data).clone();
         // if there is no timer we don't need to call add_io_timer
-        self.io_data.co.swap(co, Ordering::Release);
+        io_data.co.swap(co, Ordering::Release);
 
         // there is event happened
         if io_data.io_flag.load(Ordering::Acquire) {

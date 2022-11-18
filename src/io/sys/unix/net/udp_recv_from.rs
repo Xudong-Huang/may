@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::{self, io};
 
 use super::super::{co_io_result, IoData};
-use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
@@ -61,8 +61,7 @@ impl<'a> UdpRecvFrom<'a> {
 
 impl<'a> EventSource for UdpRecvFrom<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let handle = co_get_handle(&co);
-        let cancel = handle.get_cancel();
+        let cancel = co_cancel_data(&co);
         let io_data = (*self.io_data).clone();
 
         if let Some(dur) = self.timeout {
@@ -70,7 +69,7 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }
-        self.io_data.co.swap(co, Ordering::Release);
+        io_data.co.swap(co, Ordering::Release);
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {

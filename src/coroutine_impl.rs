@@ -462,8 +462,8 @@ pub fn is_coroutine() -> bool {
 #[inline]
 pub(crate) fn current_cancel_data() -> &'static Cancel {
     match get_co_local_data() {
-        None => panic!("no cancel data, did you call `current_cancel_data()` in thread context?"),
         Some(local) => &(unsafe { &*local.as_ptr() }.get_co().inner.cancel),
+        None => panic!("no cancel data, did you call `current_cancel_data()` in thread context?"),
     }
 }
 

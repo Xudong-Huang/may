@@ -234,7 +234,7 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
 mod tests {
     use super::*;
 
-    #[allow(dead_code)]
+    #[test]
     fn compile_co_io() {
         #[derive(Debug)]
         struct Fd;
@@ -246,8 +246,9 @@ mod tests {
         }
 
         impl Read for Fd {
-            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
-                Ok(0)
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                buf.fill(0x55);
+                Ok(buf.len())
             }
         }
 
@@ -255,5 +256,6 @@ mod tests {
         let mut io = CoIo::new(a).unwrap();
         let mut buf = [0u8; 100];
         io.read_exact(&mut buf).unwrap();
+        assert_eq!(buf, [0x55u8; 100]);
     }
 }

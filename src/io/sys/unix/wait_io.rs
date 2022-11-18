@@ -26,7 +26,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let handle = co_get_handle(&co);
         let io_data = (*self.io_data).clone();
-        self.io_data.co.swap(co, Ordering::Release);
+        io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
             return io_data.schedule();
