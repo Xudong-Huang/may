@@ -237,6 +237,38 @@ impl Selector {
     }
 
     #[inline]
+    pub fn mod_fd(&self, io_data: &IoData, is_read: bool) -> io::Result<()> {
+        let fd = io_data.fd;
+        let id = fd as usize % self.vec.len();
+        let kqfd = unsafe { self.vec.get_unchecked(id) }.kqfd;
+        info!("add fd to kqueue select, fd={:?}", fd);
+
+        let flags = libc::EV_DELETE;
+        let udata = io_data.as_ref() as *const _;
+        let changes = if is_read {
+            [kevent!(fd, libc::EVFILT_WRITE, flags, udata)]
+        } else {
+            [kevent!(fd, libc::EVFILT_READ, flags, udata)]
+        };
+
+        let n = unsafe {
+            libc::kevent(
+                kqfd,
+                changes.as_ptr(),
+                changes.len() as libc::c_int,
+                ptr::null_mut(),
+                0,
+                ptr::null(),
+            )
+        };
+        if n < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
+
+    #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
         use std::ops::Deref;
 

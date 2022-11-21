@@ -20,6 +20,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) use self::event_loop::EventLoop;
 pub use self::sys::co_io::CoIo;
 #[cfg(unix)]
+pub use self::sys::split_io::{SplitIo, SplitReader, SplitWriter};
+#[cfg(unix)]
 pub use self::sys::wait_io::WaitIo;
 pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
 

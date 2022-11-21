@@ -2,8 +2,10 @@ use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
-use crate::io as io_impl;
 use crate::io::net as net_impl;
+use crate::io::sys::mod_socket;
+use crate::io::sys::split_io::{SplitIo, SplitReader, SplitWriter};
+use crate::io::{self as io_impl, AsIoData};
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
@@ -475,6 +477,16 @@ impl FromRawFd for TcpListener {
         let s: net::TcpListener = FromRawFd::from_raw_fd(fd);
         TcpListener::new(s)
             .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e))
+    }
+}
+
+#[cfg(unix)]
+impl SplitIo for TcpStream {
+    fn split(self) -> io::Result<(SplitReader<Self>, SplitWriter<Self>)> {
+        let writer = self.try_clone()?;
+        mod_socket(writer.as_io_data(), false)?;
+        mod_socket(self.as_io_data(), true)?;
+        Ok((SplitReader::new(self), SplitWriter::new(writer)))
     }
 }
 

@@ -190,6 +190,28 @@ impl Selector {
     }
 
     #[inline]
+    pub fn mod_fd(&self, io_data: &IoData, is_read: bool) -> io::Result<()> {
+        let mut info = if is_read {
+            EpollEvent::new(
+                EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLET,
+                io_data.as_ref() as *const _ as _,
+            )
+        } else {
+            EpollEvent::new(
+                EpollFlags::EPOLLOUT | EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLET,
+                io_data.as_ref() as *const _ as _,
+            )
+        };
+
+        let fd = io_data.fd;
+        let id = fd as usize % self.vec.len();
+        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let epfd = single_selector.epfd;
+        info!("mod fd to epoll select, fd={:?}, is_read={}", fd, is_read);
+        epoll_ctl(epfd, EpollOp::EpollCtlMod, fd, &mut info).map_err(from_nix_error)
+    }
+
+    #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
         use std::ops::Deref;
 

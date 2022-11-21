@@ -9,8 +9,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::coroutine_impl::is_coroutine;
+use crate::io::sys::mod_socket;
 use crate::io::sys::net as net_impl;
+use crate::io::sys::split_io::{SplitIo, SplitReader, SplitWriter};
 use crate::io::CoIo;
+use crate::io::{self as io_impl, AsIoData};
 use crate::yield_now::yield_with_io;
 
 /// A Unix stream socket.
@@ -1082,6 +1085,21 @@ impl FromRawFd for UnixDatagram {
 impl IntoRawFd for UnixDatagram {
     fn into_raw_fd(self) -> RawFd {
         self.0.into_raw_fd()
+    }
+}
+
+impl io_impl::AsIoData for UnixDatagram {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        self.0.as_io_data()
+    }
+}
+
+impl SplitIo for UnixDatagram {
+    fn split(self) -> io::Result<(SplitReader<Self>, SplitWriter<Self>)> {
+        let writer = self.try_clone()?;
+        mod_socket(writer.as_io_data(), false)?;
+        mod_socket(self.as_io_data(), true)?;
+        Ok((SplitReader::new(self), SplitWriter::new(writer)))
     }
 }
 

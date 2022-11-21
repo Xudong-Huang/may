@@ -17,6 +17,7 @@ mod select;
 pub mod cancel;
 pub mod co_io;
 pub mod net;
+pub mod split_io;
 pub mod wait_io;
 
 use std::cell::RefCell;
@@ -39,6 +40,11 @@ pub use self::select::{Selector, SysEvent};
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
     get_scheduler().get_selector().add_fd(IoData::new(t))
+}
+
+#[inline]
+pub fn mod_socket(io: &IoData, is_read: bool) -> io::Result<()> {
+    get_scheduler().get_selector().mod_fd(io, is_read)
 }
 
 #[inline]
