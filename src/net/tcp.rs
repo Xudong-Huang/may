@@ -2,10 +2,14 @@ use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
+use crate::io as io_impl;
 use crate::io::net as net_impl;
+#[cfg(unix)]
 use crate::io::sys::mod_socket;
+#[cfg(unix)]
 use crate::io::sys::split_io::{SplitIo, SplitReader, SplitWriter};
-use crate::io::{self as io_impl, AsIoData};
+#[cfg(unix)]
+use crate::io::AsIoData;
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
