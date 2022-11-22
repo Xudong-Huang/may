@@ -3,6 +3,7 @@
 //! context to wait on the io events
 //!
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use crate::cancel::Cancel;
 use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
@@ -47,6 +48,19 @@ impl<'a> EventSource for RawIoBlock<'a> {
     }
 }
 
+/// A waker that could wakeup the coroutine that is blocked by `WaitIo::wait_io`
+pub struct WaitIoWaker {
+    io_data: Arc<io_impl::sys::EventData>,
+}
+
+impl WaitIoWaker {
+    /// wakeup the coroutine that is blocked by `WaitIo::wait_io`
+    pub fn wakeup(&self) {
+        self.io_data.io_flag.store(true, Ordering::Relaxed);
+        self.io_data.schedule();
+    }
+}
+
 /// This is trait that can block on io events but doing nothing about io
 pub trait WaitIo {
     /// reset the io before io operation
@@ -54,7 +68,7 @@ pub trait WaitIo {
     /// block on read/write event
     fn wait_io(&self);
     /// wake up the coroutine that is waiting for io
-    fn wakeup(&self);
+    fn waker(&self) -> WaitIoWaker;
 }
 
 impl<T: io_impl::AsIoData> WaitIo for T {
@@ -73,9 +87,9 @@ impl<T: io_impl::AsIoData> WaitIo for T {
         yield_with(&blocker);
     }
 
-    fn wakeup(&self) {
-        let io_data = self.as_io_data();
-        io_data.io_flag.store(true, Ordering::Relaxed);
-        io_data.schedule();
+    fn waker(&self) -> WaitIoWaker {
+        WaitIoWaker {
+            io_data: (*self.as_io_data()).clone(),
+        }
     }
 }
