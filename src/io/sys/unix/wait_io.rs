@@ -53,6 +53,8 @@ pub trait WaitIo {
     fn reset_io(&self);
     /// block on read/write event
     fn wait_io(&self);
+    /// wake up the coroutine that is waiting for io
+    fn wakeup(&self);
 }
 
 impl<T: io_impl::AsIoData> WaitIo for T {
@@ -69,5 +71,11 @@ impl<T: io_impl::AsIoData> WaitIo for T {
         }
         let blocker = RawIoBlock::new(self.as_io_data());
         yield_with(&blocker);
+    }
+
+    fn wakeup(&self) {
+        let io_data = self.as_io_data();
+        io_data.io_flag.store(true, Ordering::Relaxed);
+        io_data.schedule();
     }
 }
