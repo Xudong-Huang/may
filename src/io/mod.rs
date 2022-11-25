@@ -23,7 +23,8 @@ pub use self::sys::co_io::CoIo;
 pub use self::sys::split_io::{SplitIo, SplitReader, SplitWriter};
 #[cfg(unix)]
 pub use self::sys::wait_io::{WaitIo, WaitIoWaker};
-pub(crate) use self::sys::{add_socket, cancel, net, IoData, Selector};
+pub use self::sys::IoData;
+pub(crate) use self::sys::{add_socket, cancel, net, Selector};
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;

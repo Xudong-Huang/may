@@ -328,6 +328,12 @@ impl IntoRawFd for UnixStream {
     }
 }
 
+impl io_impl::AsIoData for UnixStream {
+    fn as_io_data(&self) -> &io_impl::IoData {
+        self.0.as_io_data()
+    }
+}
+
 /// A structure representing a Unix domain socket server.
 ///
 /// # Examples
