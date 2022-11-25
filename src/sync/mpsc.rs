@@ -788,7 +788,7 @@ mod tests {
 
         let mut recv_count = 0;
         loop {
-            match rx.recv_timeout(Duration::from_millis(10)) {
+            match rx.recv_timeout(Duration::from_millis(30)) {
                 Ok(n) => {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
