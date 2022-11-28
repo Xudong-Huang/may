@@ -1,6 +1,8 @@
 //! Split io object into read/write part
 //!
 
+use std::io::{self, Read, Write};
+
 pub struct SplitReader<T> {
     inner: T,
 }
@@ -29,13 +31,13 @@ impl<T> SplitWriter<T> {
     }
 }
 
-impl<T: std::io::Read> std::io::Read for SplitReader<T> {
+impl<T: Read> Read for SplitReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.inner.read(buf)
     }
 }
 
-impl<T: std::io::Write> std::io::Write for SplitWriter<T> {
+impl<T: Write> Write for SplitWriter<T> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.inner.write(buf)
     }
@@ -49,7 +51,7 @@ impl<T: std::io::Write> std::io::Write for SplitWriter<T> {
 /// one is for read operation, another is for write operation
 pub trait SplitIo {
     /// split the io into read and write part
-    fn split(self) -> std::io::Result<(SplitReader<Self>, SplitWriter<Self>)>
+    fn split(self) -> io::Result<(SplitReader<Self>, SplitWriter<Self>)>
     where
-        Self: Sized;
+        Self: Read + Write + Sized;
 }
