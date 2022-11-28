@@ -63,7 +63,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
 
 impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let io_data = (*self.io_data).clone();
+        let io_data = self.io_data;
 
         if let Some(dur) = self.timeout {
             get_scheduler()

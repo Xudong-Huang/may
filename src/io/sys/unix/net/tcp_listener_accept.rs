@@ -62,7 +62,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
-        let io_data = (*self.io_data).clone();
+        let io_data = self.io_data;
         // if there is no timer we don't need to call add_io_timer
         io_data.co.swap(co, Ordering::Release);
 
@@ -75,7 +75,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         #[cfg(feature = "io_cancel")]
         {
             // register the cancel io data
-            cancel.set_io(io_data);
+            cancel.set_io((*io_data).clone());
             // re-check the cancel status
             if cancel.is_canceled() {
                 unsafe { cancel.cancel() };

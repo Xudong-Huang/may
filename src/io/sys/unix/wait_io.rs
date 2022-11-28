@@ -18,9 +18,7 @@ pub struct RawIoBlock<'a> {
 
 impl<'a> RawIoBlock<'a> {
     fn new(io_data: &'a io_impl::IoData) -> Self {
-        if !is_coroutine() {
-            panic!("can not block io in non-coroutine context");
-        }
+        debug_assert!(is_coroutine(), "can not block io in non-coroutine context");
         RawIoBlock { io_data }
     }
 }
@@ -29,7 +27,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let handle = co_get_handle(&co);
-        let io_data = (*self.io_data).clone();
+        let io_data = self.io_data;
         io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
@@ -41,7 +39,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
         {
             let cancel = handle.get_cancel();
             // register the cancel io data
-            cancel.set_io(io_data);
+            cancel.set_io((*io_data).clone());
             // re-check the cancel status
             if cancel.is_canceled() {
                 unsafe { cancel.cancel() };
@@ -50,8 +48,9 @@ impl<'a> EventSource for RawIoBlock<'a> {
     }
 
     /// after yield back process
-    fn yield_back(&self, cancel: &'static Cancel) {
-        cancel.clear_cancel_bit();
+    fn yield_back(&self, _cancel: &'static Cancel) {
+        #[cfg(feature = "io_cancel")]
+        _cancel.clear_cancel_bit();
     }
 }
 

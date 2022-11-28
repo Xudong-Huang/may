@@ -57,7 +57,7 @@ impl<'a> SocketWrite<'a> {
 
 impl<'a> EventSource for SocketWrite<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
-        let io_data = (*self.io_data).clone();
+        let io_data = self.io_data;
 
         if let Some(dur) = self.timeout {
             get_scheduler()

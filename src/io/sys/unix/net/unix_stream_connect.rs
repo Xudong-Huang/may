@@ -92,7 +92,7 @@ impl EventSource for UnixStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
-        let io_data = (*self.io_data).clone();
+        let io_data = &self.io_data;
 
         get_scheduler()
             .get_selector()
@@ -108,7 +108,7 @@ impl EventSource for UnixStreamConnect {
         #[cfg(feature = "io_cancel")]
         {
             // register the cancel io data
-            cancel.set_io(io_data);
+            cancel.set_io((*io_data).clone());
             // re-check the cancel status
             if cancel.is_canceled() {
                 unsafe { cancel.cancel() };

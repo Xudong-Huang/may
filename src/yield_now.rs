@@ -22,14 +22,12 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     let cancel = current_cancel_data();
     // if cancel detected in user space
     // no need to get into kernel any more
-    if cancel.is_canceled() {
-        {
-            co_set_para(::std::io::Error::new(
-                ::std::io::ErrorKind::Other,
-                "Canceled",
-            ));
-            return resource.yield_back(cancel);
-        }
+    if unlikely(cancel.is_canceled()) {
+        co_set_para(::std::io::Error::new(
+            ::std::io::ErrorKind::Other,
+            "Canceled",
+        ));
+        return resource.yield_back(cancel);
     }
 
     let r = resource as &dyn EventSource as *const _ as *mut _;
@@ -40,9 +38,17 @@ pub fn yield_with<T: EventSource>(resource: &T) {
     cancel.clear();
 }
 
+#[inline]
 pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
     if likely(is_coroutine) {
+        #[cfg(feature = "io_cancel")]
         yield_with(resource);
+        #[cfg(not(feature = "io_cancel"))]
+        {
+            let r = resource as &dyn EventSource as *const _ as *mut _;
+            let es = EventSubscriber::new(r);
+            co_yield_with(es);
+        }
     } else {
         // for thread is only park the thread
         let r = resource as &dyn EventSource as *const _ as *mut _;
@@ -55,6 +61,7 @@ pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
 }
 
 /// set the coroutine para that passed into it
+#[cold]
 #[inline]
 pub fn set_co_para(co: &mut CoroutineImpl, v: EventResult) {
     co.set_para(v);

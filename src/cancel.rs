@@ -155,9 +155,9 @@ impl<T: CancelIo> CancelImpl<T> {
     // clear the cancel io data
     // should be called after io completion
     pub fn clear(&self) {
-        if self.co.take(Ordering::Acquire).is_none() {
-            self.io.clear();
-        }
+        // if self.co.take(Ordering::Acquire).is_none() {
+        self.io.clear();
+        // }
     }
 }
 
