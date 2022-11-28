@@ -1109,15 +1109,6 @@ impl io_impl::AsIoData for UnixDatagram {
     }
 }
 
-impl SplitIo for UnixDatagram {
-    fn split(self) -> io::Result<(SplitReader<Self>, SplitWriter<Self>)> {
-        let writer = self.try_clone()?;
-        mod_socket(writer.as_io_data(), false)?;
-        mod_socket(self.as_io_data(), true)?;
-        Ok((SplitReader::new(self), SplitWriter::new(writer)))
-    }
-}
-
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
     use std::io;
