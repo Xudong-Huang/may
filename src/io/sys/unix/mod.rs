@@ -14,6 +14,7 @@ mod select;
 #[path = "kqueue.rs"]
 mod select;
 
+#[cfg(feature = "io_cancel")]
 pub mod cancel;
 pub mod co_io;
 pub mod net;

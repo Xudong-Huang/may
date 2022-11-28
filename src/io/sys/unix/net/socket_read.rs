@@ -3,7 +3,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
-use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_cancel_data;
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
@@ -57,6 +59,7 @@ impl<'a> SocketRead<'a> {
 
 impl<'a> EventSource for SocketRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
+        #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
         let io_data = (*self.io_data).clone();
 
@@ -74,14 +77,18 @@ impl<'a> EventSource for SocketRead<'a> {
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
+            #[allow(clippy::needless_return)]
             return io_data.schedule();
         }
 
-        // register the cancel io data
-        cancel.set_io(io_data);
-        // re-check the cancel status
-        if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+        #[cfg(feature = "io_cancel")]
+        {
+            // register the cancel io data
+            cancel.set_io(io_data);
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
         }
     }
 }

@@ -6,7 +6,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::cancel::Cancel;
-use crate::coroutine_impl::{co_get_handle, is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_get_handle;
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io as io_impl;
 use crate::yield_now::yield_with;
 
@@ -25,20 +27,25 @@ impl<'a> RawIoBlock<'a> {
 
 impl<'a> EventSource for RawIoBlock<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
+        #[cfg(feature = "io_cancel")]
         let handle = co_get_handle(&co);
         let io_data = (*self.io_data).clone();
         io_data.co.swap(co, Ordering::Release);
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
+            #[allow(clippy::needless_return)]
             return io_data.schedule();
         }
 
-        let cancel = handle.get_cancel();
-        // register the cancel io data
-        cancel.set_io(io_data);
-        // re-check the cancel status
-        if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+        #[cfg(feature = "io_cancel")]
+        {
+            let cancel = handle.get_cancel();
+            // register the cancel io data
+            cancel.set_io(io_data);
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
         }
     }
 

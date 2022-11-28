@@ -156,6 +156,7 @@ impl Coroutine {
 
     /// Get the internal cancel
     #[cfg(unix)]
+    #[cfg(feature = "io_cancel")]
     pub(crate) fn get_cancel(&self) -> &Cancel {
         &self.inner.cancel
     }
@@ -475,6 +476,7 @@ pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
 
 // windows use delay drop instead
 #[cfg(unix)]
+#[cfg(feature = "io_cancel")]
 pub(crate) fn co_get_handle(co: &CoroutineImpl) -> Coroutine {
     let local = unsafe { &*get_co_local(co) };
     local.get_co().clone()

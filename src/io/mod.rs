@@ -19,11 +19,13 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) use self::event_loop::EventLoop;
+#[cfg(feature = "io_cancel")]
+pub(crate) use self::sys::cancel;
 pub use self::sys::co_io::CoIo;
 #[cfg(unix)]
 pub use self::sys::wait_io::{WaitIo, WaitIoWaker};
 pub use self::sys::IoData;
-pub(crate) use self::sys::{add_socket, cancel, net, Selector};
+pub(crate) use self::sys::{add_socket, net, Selector};
 pub use split_io::{SplitIo, SplitReader, SplitWriter};
 
 pub trait AsIoData {

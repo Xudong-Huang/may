@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::thread;
 
 use crate::coroutine_impl::CoroutineImpl;
+#[cfg(feature = "io_cancel")]
 use crate::io::cancel::CancelIoImpl;
 use crate::likely::unlikely;
 use crate::scheduler::get_scheduler;
@@ -36,6 +37,20 @@ pub trait CancelIo {
     fn set(&self, _: Self::Data);
     fn clear(&self);
     unsafe fn cancel(&self);
+}
+
+#[cfg(not(feature = "io_cancel"))]
+pub struct CancelIoImpl;
+
+#[cfg(not(feature = "io_cancel"))]
+impl CancelIo for CancelIoImpl {
+    type Data = ();
+    fn new() -> Self {
+        CancelIoImpl
+    }
+    fn set(&self, _: Self::Data) {}
+    fn clear(&self) {}
+    unsafe fn cancel(&self) {}
 }
 
 // each coroutine has it's own Cancel data

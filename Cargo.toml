@@ -66,6 +66,10 @@ native-tls = "0.2"
 tungstenite = "0.17"
 serde_derive = "1.0"
 
+[features]
+default = ["io_cancel"]
+io_cancel = []
+
 
 [profile.release]
 lto = true
