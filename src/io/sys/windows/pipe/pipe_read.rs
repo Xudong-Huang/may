@@ -3,7 +3,10 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle}
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
-use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_cancel_data;
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
 use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
@@ -44,6 +47,7 @@ impl<'a> PipeRead<'a> {
 impl<'a> EventSource for PipeRead<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
         let _g = self.can_drop.delay_drop();
         // if the event happened before this there would be something wrong
@@ -64,11 +68,14 @@ impl<'a> EventSource for PipeRead<'a> {
             ret
         });
 
-        // register the cancel io data
-        cancel.set_io(CancelIoData::new(&self.io_data));
-        // re-check the cancel status
-        if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+        #[cfg(feature = "io_cancel")]
+        {
+            // register the cancel io data
+            cancel.set_io(CancelIoData::new(&self.io_data));
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
         }
     }
 }

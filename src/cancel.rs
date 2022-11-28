@@ -141,6 +141,7 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // set the cancel io data
     // should be called after register io request
+    #[cfg(feature = "io_cancel")]
     pub fn set_io(&self, io: T::Data) {
         self.io.set(io)
     }

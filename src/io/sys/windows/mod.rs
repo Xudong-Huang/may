@@ -12,6 +12,7 @@ macro_rules! co_try {
     };
 }
 
+#[cfg(feature = "io_cancel")]
 pub mod cancel;
 pub mod co_io;
 mod iocp;

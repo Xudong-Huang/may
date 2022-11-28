@@ -3,7 +3,10 @@ use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
 
 use super::super::{add_socket, co_io_result, EventData};
-use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_cancel_data;
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
 use crate::io::cancel::CancelIoData;
 use crate::io::OptionCell;
 use crate::net::{TcpListener, TcpStream};
@@ -65,6 +68,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();
+        #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
         // we don't need to register the timeout here,
         // prepare the co first
@@ -76,11 +80,14 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
                 .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
         });
 
-        // register the cancel io data
-        cancel.set_io(CancelIoData::new(&self.io_data));
-        // re-check the cancel status
-        if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+        #[cfg(feature = "io_cancel")]
+        {
+            // register the cancel io data
+            cancel.set_io(CancelIoData::new(&self.io_data));
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                unsafe { cancel.cancel() };
+            }
         }
     }
 }
