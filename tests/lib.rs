@@ -51,6 +51,7 @@ fn cancel_coroutine() {
 }
 
 #[test]
+#[cfg(feature = "io_cancel")]
 fn cancel_io_coroutine() {
     let j = go!(move || {
         let listener = may::net::TcpListener::bind(("0.0.0.0", 1234)).unwrap();
