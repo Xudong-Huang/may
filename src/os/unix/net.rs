@@ -9,9 +9,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::coroutine_impl::is_coroutine;
+use crate::io::split_io::{SplitIo, SplitReader, SplitWriter};
 use crate::io::sys::mod_socket;
 use crate::io::sys::net as net_impl;
-use crate::io::sys::split_io::{SplitIo, SplitReader, SplitWriter};
 use crate::io::CoIo;
 use crate::io::{self as io_impl, AsIoData};
 use crate::yield_now::yield_with_io;

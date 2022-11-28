@@ -12,6 +12,7 @@ pub(crate) mod sys;
 pub mod co_io_err;
 
 mod event_loop;
+pub(crate) mod split_io;
 pub(crate) mod thread;
 
 use std::ops::Deref;
@@ -20,11 +21,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub(crate) use self::event_loop::EventLoop;
 pub use self::sys::co_io::CoIo;
 #[cfg(unix)]
-pub use self::sys::split_io::{SplitIo, SplitReader, SplitWriter};
-#[cfg(unix)]
 pub use self::sys::wait_io::{WaitIo, WaitIoWaker};
 pub use self::sys::IoData;
 pub(crate) use self::sys::{add_socket, cancel, net, Selector};
+pub use split_io::{SplitIo, SplitReader, SplitWriter};
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;

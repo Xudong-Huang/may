@@ -4,10 +4,9 @@ use std::time::Duration;
 
 use crate::io as io_impl;
 use crate::io::net as net_impl;
+use crate::io::split_io::{SplitIo, SplitReader, SplitWriter};
 #[cfg(unix)]
 use crate::io::sys::mod_socket;
-#[cfg(unix)]
-use crate::io::sys::split_io::{SplitIo, SplitReader, SplitWriter};
 #[cfg(unix)]
 use crate::io::AsIoData;
 use crate::sync::atomic_dur::AtomicDuration;
@@ -484,11 +483,12 @@ impl FromRawFd for TcpListener {
     }
 }
 
-#[cfg(unix)]
 impl SplitIo for TcpStream {
     fn split(self) -> io::Result<(SplitReader<Self>, SplitWriter<Self>)> {
         let writer = self.try_clone()?;
+        #[cfg(unix)]
         mod_socket(writer.as_io_data(), false)?;
+        #[cfg(unix)]
         mod_socket(self.as_io_data(), true)?;
         Ok((SplitReader::new(self), SplitWriter::new(writer)))
     }

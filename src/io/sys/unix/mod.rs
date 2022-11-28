@@ -17,7 +17,6 @@ mod select;
 pub mod cancel;
 pub mod co_io;
 pub mod net;
-pub mod split_io;
 pub mod wait_io;
 
 use std::cell::RefCell;
