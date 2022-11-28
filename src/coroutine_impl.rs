@@ -444,8 +444,8 @@ where
 #[inline]
 pub fn current() -> Coroutine {
     match get_co_local_data() {
-        None => panic!("no current coroutine, did you call `current()` in thread context?"),
         Some(local) => unsafe { local.as_ref() }.get_co().clone(),
+        None => panic!("no current coroutine, did you call `current()` in thread context?"),
     }
 }
 

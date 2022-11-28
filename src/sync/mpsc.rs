@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::{AtomicOption, Blocker};
+use crate::likely::{likely, unlikely};
 
 use crossbeam::queue::SegQueue;
 // TODO: SyncSender
@@ -35,7 +36,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn send(&self, t: T) -> Result<(), T> {
-        if self.port_dropped.load(Ordering::Acquire) {
+        if unlikely(self.port_dropped.load(Ordering::Acquire)) {
             return Err(t);
         }
         self.queue.push(t);
@@ -77,10 +78,11 @@ impl<T> InnerQueue<T> {
         match self.queue.pop() {
             Some(data) => Ok(data),
             None => {
-                match self.channels.load(Ordering::Acquire) {
+                if likely(self.channels.load(Ordering::Acquire) > 0) {
+                    Err(TryRecvError::Empty)
+                } else {
                     // there is no sender any more, should re-check
-                    0 => self.queue.pop().ok_or(TryRecvError::Disconnected),
-                    _ => Err(TryRecvError::Empty),
+                    self.queue.pop().ok_or(TryRecvError::Disconnected)
                 }
             }
         }
@@ -209,8 +211,8 @@ impl<T> Receiver<T> {
         // Instant::now() in the full-channel case.
         match self.try_recv() {
             Ok(result) => Ok(result),
-            Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
             Err(TryRecvError::Empty) => self.recv_max_until(timeout),
+            Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
         }
     }
 
@@ -219,8 +221,8 @@ impl<T> Receiver<T> {
         loop {
             match self.inner.recv(Some(timeout)) {
                 Ok(t) => return Ok(t),
-                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
                 Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
             }
 
             // If we're already passed the deadline, and we're here without
