@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::cancel::Cancel;
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_get_handle;
-use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
+use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io as io_impl;
 use crate::yield_now::yield_with;
 
@@ -18,7 +18,6 @@ pub struct RawIoBlock<'a> {
 
 impl<'a> RawIoBlock<'a> {
     fn new(io_data: &'a io_impl::IoData) -> Self {
-        debug_assert!(is_coroutine(), "can not block io in non-coroutine context");
         RawIoBlock { io_data }
     }
 }
