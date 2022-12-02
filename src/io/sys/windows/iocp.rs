@@ -103,6 +103,7 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
+        co_vec: &mut Vec<CoroutineImpl>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         let timeout = timeout.map(ns_to_dur);
@@ -133,7 +134,6 @@ impl Selector {
             // if cancel not take the coroutine, then it's possible that
             // the coroutine will never come back because there is no event
             let mut co = data.co.take().expect("can't get co in selector");
-            co.prefetch();
 
             // it's safe to remove the timer since we are
             // running the timer_list in the same thread
@@ -178,7 +178,14 @@ impl Selector {
                 }
             }
 
-            // schedule the coroutine
+            co_vec.push(co);
+        }
+
+        // schedule the coroutine
+        while let Some(co) = co_vec.pop() {
+            if let Some(next) = co_vec.last() {
+                next.prefetch();
+            }
             run_coroutine(co);
         }
 

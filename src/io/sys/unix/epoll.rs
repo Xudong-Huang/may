@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::{cmp, io, isize, ptr};
 
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
-use crate::coroutine_impl::run_coroutine;
+use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_ms};
 
@@ -93,6 +93,7 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
+        co_vec: &mut Vec<CoroutineImpl>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
@@ -113,6 +114,7 @@ impl Selector {
         // clear the park stat after comeback
         scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
+        // collect coroutines
         for event in events[..n].iter() {
             if event.data() == 0 {
                 // this is just a wakeup event, ignore it
@@ -131,7 +133,6 @@ impl Selector {
                 Some(co) => co,
                 None => continue,
             };
-            co.prefetch();
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {
@@ -143,7 +144,14 @@ impl Selector {
                 h.remove()
             });
 
-            // schedule the coroutine
+            co_vec.push(co);
+        }
+
+        // schedule the coroutine
+        while let Some(co) = co_vec.pop() {
+            if let Some(next) = co_vec.last() {
+                next.prefetch();
+            }
             run_coroutine(co);
         }
 

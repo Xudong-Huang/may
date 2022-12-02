@@ -25,21 +25,23 @@ impl EventLoop {
 
         let events_buf: MaybeUninit<[SysEvent; 1024]> = MaybeUninit::uninit();
         let mut events_buf = unsafe { events_buf.assume_init() };
+        let mut co_vec = Vec::with_capacity(events_buf.len());
         // wake up every 1 second
         let mut next_expire = Some(1_000_000_000);
 
         let scheduler = get_scheduler();
         loop {
-            next_expire = match self
-                .selector
-                .select(scheduler, id, &mut events_buf, next_expire)
-            {
-                Ok(v) => v.or(Some(1_000_000_000)),
-                Err(e) => {
-                    error!("selector error={:?}", e);
-                    continue;
+            next_expire =
+                match self
+                    .selector
+                    .select(scheduler, id, &mut events_buf, &mut co_vec, next_expire)
+                {
+                    Ok(v) => v.or(Some(1_000_000_000)),
+                    Err(e) => {
+                        error!("selector error={:?}", e);
+                        continue;
+                    }
                 }
-            }
         }
     }
 

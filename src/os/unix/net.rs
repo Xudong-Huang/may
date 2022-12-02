@@ -263,7 +263,7 @@ impl UnixStream {
     }
 
     pub fn inner(&self) -> &net::UnixStream {
-        &self.0.inner()
+        self.0.inner()
     }
 
     pub fn inner_mut(&mut self) -> &mut net::UnixStream {

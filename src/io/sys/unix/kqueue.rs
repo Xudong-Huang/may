@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::{io, ptr};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
-use crate::coroutine_impl::run_coroutine;
+use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
@@ -96,6 +96,7 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
+        co_vec: &mut Vec<CoroutineImpl>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         let timeout = timeout.map(|to| {
@@ -157,7 +158,6 @@ impl Selector {
                 None => continue,
                 Some(co) => co,
             };
-            co.prefetch();
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             data.timer.borrow_mut().take().map(|h| {
@@ -169,7 +169,14 @@ impl Selector {
                 h.remove()
             });
 
-            // schedule the coroutine
+            co_vec.push(co);
+        }
+
+        // schedule the coroutine
+        while let Some(co) = co_vec.pop() {
+            if let Some(next) = co_vec.last() {
+                next.prefetch();
+            }
             run_coroutine(co);
         }
 
