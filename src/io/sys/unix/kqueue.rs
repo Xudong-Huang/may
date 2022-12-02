@@ -6,7 +6,7 @@ use std::{io, ptr};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::run_coroutine;
-use crate::scheduler::get_scheduler;
+use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
 use crossbeam::queue::SegQueue;
@@ -93,6 +93,7 @@ impl Selector {
 
     pub fn select(
         &self,
+        scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
         timeout: Option<u64>,
@@ -114,7 +115,6 @@ impl Selector {
         let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         // first register thread handle
-        let scheduler = get_scheduler();
         scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
 
         // Wait for epoll events for at most timeout_ms milliseconds

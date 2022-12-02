@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::{io, ptr};
 
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
-use crate::scheduler::get_scheduler;
+use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
 use miow::iocp::{CompletionPort, CompletionStatus};
@@ -100,6 +100,7 @@ impl Selector {
 
     pub fn select(
         &self,
+        schedule: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
         timeout: Option<u64>,
@@ -108,7 +109,6 @@ impl Selector {
         // info!("select; timeout={:?}", timeout);
         let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let scheduler = get_scheduler();
         scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
         let n = match single_selector.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),

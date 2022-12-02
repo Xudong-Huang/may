@@ -6,7 +6,7 @@ use std::{cmp, io, isize, ptr};
 
 use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::run_coroutine;
-use crate::scheduler::get_scheduler;
+use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_ms};
 
 use crossbeam::queue::SegQueue;
@@ -90,6 +90,7 @@ impl Selector {
 
     pub fn select(
         &self,
+        scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
         timeout: Option<u64>,
@@ -100,14 +101,13 @@ impl Selector {
             .unwrap_or(-1);
         // info!("select; timeout={:?}", timeout_ms);
 
-        // Wait for epoll events for at most timeout_ms milliseconds
         let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
         // first register thread handle
-        let scheduler = get_scheduler();
         scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
 
+        // Wait for epoll events for at most timeout_ms milliseconds
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
 
         // clear the park stat after comeback
@@ -128,8 +128,8 @@ impl Selector {
 
             // first check the atomic co, this may be grab by the worker first
             let co = match data.co.take(Ordering::Acquire) {
-                None => continue,
                 Some(co) => co,
+                None => continue,
             };
             co.prefetch();
 
