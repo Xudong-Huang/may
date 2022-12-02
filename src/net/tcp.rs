@@ -98,7 +98,6 @@ impl TcpStream {
         Ok(TcpStream {
             _io: io_impl::IoData::new(0),
             sys: s,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(self.read_timeout.get()),
             write_timeout: AtomicDuration::new(self.write_timeout.get()),
         })
@@ -359,7 +358,6 @@ impl TcpListener {
         Ok(TcpListener {
             _io: io_impl::IoData::new(0),
             sys: s,
-            ctx: io_impl::IoContext::new(),
         })
     }
 

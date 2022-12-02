@@ -100,7 +100,7 @@ impl Selector {
 
     pub fn select(
         &self,
-        schedule: &Scheduler,
+        scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
         timeout: Option<u64>,
