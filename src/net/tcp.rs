@@ -43,6 +43,10 @@ impl TcpStream {
         &self.sys
     }
 
+    pub fn inner_mut(&mut self) -> &mut net::TcpStream {
+        &mut self.sys
+    }
+
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
 

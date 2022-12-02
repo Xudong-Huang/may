@@ -261,6 +261,14 @@ impl UnixStream {
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         self.0.inner().shutdown(how)
     }
+
+    pub fn inner(&self) -> &net::UnixStream {
+        &self.0.inner()
+    }
+
+    pub fn inner_mut(&mut self) -> &mut net::UnixStream {
+        self.0.inner_mut()
+    }
 }
 
 impl io::Read for UnixStream {
