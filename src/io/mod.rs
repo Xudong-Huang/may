@@ -16,7 +16,6 @@ pub(crate) mod split_io;
 pub(crate) mod thread;
 
 use std::ops::Deref;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) use self::event_loop::EventLoop;
 #[cfg(feature = "io_cancel")]
@@ -30,32 +29,6 @@ pub use split_io::{SplitIo, SplitReader, SplitWriter};
 
 pub trait AsIoData {
     fn as_io_data(&self) -> &IoData;
-}
-
-#[derive(Debug)]
-pub(crate) struct IoContext {
-    nonblocking: AtomicBool,
-}
-
-impl IoContext {
-    pub fn new() -> Self {
-        IoContext {
-            // default is blocking mode in coroutine context
-            nonblocking: AtomicBool::new(false),
-        }
-    }
-
-    // return true if it's a nonblocking request
-    #[inline]
-    pub fn check_nonblocking(&self) -> bool {
-        // for coroutine context
-        self.nonblocking.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn set_nonblocking(&self, nonblocking: bool) {
-        self.nonblocking.store(nonblocking, Ordering::Relaxed);
-    }
 }
 
 // an option type that implement deref

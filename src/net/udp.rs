@@ -11,7 +11,6 @@ use crate::yield_now::yield_with_io;
 pub struct UdpSocket {
     _io: io_impl::IoData,
     sys: net::UdpSocket,
-    ctx: io_impl::IoContext,
     read_timeout: AtomicDuration,
     write_timeout: AtomicDuration,
 }
@@ -26,7 +25,6 @@ impl UdpSocket {
         io_impl::add_socket(&s).map(|io| UdpSocket {
             _io: io,
             sys: s,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
             write_timeout: AtomicDuration::new(None),
         })
@@ -74,10 +72,6 @@ impl UdpSocket {
     }
 
     pub fn send_to<A: ToSocketAddrs>(&self, buf: &[u8], addr: A) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.send_to(buf, addr);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -102,10 +96,6 @@ impl UdpSocket {
     }
 
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.recv_from(buf);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -130,10 +120,6 @@ impl UdpSocket {
     }
 
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.send(buf);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -158,10 +144,6 @@ impl UdpSocket {
     }
 
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.recv(buf);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -183,11 +165,6 @@ impl UdpSocket {
         let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
-    }
-
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.ctx.set_nonblocking(nonblocking);
-        Ok(())
     }
 
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {

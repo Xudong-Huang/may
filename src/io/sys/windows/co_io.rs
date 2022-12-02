@@ -19,7 +19,6 @@ use crate::yield_now::yield_with_io;
 pub struct CoIo<T: AsRawHandle> {
     inner: T,
     io: io_impl::IoData,
-    ctx: io_impl::IoContext,
     read_timeout: AtomicDuration,
     write_timeout: AtomicDuration,
 }
@@ -52,7 +51,6 @@ impl<T: AsRawHandle> CoIo<T> {
             Ok(io_data) => Ok(CoIo {
                 inner: io,
                 io: io_data,
-                ctx: io_impl::IoContext::new(),
                 read_timeout: AtomicDuration::new(None),
                 write_timeout: AtomicDuration::new(None),
             }),
@@ -64,13 +62,6 @@ impl<T: AsRawHandle> CoIo<T> {
     #[allow(dead_code)]
     pub(crate) fn io_reset(&self) {
         self.io.reset()
-    }
-
-    /// check current nonblocking
-    pub(crate) fn check_nonblocking(&self) -> bool {
-        // FIXME: overlappened doesn't depend on the nonblocking?
-        // self.ctx.check_nonblocking(|_| Ok(()))?;
-        self.ctx.check_nonblocking()
     }
 
     /// get inner ref
@@ -109,21 +100,10 @@ impl<T: AsRawHandle> CoIo<T> {
         self.write_timeout.swap(dur);
         Ok(())
     }
-
-    /// set nonblocking
-    pub fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
-        //set_nonblocking(self, nb)
-        self.ctx.set_nonblocking(nb);
-        Ok(())
-    }
 }
 
 impl<T: AsRawHandle + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if !self.check_nonblocking() {
-            return self.inner.read(buf);
-        }
-
         self.io.reset();
         let mut reader = PipeRead::new(self, buf, self.read_timeout.get());
         yield_with_io(&reader, reader.is_coroutine);
@@ -133,10 +113,6 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
 
 impl<T: AsRawHandle + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if !self.check_nonblocking() {
-            return self.inner.write(buf);
-        }
-
         self.io.reset();
         let mut writer = PipeWrite::new(self, buf, self.write_timeout.get());
         yield_with_io(&writer, writer.is_coroutine);

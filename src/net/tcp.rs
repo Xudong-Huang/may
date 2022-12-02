@@ -20,7 +20,6 @@ use crate::yield_now::yield_with_io;
 pub struct TcpStream {
     _io: io_impl::IoData,
     sys: net::TcpStream,
-    ctx: io_impl::IoContext,
     read_timeout: AtomicDuration,
     write_timeout: AtomicDuration,
 }
@@ -35,7 +34,6 @@ impl TcpStream {
         io_impl::add_socket(&s).map(|io| TcpStream {
             _io: io,
             sys: s,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
             write_timeout: AtomicDuration::new(None),
         })
@@ -138,11 +136,6 @@ impl TcpStream {
         Ok(self.write_timeout.get())
     }
 
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.ctx.set_nonblocking(nonblocking);
-        Ok(())
-    }
-
     pub fn set_ttl(&self, ttl: u32) -> io::Result<()> {
         self.sys.set_ttl(ttl)
     }
@@ -156,7 +149,6 @@ impl TcpStream {
         TcpStream {
             _io: io,
             sys: s,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
             write_timeout: AtomicDuration::new(None),
         }
@@ -165,10 +157,6 @@ impl TcpStream {
 
 impl Read for TcpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.read(buf);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -196,10 +184,6 @@ impl Read for TcpStream {
 
 impl Write for TcpStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.write(buf);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -225,10 +209,6 @@ impl Write for TcpStream {
 
     #[cfg(unix)]
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
-        if self.ctx.check_nonblocking() {
-            return self.sys.write_vectored(bufs);
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -292,7 +272,6 @@ impl io_impl::AsIoData for TcpStream {
 #[derive(Debug)]
 pub struct TcpListener {
     _io: io_impl::IoData,
-    ctx: io_impl::IoContext,
     sys: net::TcpListener,
 }
 
@@ -303,11 +282,7 @@ impl TcpListener {
         // to avoid unnecessary context switch
         s.set_nonblocking(true)?;
 
-        io_impl::add_socket(&s).map(|io| TcpListener {
-            _io: io,
-            ctx: io_impl::IoContext::new(),
-            sys: s,
-        })
+        io_impl::add_socket(&s).map(|io| TcpListener { _io: io, sys: s })
     }
 
     pub fn inner(&self) -> &net::TcpListener {
@@ -340,13 +315,6 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        if self.ctx.check_nonblocking() {
-            return self
-                .sys
-                .accept()
-                .and_then(|(s, a)| TcpStream::new(s).map(|s| (s, a)));
-        }
-
         #[cfg(unix)]
         {
             self._io.reset();
@@ -393,11 +361,6 @@ impl TcpListener {
             sys: s,
             ctx: io_impl::IoContext::new(),
         })
-    }
-
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.ctx.set_nonblocking(nonblocking);
-        Ok(())
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {

@@ -227,20 +227,6 @@ impl UnixStream {
         self.0.write_timeout()
     }
 
-    /// Moves the socket into or out of nonblocking mode.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use may::os::unix::net::UnixStream;
-    ///
-    /// let socket = UnixStream::connect("/tmp/sock").unwrap();
-    /// socket.set_nonblocking(true).expect("Couldn't set nonblocking");
-    /// ```
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.0.set_nonblocking(nonblocking)
-    }
-
     /// Returns the value of the `SO_ERROR` option.
     ///
     /// # Examples
@@ -424,11 +410,6 @@ impl UnixListener {
     /// }
     /// ```
     pub fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
-        if self.0.check_nonblocking() {
-            let (s, a) = self.0.inner().accept()?;
-            return Ok((UnixStream(CoIo::new(s)?), a));
-        }
-
         self.0.io_reset();
         match self.0.inner().accept() {
             Ok((s, a)) => return Ok((UnixStream(CoIo::new(s)?), a)),
@@ -481,21 +462,6 @@ impl UnixListener {
     /// ```
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.inner().local_addr()
-    }
-
-    /// Moves the socket into or out of nonblocking mode.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use may::os::unix::net::UnixListener;
-    ///
-    /// let listener = UnixListener::bind("/path/to/the/socket").unwrap();
-    ///
-    /// listener.set_nonblocking(true).expect("Couldn't set non blocking");
-    /// ```
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.0.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.
@@ -816,10 +782,6 @@ impl UnixDatagram {
     /// }
     /// ```
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        if self.0.check_nonblocking() {
-            return self.0.inner().recv_from(buf);
-        }
-
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv_from(buf) {
@@ -854,10 +816,6 @@ impl UnixDatagram {
     /// sock.recv(buf.as_mut_slice()).expect("recv function failed");
     /// ```
     pub fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.0.check_nonblocking() {
-            return self.0.inner().recv(buf);
-        }
-
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().recv(buf) {
@@ -891,10 +849,6 @@ impl UnixDatagram {
     /// sock.send_to(b"omelette au fromage", "/some/sock").expect("send_to function failed");
     /// ```
     pub fn send_to<P: AsRef<Path>>(&self, buf: &[u8], path: P) -> io::Result<usize> {
-        if self.0.check_nonblocking() {
-            return self.0.inner().send_to(buf, path);
-        }
-
         self.0.io_reset();
         // this is an earlier return try for nonblocking read
         match self.0.inner().send_to(buf, path.as_ref()) {
@@ -932,10 +886,6 @@ impl UnixDatagram {
     /// sock.send(b"omelette au fromage").expect("send_to function failed");
     /// ```
     pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        if self.0.check_nonblocking() {
-            return self.0.inner().send(buf);
-        }
-
         self.0.io_reset();
         // this is an earlier return try for nonblocking write
         match self.0.inner().send(buf) {
@@ -1034,20 +984,6 @@ impl UnixDatagram {
     /// ```
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.write_timeout()
-    }
-
-    /// Moves the socket into or out of nonblocking mode.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use may::os::unix::net::UnixDatagram;
-    ///
-    /// let sock = UnixDatagram::unbound().unwrap();
-    /// sock.set_nonblocking(true).expect("set_nonblocking function failed");
-    /// ```
-    pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        self.0.set_nonblocking(nonblocking)
     }
 
     /// Returns the value of the `SO_ERROR` option.

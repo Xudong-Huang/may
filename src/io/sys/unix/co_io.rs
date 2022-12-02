@@ -40,7 +40,6 @@ fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
 pub struct CoIo<T: AsRawFd> {
     inner: T,
     io: io_impl::IoData,
-    ctx: io_impl::IoContext,
     read_timeout: AtomicDuration,
     write_timeout: AtomicDuration,
 }
@@ -79,7 +78,6 @@ impl<T: AsRawFd> CoIo<T> {
         Ok(CoIo {
             inner: io,
             io: io_data,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
             write_timeout: AtomicDuration::new(None),
         })
@@ -90,7 +88,6 @@ impl<T: AsRawFd> CoIo<T> {
         CoIo {
             inner: io,
             io: io_data,
-            ctx: io_impl::IoContext::new(),
             read_timeout: AtomicDuration::new(None),
             write_timeout: AtomicDuration::new(None),
         }
@@ -99,11 +96,6 @@ impl<T: AsRawFd> CoIo<T> {
     /// reset internal io data
     pub(crate) fn io_reset(&self) {
         self.io.reset()
-    }
-
-    /// check current blocking mode
-    pub(crate) fn check_nonblocking(&self) -> bool {
-        self.ctx.check_nonblocking()
     }
 
     /// get inner ref
@@ -142,21 +134,10 @@ impl<T: AsRawFd> CoIo<T> {
         self.write_timeout.swap(dur);
         Ok(())
     }
-
-    /// set nonblocking mode
-    pub fn set_nonblocking(&self, nb: bool) -> io::Result<()> {
-        self.ctx.set_nonblocking(nb);
-        Ok(())
-    }
 }
 
 impl<T: AsRawFd + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.check_nonblocking() {
-            // this can't be nonblocking!!
-            return self.inner.read(buf);
-        }
-
         self.io.reset();
         // this is an earlier return try for nonblocking read
         // it's useful for server but not necessary for client
@@ -181,11 +162,6 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
 
 impl<T: AsRawFd + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if self.check_nonblocking() {
-            // this can't be nonblocking!!
-            return self.inner.write(buf);
-        }
-
         self.io.reset();
         // this is an earlier return try for nonblocking write
         match self.inner.write(buf) {
