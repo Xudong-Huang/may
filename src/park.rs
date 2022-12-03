@@ -48,7 +48,7 @@ impl Park {
         Park {
             wait_co: Arc::new(AtomicOption::none()),
             state: AtomicUsize::new(0),
-            check_cancel: true.into(),
+            check_cancel: AtomicBool::new(true),
             timeout: AtomicDuration::new(None),
             timeout_handle: AtomicPtr::new(ptr::null_mut()),
             wait_kernel: AtomicBool::new(false),

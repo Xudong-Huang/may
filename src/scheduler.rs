@@ -12,8 +12,8 @@ use crate::pool::CoroutinePool;
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
+
 use crossbeam::deque;
-use crossbeam::utils::Backoff;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -73,18 +73,18 @@ fn init_scheduler() {
 
     // timer thread
     thread::spawn(move || {
-        let s = unsafe { &*SCHED };
         // timer function
-        let timer_event_handler = |co: Arc<AtomicOption<CoroutineImpl>>| {
+        let timer_event_handler = |c: Arc<AtomicOption<CoroutineImpl>>| {
             // just re-push the co to the visit list
-            if let Some(mut c) = co.take(Ordering::Relaxed) {
+            if let Some(mut co) = c.take(Ordering::Relaxed) {
                 // set the timeout result for the coroutine
-                set_co_para(&mut c, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
+                set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                 // s.schedule_global(c);
-                run_coroutine(c);
+                run_coroutine(co);
             }
         };
 
+        let s = unsafe { &*SCHED };
         s.timer_thread.run(&timer_event_handler);
     });
 
@@ -113,32 +113,17 @@ pub fn get_scheduler() -> &'static Scheduler {
 
 #[inline]
 fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
-    static GLOBAL_LOCK: AtomicUsize = AtomicUsize::new(0);
-    GLOBAL_LOCK
-        .compare_exchange(0, 1, Ordering::Relaxed, Ordering::Relaxed)
-        .ok()?;
-
-    let backoff = Backoff::new();
-    let ret = loop {
-        match global.steal_batch_and_pop(local) {
-            deque::Steal::Success(t) => break Some(t),
-            deque::Steal::Empty => break None,
-            deque::Steal::Retry => backoff.snooze(),
-        }
-    };
-    GLOBAL_LOCK.store(0, Ordering::Relaxed);
-    ret
+    match global.steal_batch_and_pop(local) {
+        deque::Steal::Success(t) => Some(t),
+        _ => None,
+    }
 }
 
 #[inline]
 fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
-    let backoff = Backoff::new();
-    loop {
-        match stealer.steal_batch_and_pop(local) {
-            deque::Steal::Success(t) => return Some(t),
-            deque::Steal::Empty => return None,
-            deque::Steal::Retry => backoff.snooze(),
-        }
+    match stealer.steal_batch_and_pop(local) {
+        deque::Steal::Success(t) => Some(t),
+        _ => None,
     }
 }
 
@@ -150,7 +135,7 @@ pub struct Scheduler {
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
     pub(crate) workers: ParkStatus,
     timer_thread: TimerThread,
-    stealers: Vec<Vec<(usize, deque::Stealer<CoroutineImpl>)>>,
+    stealers: Vec<(usize, deque::Stealer<CoroutineImpl>)>,
 }
 
 impl Scheduler {
@@ -159,14 +144,9 @@ impl Scheduler {
         (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
         let mut stealers = Vec::with_capacity(workers);
         for id in 0..workers {
-            let mut stealers_l = Vec::with_capacity(workers);
-            for (i, worker) in local_queues.iter().enumerate() {
-                if i != id {
-                    stealers_l.push((i, worker.stealer()));
-                }
-            }
-            stealers_l.rotate_left(id);
-            stealers.push(stealers_l);
+            let next_id = (id + 1) % workers;
+            let stealers_l = local_queues[(id + 1) % workers].stealer();
+            stealers.push((next_id, stealers_l));
         }
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
@@ -181,23 +161,21 @@ impl Scheduler {
 
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { self.local_queues.get_unchecked(id) };
-        let stealers = unsafe { self.stealers.get_unchecked(id) };
+        let stealer = unsafe { self.stealers.get_unchecked(id) };
 
         let get_co = || {
-            local.pop().or_else(|| {
-                // Try stealing a of task from other local queues.
-                let parked_threads = self.workers.parked.load(Ordering::Relaxed);
-                stealers
-                    .iter()
-                    .find_map(|s| {
-                        if parked_threads & (1 << s.0) != 0 {
-                            return None;
-                        }
-                        steal_local(&s.1, local)
-                    })
-                    // Try stealing a batch of tasks from the global queue.
-                    .or_else(|| steal_global(&self.global_queue, local))
-            })
+            local
+                .pop()
+                .or_else(|| {
+                    // Try stealing a of task from other local queues.
+                    let parked_threads = self.workers.parked.load(Ordering::Relaxed);
+                    if parked_threads & (1 << stealer.0) != 0 {
+                        return None;
+                    }
+                    steal_local(&stealer.1, local)
+                })
+                // Try stealing a batch of tasks from the global queue.
+                .or_else(|| steal_global(&self.global_queue, local))
         };
 
         // Pop a task from the local queue
@@ -237,10 +215,10 @@ impl Scheduler {
         #[cfg(not(nightly))]
         let id = WORKER_ID.with(|id| id.load(Ordering::Relaxed));
 
-        if id == !1 {
-            self.schedule_global(co);
-        } else {
+        if id != !1 {
             unsafe { self.local_queues.get_unchecked(id) }.push(co);
+        } else {
+            self.schedule_global(co);
         }
     }
 

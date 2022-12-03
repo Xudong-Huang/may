@@ -277,8 +277,6 @@ impl Selector {
 
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
-        use std::ops::Deref;
-
         io_data.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // mark the timer as removed if any, this only happened
@@ -313,7 +311,7 @@ impl Selector {
         }
 
         // after EpollCtlDel push the unused event data
-        single_selector.free_ev.push(io_data.deref().clone());
+        single_selector.free_ev.push((*io_data).clone());
     }
 
     // we can't free the event data directly in the worker thread

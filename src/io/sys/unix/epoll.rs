@@ -221,8 +221,6 @@ impl Selector {
 
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
-        use std::ops::Deref;
-
         let mut info = EpollEvent::empty();
 
         if let Some(h) = io_data.timer.borrow_mut().take() {
@@ -243,7 +241,7 @@ impl Selector {
         epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &mut info).ok();
 
         // after EpollCtlDel push the unused event data
-        single_selector.free_ev.push(io_data.deref().clone());
+        single_selector.free_ev.push((*io_data).clone());
     }
 
     // we can't free the event data directly in the worker thread

@@ -5,8 +5,7 @@
 extern crate may;
 extern crate test;
 
-use crate::coroutine::*;
-use may::coroutine;
+use may::coroutine::*;
 use test::Bencher;
 
 #[bench]
