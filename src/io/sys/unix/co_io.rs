@@ -5,11 +5,13 @@
 
 use std::io::{self, Read, Write};
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use self::io_impl::co_io_err::Error;
 use self::io_impl::net as net_impl;
 use crate::io as io_impl;
+#[cfg(feature = "io_timeout")]
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
@@ -40,7 +42,9 @@ fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
 pub struct CoIo<T: AsRawFd> {
     inner: T,
     io: io_impl::IoData,
+    #[cfg(feature = "io_timeout")]
     read_timeout: AtomicDuration,
+    #[cfg(feature = "io_timeout")]
     write_timeout: AtomicDuration,
 }
 
@@ -78,7 +82,9 @@ impl<T: AsRawFd> CoIo<T> {
         Ok(CoIo {
             inner: io,
             io: io_data,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(None),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(None),
         })
     }
@@ -88,7 +94,9 @@ impl<T: AsRawFd> CoIo<T> {
         CoIo {
             inner: io,
             io: io_data,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(None),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(None),
         }
     }
@@ -114,22 +122,26 @@ impl<T: AsRawFd> CoIo<T> {
     }
 
     /// get read timeout
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.read_timeout.get())
     }
 
     /// get write timeout
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.write_timeout.get())
     }
 
     /// set read timeout
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.read_timeout.swap(dur);
         Ok(())
     }
 
     /// set write timeout
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.write_timeout.swap(dur);
         Ok(())
@@ -154,7 +166,12 @@ impl<T: AsRawFd + Read> Read for CoIo<T> {
             }
         }
 
-        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
+        let mut reader = net_impl::SocketRead::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
@@ -177,7 +194,12 @@ impl<T: AsRawFd + Write> Write for CoIo<T> {
             }
         }
 
-        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = net_impl::SocketWrite::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.write_timeout.get(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }

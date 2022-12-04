@@ -1,13 +1,18 @@
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
-use std::{cmp, io, isize, ptr};
+use std::{cmp, io, isize};
 
-use super::{from_nix_error, timeout_handler, EventData, IoData, TimerList};
+use super::{from_nix_error, EventData, IoData};
+#[cfg(feature = "io_timeout")]
+use super::{timeout_handler, TimerList};
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::scheduler::Scheduler;
-use crate::timeout_list::{now, ns_to_ms};
+#[cfg(feature = "io_timeout")]
+use crate::timeout_list::now;
+use crate::timeout_list::ns_to_ms;
 
 use crossbeam::queue::SegQueue;
 use libc::{eventfd, EFD_NONBLOCK};
@@ -28,6 +33,7 @@ pub type SysEvent = EpollEvent;
 struct SingleSelector {
     epfd: RawFd,
     evfd: RawFd,
+    #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
     free_ev: SegQueue<Arc<EventData>>,
 }
@@ -57,6 +63,7 @@ impl SingleSelector {
             epfd,
             evfd,
             free_ev: SegQueue::new(),
+            #[cfg(feature = "io_timeout")]
             timer_list: TimerList::new(),
         })
     }
@@ -135,11 +142,12 @@ impl Selector {
             };
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
+            #[cfg(feature = "io_timeout")]
             data.timer.borrow_mut().take().map(|h| {
                 unsafe {
                     // tell the timer handler not to cancel the io
                     // it's not always true that you can really remove the timer entry
-                    h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
+                    h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
                 }
                 h.remove()
             });
@@ -162,9 +170,12 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
+        #[cfg(feature = "io_timeout")]
         let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
+        #[cfg(not(feature = "io_timeout"))]
+        let next_expire = Some(1_000_000_000);
         Ok(next_expire)
     }
 
@@ -223,13 +234,14 @@ impl Selector {
     pub fn del_fd(&self, io_data: &IoData) {
         let mut info = EpollEvent::empty();
 
+        #[cfg(feature = "io_timeout")]
         if let Some(h) = io_data.timer.borrow_mut().take() {
             unsafe {
                 // mark the timer as removed if any, this only happened
                 // when cancel an IO. what if the timer expired at the same time?
                 // because we run this func in the user space, so the timer handler
                 // will not got the coroutine
-                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
+                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
             }
         }
 
@@ -254,6 +266,7 @@ impl Selector {
 
     // register the io request to the timeout list
     #[inline]
+    #[cfg(feature = "io_timeout")]
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);

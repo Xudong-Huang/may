@@ -1,17 +1,18 @@
 use std::io::{self, IoSlice};
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, IoData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 
 pub struct SocketWriteVectored<'a> {
     io_data: &'a IoData,
     bufs: &'a [IoSlice<'a>],
     socket: &'a std::net::TcpStream,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
@@ -21,12 +22,13 @@ impl<'a> SocketWriteVectored<'a> {
         s: &'a T,
         socket: &'a std::net::TcpStream,
         bufs: &'a [IoSlice<'a>],
-        timeout: Option<Duration>,
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
     ) -> Self {
         SocketWriteVectored {
             io_data: s.as_io_data(),
             bufs,
             socket,
+            #[cfg(feature = "io_timeout")]
             timeout,
             is_coroutine: is_coroutine(),
         }
@@ -67,8 +69,9 @@ impl<'a> EventSource for SocketWriteVectored<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }

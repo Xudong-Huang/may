@@ -67,8 +67,9 @@ tungstenite = "0.18"
 serde_derive = "1.0"
 
 [features]
-default = ["io_cancel"]
+default = ["io_cancel", "io_timeout"]
 io_cancel = []
+io_timeout = []
 
 
 [profile.release]

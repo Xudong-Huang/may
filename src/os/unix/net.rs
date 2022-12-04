@@ -6,6 +6,7 @@ use std::net::Shutdown;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net::{self, SocketAddr};
 use std::path::Path;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use crate::coroutine_impl::is_coroutine;
@@ -170,6 +171,7 @@ impl UnixStream {
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         // self.0.inner().set_read_timeout(timeout)?;
         self.0.set_read_timeout(timeout)
@@ -190,6 +192,7 @@ impl UnixStream {
     /// let socket = UnixStream::connect("/tmp/sock").unwrap();
     /// socket.set_write_timeout(Some(Duration::new(1, 0))).expect("Couldn't set write timeout");
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.inner().set_write_timeout(timeout)?;
         self.0.set_write_timeout(timeout)
@@ -207,6 +210,7 @@ impl UnixStream {
     /// socket.set_read_timeout(Some(Duration::new(1, 0))).expect("Couldn't set read timeout");
     /// assert_eq!(socket.read_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.read_timeout()
     }
@@ -223,6 +227,7 @@ impl UnixStream {
     /// socket.set_write_timeout(Some(Duration::new(1, 0))).expect("Couldn't set write timeout");
     /// assert_eq!(socket.write_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.write_timeout()
     }
@@ -839,7 +844,12 @@ impl UnixDatagram {
             }
         }
 
-        let mut reader = net_impl::SocketRead::new(&self.0, buf, self.read_timeout().unwrap());
+        let mut reader = net_impl::SocketRead::new(
+            &self.0,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout().unwrap(),
+        );
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
@@ -909,7 +919,12 @@ impl UnixDatagram {
             }
         }
 
-        let mut writer = net_impl::SocketWrite::new(&self.0, buf, self.0.write_timeout().unwrap());
+        let mut writer = net_impl::SocketWrite::new(
+            &self.0,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.0.write_timeout().unwrap(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
@@ -932,6 +947,7 @@ impl UnixDatagram {
     /// let sock = UnixDatagram::unbound().unwrap();
     /// sock.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout function failed");
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.inner().set_read_timeout(timeout)?;
         self.0.set_read_timeout(timeout)
@@ -956,6 +972,7 @@ impl UnixDatagram {
     /// sock.set_write_timeout(Some(Duration::new(1, 0)))
     ///     .expect("set_write_timeout function failed");
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
         self.0.inner().set_write_timeout(timeout)?;
         self.0.set_write_timeout(timeout)
@@ -973,6 +990,7 @@ impl UnixDatagram {
     /// sock.set_read_timeout(Some(Duration::new(1, 0))).expect("set_read_timeout function failed");
     /// assert_eq!(sock.read_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.read_timeout()
     }
@@ -990,6 +1008,7 @@ impl UnixDatagram {
     ///     .expect("set_write_timeout function failed");
     /// assert_eq!(sock.write_timeout().unwrap(), Some(Duration::new(1, 0)));
     /// ```
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         self.0.write_timeout()
     }
@@ -1057,6 +1076,7 @@ impl io_impl::AsIoData for UnixDatagram {
 mod test {
     use std::io;
     use std::io::prelude::*;
+    #[cfg(feature = "io_timeout")]
     use std::time::Duration;
     use tempdir::TempDir;
 
@@ -1201,6 +1221,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "io_timeout")]
     fn timeouts() {
         let dir = tmpdir();
         let socket_path = dir.path().join("sock");
@@ -1228,6 +1249,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "io_timeout")]
     fn test_read_timeout() {
         let dir = tmpdir();
         let socket_path = dir.path().join("sock");
@@ -1243,6 +1265,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "io_timeout")]
     fn test_read_with_timeout() {
         let dir = tmpdir();
         let socket_path = dir.path().join("sock");

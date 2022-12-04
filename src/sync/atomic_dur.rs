@@ -16,6 +16,7 @@ impl AtomicDuration {
     }
 
     #[inline]
+    #[cfg(feature = "io_timeout")]
     pub fn get(&self) -> Option<Duration> {
         match self.0.load(Ordering::Relaxed) {
             0 => None,

@@ -1,5 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{self, io};
 
@@ -7,7 +8,6 @@ use super::super::{co_io_result, IoData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 
 pub struct UdpSendTo<'a, A: ToSocketAddrs> {
@@ -15,6 +15,7 @@ pub struct UdpSendTo<'a, A: ToSocketAddrs> {
     buf: &'a [u8],
     socket: &'a std::net::UdpSocket,
     addr: A,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
@@ -26,6 +27,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             buf,
             socket: socket.inner(),
             addr,
+            #[cfg(feature = "io_timeout")]
             timeout: socket.write_timeout().unwrap(),
             is_coroutine: is_coroutine(),
         })
@@ -65,8 +67,9 @@ impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }

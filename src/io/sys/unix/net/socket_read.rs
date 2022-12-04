@@ -1,5 +1,6 @@
 use std::io;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, from_nix_error, IoData};
@@ -7,22 +8,27 @@ use super::super::{co_io_result, from_nix_error, IoData};
 use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 use nix::unistd::read;
 
 pub struct SocketRead<'a> {
     io_data: &'a IoData,
     buf: &'a mut [u8],
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketRead<'a> {
-    pub fn new<T: AsIoData>(s: &'a T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsIoData>(
+        s: &'a T,
+        buf: &'a mut [u8],
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
+    ) -> Self {
         SocketRead {
             io_data: s.as_io_data(),
             buf,
+            #[cfg(feature = "io_timeout")]
             timeout,
             is_coroutine: is_coroutine(),
         }
@@ -63,8 +69,9 @@ impl<'a> EventSource for SocketRead<'a> {
         let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }

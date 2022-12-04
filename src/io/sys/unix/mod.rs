@@ -20,20 +20,24 @@ pub mod co_io;
 pub mod net;
 pub mod wait_io;
 
+#[cfg(feature = "io_timeout")]
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::{fmt, io, ptr};
+use std::{fmt, io};
 
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::io::thread::ASSOCIATED_IO_RET;
 use crate::likely::likely;
 use crate::scheduler::get_scheduler;
 use crate::sync::AtomicOption;
+#[cfg(feature = "io_timeout")]
 use crate::timeout_list::{TimeOutList, TimeoutHandle};
-use crate::yield_now::{get_co_para, set_co_para};
+use crate::yield_now::get_co_para;
+#[cfg(feature = "io_timeout")]
+use crate::yield_now::set_co_para;
 
 pub use self::select::{Selector, SysEvent};
 
@@ -75,6 +79,7 @@ fn from_nix_error(err: nix::Error) -> ::std::io::Error {
     std::io::Error::from_raw_os_error(err as i32)
 }
 
+#[cfg(feature = "io_timeout")]
 fn timeout_handler(data: TimerData) {
     if data.event_data.is_null() {
         return;
@@ -97,11 +102,14 @@ fn timeout_handler(data: TimerData) {
 }
 
 // the timeout data
+#[cfg(feature = "io_timeout")]
 pub struct TimerData {
     event_data: *mut EventData,
 }
 
+#[cfg(feature = "io_timeout")]
 pub type TimerList = TimeOutList<TimerData>;
+#[cfg(feature = "io_timeout")]
 pub type TimerHandle = TimeoutHandle<TimerData>;
 
 // event associated io data, must be construct in
@@ -109,6 +117,7 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 pub struct EventData {
     pub fd: RawFd,
     pub io_flag: AtomicBool,
+    #[cfg(feature = "io_timeout")]
     pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
@@ -121,11 +130,13 @@ impl EventData {
         EventData {
             fd,
             io_flag: AtomicBool::new(false),
+            #[cfg(feature = "io_timeout")]
             timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn timer_data(&self) -> TimerData {
         TimerData {
             event_data: self as *const _ as *mut _,
@@ -141,11 +152,12 @@ impl EventData {
         };
 
         // it's safe to remove the timer since we are running the timer_list in the same thread
+        #[cfg(feature = "io_timeout")]
         self.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // tell the timer function not to cancel the io
                 // it's not always true that you can really remove the timer entry
-                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
+                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
             }
             h.remove()
         });

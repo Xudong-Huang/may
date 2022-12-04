@@ -26,13 +26,13 @@ fn dur_to_ns(dur: Duration) -> u64 {
 }
 
 #[inline]
-pub fn ns_to_dur(ns: u64) -> Duration {
+pub const fn ns_to_dur(ns: u64) -> Duration {
     Duration::new(ns / NANOS_PER_SEC, (ns % NANOS_PER_SEC) as u32)
 }
 
 #[allow(dead_code)]
 #[inline]
-pub fn ns_to_ms(ns: u64) -> u64 {
+pub const fn ns_to_ms(ns: u64) -> u64 {
     (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI
 }
 

@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
@@ -9,13 +10,13 @@ use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::OptionCell;
 use crate::net::TcpStream;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 use socket2::Socket;
 
 pub struct TcpStreamConnect {
     io_data: OptionCell<IoData>,
     stream: OptionCell<Socket>,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     addr: SocketAddr,
     is_connected: bool,
@@ -23,7 +24,10 @@ pub struct TcpStreamConnect {
 }
 
 impl TcpStreamConnect {
-    pub fn new<A: ToSocketAddrs>(addr: A, timeout: Option<Duration>) -> io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(
+        addr: A,
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
+    ) -> io::Result<Self> {
         use socket2::{Domain, Type};
 
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
@@ -44,6 +48,7 @@ impl TcpStreamConnect {
                 add_socket(&stream).map(|io| TcpStreamConnect {
                     io_data: OptionCell::new(io),
                     stream: OptionCell::new(stream),
+                    #[cfg(feature = "io_timeout")]
                     timeout,
                     addr,
                     is_connected: false,
@@ -110,8 +115,9 @@ impl EventSource for TcpStreamConnect {
         let cancel = co_cancel_data(&co);
         let io_data = &self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(&self.io_data, dur);
         }

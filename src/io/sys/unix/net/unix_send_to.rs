@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{self, io};
 
@@ -7,7 +8,6 @@ use super::super::{co_io_result, IoData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::os::unix::net::UnixDatagram;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 
 pub struct UnixSendTo<'a> {
@@ -15,6 +15,7 @@ pub struct UnixSendTo<'a> {
     buf: &'a [u8],
     socket: &'a std::os::unix::net::UnixDatagram,
     path: &'a Path,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
@@ -26,6 +27,7 @@ impl<'a> UnixSendTo<'a> {
             buf,
             socket: socket.0.inner(),
             path,
+            #[cfg(feature = "io_timeout")]
             timeout: socket.write_timeout().unwrap(),
             is_coroutine: is_coroutine(),
         })
@@ -65,8 +67,9 @@ impl<'a> EventSource for UnixSendTo<'a> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }

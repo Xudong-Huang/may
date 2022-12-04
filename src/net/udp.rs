@@ -1,9 +1,11 @@
 use std::io;
 use std::net::{self, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use crate::io as io_impl;
 use crate::io::net as net_impl;
+#[cfg(feature = "io_timeout")]
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
@@ -11,7 +13,9 @@ use crate::yield_now::yield_with_io;
 pub struct UdpSocket {
     _io: io_impl::IoData,
     sys: net::UdpSocket,
+    #[cfg(feature = "io_timeout")]
     read_timeout: AtomicDuration,
+    #[cfg(feature = "io_timeout")]
     write_timeout: AtomicDuration,
 }
 
@@ -25,7 +29,9 @@ impl UdpSocket {
         io_impl::add_socket(&s).map(|io| UdpSocket {
             _io: io,
             sys: s,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(None),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(None),
         })
     }
@@ -51,7 +57,9 @@ impl UdpSocket {
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
         let s = self.sys.try_clone().and_then(UdpSocket::new)?;
+        #[cfg(feature = "io_timeout")]
         s.set_read_timeout(self.read_timeout.get()).unwrap();
+        #[cfg(feature = "io_timeout")]
         s.set_write_timeout(self.write_timeout.get()).unwrap();
         Ok(s)
     }
@@ -137,7 +145,12 @@ impl UdpSocket {
             }
         }
 
-        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = net_impl::SocketWrite::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.write_timeout.get(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
@@ -161,27 +174,36 @@ impl UdpSocket {
             }
         }
 
-        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
+        let mut reader = net_impl::SocketRead::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_read_timeout(dur)?;
         self.read_timeout.swap(dur);
         Ok(())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_write_timeout(dur)?;
         self.write_timeout.swap(dur);
         Ok(())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.read_timeout.get())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.write_timeout.get())
     }

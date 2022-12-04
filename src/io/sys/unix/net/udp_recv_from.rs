@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{self, io};
 
@@ -9,13 +10,13 @@ use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::net::UdpSocket;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 
 pub struct UdpRecvFrom<'a> {
     io_data: &'a IoData,
     buf: &'a mut [u8],
     socket: &'a std::net::UdpSocket,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
@@ -26,6 +27,7 @@ impl<'a> UdpRecvFrom<'a> {
             io_data: socket.as_io_data(),
             buf,
             socket: socket.inner(),
+            #[cfg(feature = "io_timeout")]
             timeout: socket.read_timeout().unwrap(),
             is_coroutine: is_coroutine(),
         }
@@ -67,8 +69,9 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
 
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            get_scheduler()
+            crate::scheduler::get_scheduler()
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }

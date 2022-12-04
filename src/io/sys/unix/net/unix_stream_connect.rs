@@ -1,6 +1,7 @@
 use std::io;
 use std::path::Path;
 use std::sync::atomic::Ordering;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, IoData};
@@ -9,7 +10,6 @@ use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::{CoIo, OptionCell};
 use crate::os::unix::net::UnixStream;
-use crate::scheduler::get_scheduler;
 use crate::yield_now::yield_with_io;
 use socket2::{Domain, SockAddr, Socket, Type};
 
@@ -94,7 +94,8 @@ impl EventSource for UnixStreamConnect {
         let cancel = co_cancel_data(&co);
         let io_data = &self.io_data;
 
-        get_scheduler()
+        #[cfg(feature = "io_timeout")]
+        crate::scheduler::get_scheduler()
             .get_selector()
             .add_io_timer(&self.io_data, Duration::from_secs(2));
         io_data.co.swap(co, Ordering::Release);

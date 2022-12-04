@@ -1,5 +1,6 @@
 use std::io::{self, Read, Write};
 use std::net::{self, Shutdown, SocketAddr, ToSocketAddrs};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use crate::io as io_impl;
@@ -9,6 +10,7 @@ use crate::io::split_io::{SplitIo, SplitReader, SplitWriter};
 use crate::io::sys::mod_socket;
 #[cfg(unix)]
 use crate::io::AsIoData;
+#[cfg(feature = "io_timeout")]
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
@@ -20,7 +22,9 @@ use crate::yield_now::yield_with_io;
 pub struct TcpStream {
     _io: io_impl::IoData,
     sys: net::TcpStream,
+    #[cfg(feature = "io_timeout")]
     read_timeout: AtomicDuration,
+    #[cfg(feature = "io_timeout")]
     write_timeout: AtomicDuration,
 }
 
@@ -34,7 +38,9 @@ impl TcpStream {
         io_impl::add_socket(&s).map(|io| TcpStream {
             _io: io,
             sys: s,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(None),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(None),
         })
     }
@@ -48,7 +54,11 @@ impl TcpStream {
     }
 
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
-        let mut c = net_impl::TcpStreamConnect::new(addr, None)?;
+        let mut c = net_impl::TcpStreamConnect::new(
+            addr,
+            #[cfg(feature = "io_timeout")]
+            None,
+        )?;
 
         #[cfg(unix)]
         {
@@ -61,6 +71,7 @@ impl TcpStream {
         c.done()
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
         let mut c = net_impl::TcpStreamConnect::new(addr, Some(timeout))?;
 
@@ -86,7 +97,9 @@ impl TcpStream {
     #[cfg(not(windows))]
     pub fn try_clone(&self) -> io::Result<TcpStream> {
         let s = self.sys.try_clone().and_then(TcpStream::new)?;
+        #[cfg(feature = "io_timeout")]
         s.set_read_timeout(self.read_timeout.get()).unwrap();
+        #[cfg(feature = "io_timeout")]
         s.set_write_timeout(self.write_timeout.get()).unwrap();
         Ok(s)
     }
@@ -119,22 +132,26 @@ impl TcpStream {
         self.sys.take_error()
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_read_timeout(dur)?;
         self.read_timeout.swap(dur);
         Ok(())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_write_timeout(dur)?;
         self.write_timeout.swap(dur);
         Ok(())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.read_timeout.get())
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.write_timeout.get())
     }
@@ -152,7 +169,9 @@ impl TcpStream {
         TcpStream {
             _io: io,
             sys: s,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(None),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(None),
         }
     }
@@ -179,7 +198,12 @@ impl Read for TcpStream {
             }
         }
 
-        let mut reader = net_impl::SocketRead::new(self, buf, self.read_timeout.get());
+        let mut reader = net_impl::SocketRead::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
@@ -205,7 +229,12 @@ impl Write for TcpStream {
             }
         }
 
-        let mut writer = net_impl::SocketWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = net_impl::SocketWrite::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.write_timeout.get(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
@@ -230,8 +259,13 @@ impl Write for TcpStream {
             }
         }
 
-        let mut writer =
-            net_impl::SocketWriteVectored::new(self, &self.sys, bufs, self.write_timeout.get());
+        let mut writer = net_impl::SocketWriteVectored::new(
+            self,
+            &self.sys,
+            bufs,
+            #[cfg(feature = "io_timeout")]
+            self.write_timeout.get(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }
