@@ -24,7 +24,7 @@ impl EventLoop {
         #[cfg(not(nightly))]
         WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
 
-        let mut events_buf = [SysEvent::empty(); 16];
+        let mut events_buf: [SysEvent; 16] = unsafe { std::mem::zeroed() };
         let mut co_vec: SmallVec<[CoroutineImpl; 16]> = SmallVec::new();
         // wake up every 1 second
         let mut next_expire = Some(1_000_000_000);
