@@ -260,10 +260,7 @@ impl Cqueue {
                     cur.park(timeout).ok();
                 }
                 Some(mut ev) => {
-                    if let Some(w) = self.to_wake.take(Ordering::Relaxed) {
-                        w.unpark();
-                    }
-                    cur.park(timeout).ok();
+                    self.to_wake.take(Ordering::Relaxed);
                     run_ev!(ev);
                 }
             }
