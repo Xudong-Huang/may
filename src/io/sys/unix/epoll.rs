@@ -100,7 +100,7 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        co_vec: &mut Vec<CoroutineImpl>,
+        co_vec: &mut SmallVec<[CoroutineImpl; 16]>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
