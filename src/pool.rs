@@ -1,6 +1,6 @@
 use crate::config::config;
 use crate::coroutine_impl::CoroutineImpl;
-use crossbeam::queue::ArrayQueue as Queue;
+use crossbeam::queue::SegQueue as Queue;
 use generator::Gn;
 
 /// the raw coroutine pool, with stack and register prepared
@@ -19,10 +19,10 @@ impl CoroutinePool {
 
     pub fn new() -> Self {
         let capacity = config().get_pool_capacity();
-        let pool = Queue::new(capacity);
+        let pool = Queue::new();
         for _ in 0..capacity {
             let co = Self::create_dummy_coroutine();
-            pool.push(co).unwrap();
+            pool.push(co);
         }
 
         CoroutinePool { pool }
@@ -41,6 +41,9 @@ impl CoroutinePool {
     #[inline]
     pub fn put(&self, co: CoroutineImpl) {
         // discard the co if push failed
-        self.pool.push(co).ok();
+        if self.pool.len() >= config().get_pool_capacity() {
+            return;
+        }
+        self.pool.push(co);
     }
 }
