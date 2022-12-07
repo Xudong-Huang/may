@@ -127,7 +127,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                read(single_selector.evfd, &mut buf).ok();
+                while read(single_selector.evfd, &mut buf).is_ok() {}
                 // info!("got wakeup event in select, id={}", id);
                 continue;
             }
@@ -182,8 +182,8 @@ impl Selector {
     // this will post an os event so that we can wake up the event loop
     #[inline]
     pub fn wakeup(&self, id: usize) {
-        let buf = unsafe { ::std::slice::from_raw_parts(&1u64 as *const u64 as _, 8) };
-        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd, buf);
+        let buf = 1u64.to_le_bytes();
+        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd, &buf);
         trace!("wakeup id={:?}, ret={:?}", id, ret);
     }
 

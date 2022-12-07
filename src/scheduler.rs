@@ -14,6 +14,7 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
 use crossbeam::deque;
+use crossbeam::queue::SegQueue;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -33,33 +34,41 @@ static mut SCHED: *const Scheduler = std::ptr::null();
 
 pub struct ParkStatus {
     pub parked: AtomicU64,
-    workers: usize,
+    // workers: usize,
 }
 
 impl ParkStatus {
     fn new(workers: usize) -> Self {
         assert!(workers <= 64);
         let parked = AtomicU64::new(((1u128 << workers) - 1) as u64);
-        ParkStatus { parked, workers }
+        // ParkStatus { parked, workers }
+        ParkStatus { parked }
     }
 
+    // #[inline]
+    // fn get_idle_thread(&self) -> usize {
+    //     // when the worker thread is idle, the corresponding bit would set to 1
+    //     let parked = self.parked.load(Ordering::Relaxed);
+    //     // find the right most set bit
+    //     let rms = parked & !parked.wrapping_sub(1);
+    //     let first_thread = rms.trailing_zeros() as usize;
+    //     // if all threads are busy, we would not send any signal to wake up
+    //     // any worker thread. In case worker thread missing the signal it will
+    //     // wake up itself every 1 second, this is a rarely case
+    //     if first_thread < self.workers {
+    //         first_thread
+    //     } else {
+    //         0
+    //     }
+    // }
+
     #[inline]
-    fn wake_one(&self, scheduler: &Scheduler) {
-        // when the worker thread is idle, the corresponding bit would set to 1
-        let parked = self.parked.load(Ordering::Relaxed);
-        // find the right most set bit
-        let rms = parked & !parked.wrapping_sub(1);
-        let first_thread = rms.trailing_zeros() as usize;
-        // if all threads are busy, we would not send any signal to wake up
-        // any worker thread. In case worker thread missing the signal it will
-        // wake up itself every 1 second, this is a rarely case
-        if first_thread < self.workers {
-            // mark the thread as busy in advance (clear to 0)
-            // the worker thread would set it to 1 when idle
-            let mask = 1 << first_thread;
-            self.parked.fetch_and(!mask, Ordering::Relaxed);
-            scheduler.get_selector().wakeup(first_thread);
-        }
+    fn wake_one(&self, thread_id: usize, scheduler: &Scheduler) {
+        // mark the thread as busy in advance (clear to 0)
+        // the worker thread would set it to 1 when idle
+        let mask = 1 << thread_id;
+        self.parked.fetch_and(!mask, Ordering::Relaxed);
+        scheduler.get_selector().wakeup(thread_id);
     }
 }
 
@@ -112,14 +121,6 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 #[inline]
-fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
-    match global.steal_batch_and_pop(local) {
-        deque::Steal::Success(t) => Some(t),
-        _ => None,
-    }
-}
-
-#[inline]
 fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
     match stealer.steal_batch_and_pop(local) {
         deque::Steal::Success(t) => Some(t),
@@ -129,13 +130,13 @@ fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Opti
 
 #[repr(align(128))]
 pub struct Scheduler {
-    pub pool: CoroutinePool,
-    event_loop: EventLoop,
-    global_queue: deque::Injector<CoroutineImpl>,
-    local_queues: Vec<deque::Worker<CoroutineImpl>>,
     pub(crate) workers: ParkStatus,
-    timer_thread: TimerThread,
+    local_queues: Vec<deque::Worker<CoroutineImpl>>,
+    global_queues: Vec<SegQueue<CoroutineImpl>>,
     stealers: Vec<deque::Stealer<CoroutineImpl>>,
+    event_loop: EventLoop,
+    timer_thread: TimerThread,
+    pub pool: CoroutinePool,
 }
 
 impl Scheduler {
@@ -143,35 +144,31 @@ impl Scheduler {
         let mut local_queues = Vec::with_capacity(workers);
         (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
         let stealers = local_queues.iter().map(|l| l.stealer()).collect();
+        let global_queues = (0..workers).map(|_| SegQueue::new()).collect();
+
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(workers).expect("can't create event_loop"),
-            global_queue: deque::Injector::new(),
             local_queues,
+            global_queues,
+            stealers,
             timer_thread: TimerThread::new(),
             workers: ParkStatus::new(workers),
-            stealers,
         })
     }
 
     #[inline]
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { self.local_queues.get_unchecked(id) };
-        let mut steal_global_flag = false;
+        let global = unsafe { self.global_queues.get_unchecked(id) };
         let mut steal_local_flag = false;
 
         let mut get_co = || {
+            // Try get a task from the local queue.
             local
                 .pop()
-                // Try stealing a batch of tasks from the global queue.
-                .or_else(|| {
-                    if !steal_global_flag {
-                        steal_global_flag = true;
-                        steal_global(&self.global_queue, local)
-                    } else {
-                        None
-                    }
-                })
+                // Try get a task from the global queue.
+                .or_else(|| global.pop())
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     if !steal_local_flag {
@@ -189,7 +186,7 @@ impl Scheduler {
                         };
 
                         let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                        steal_local(stealer, local)
+                        steal_local(stealer, &local)
                     } else {
                         None
                     }
@@ -242,9 +239,13 @@ impl Scheduler {
     /// put the coroutine to global queue so that next time it can be scheduled
     #[inline]
     pub fn schedule_global(&self, co: CoroutineImpl) {
-        self.global_queue.push(co);
+        // let thread_id = self.workers.get_idle_thread();
+        static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
+        let thread_id = NEXT_THREAD_ID.fetch_add(1, Ordering::Relaxed) % self.global_queues.len();
+        let global_queue = unsafe { self.global_queues.get_unchecked(thread_id) };
+        global_queue.push(co);
         // signal one waiting thread if any
-        self.workers.wake_one(self);
+        self.workers.wake_one(thread_id, self);
     }
 
     #[inline]
