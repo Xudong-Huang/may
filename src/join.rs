@@ -53,12 +53,10 @@ impl Join {
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
-            } else if let Some(w) = self.to_wake.take(Ordering::Acquire) {
-                // it's already triggered
-                w.unpark();
+                cur.park(None).ok();
+            } else {
+                self.to_wake.take(Ordering::Acquire);
             }
-
-            cur.park(None).ok();
         }
     }
 }
