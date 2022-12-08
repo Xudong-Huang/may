@@ -6,6 +6,8 @@ use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::{get_scheduler, WORKER_ID};
 
 use smallvec::SmallVec;
+
+pub(crate) const IO_POLLS_MAX: usize = 128;
 /// Single threaded IO event loop.
 pub struct EventLoop {
     selector: Selector,
@@ -24,8 +26,8 @@ impl EventLoop {
         #[cfg(not(nightly))]
         WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
 
-        let mut events_buf: [SysEvent; 16] = unsafe { std::mem::zeroed() };
-        let mut co_vec: SmallVec<[CoroutineImpl; 16]> = SmallVec::new();
+        let mut events_buf: [SysEvent; IO_POLLS_MAX] = unsafe { std::mem::zeroed() };
+        let mut co_vec: SmallVec<[CoroutineImpl; IO_POLLS_MAX]> = SmallVec::new();
         // wake up every 1 second
         let mut next_expire = Some(1_000_000_000);
 

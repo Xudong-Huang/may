@@ -9,6 +9,7 @@ use super::{from_nix_error, EventData, IoData};
 #[cfg(feature = "io_timeout")]
 use super::{timeout_handler, TimerList};
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
+use crate::io::event_loop::IO_POLLS_MAX;
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::now;
@@ -100,7 +101,7 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        co_vec: &mut SmallVec<[CoroutineImpl; 16]>,
+        co_vec: &mut SmallVec<[CoroutineImpl; IO_POLLS_MAX]>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
