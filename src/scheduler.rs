@@ -34,15 +34,14 @@ static mut SCHED: *const Scheduler = std::ptr::null();
 
 pub struct ParkStatus {
     pub parked: AtomicU64,
-    // workers: usize,
+    workers: usize,
 }
 
 impl ParkStatus {
     fn new(workers: usize) -> Self {
         assert!(workers <= 64);
         let parked = AtomicU64::new(((1u128 << workers) - 1) as u64);
-        // ParkStatus { parked, workers }
-        ParkStatus { parked }
+        ParkStatus { parked, workers }
     }
 
     // #[inline]
@@ -63,12 +62,16 @@ impl ParkStatus {
     // }
 
     #[inline]
-    fn wake_one(&self, thread_id: usize, scheduler: &Scheduler) {
-        // mark the thread as busy in advance (clear to 0)
-        // the worker thread would set it to 1 when idle
-        let mask = 1 << thread_id;
-        self.parked.fetch_and(!mask, Ordering::Relaxed);
-        scheduler.get_selector().wakeup(thread_id);
+    fn next_busy_thread(&self, id: usize) -> usize {
+        let parked_threads = self.parked.load(Ordering::Relaxed);
+        let mut next_steal_id = 1;
+        loop {
+            let next_id = (id + next_steal_id) % self.workers;
+            if parked_threads & (1 << next_id) == 0 {
+                return next_id; // at least we could stop by self bit
+            }
+            next_steal_id += 1;
+        }
     }
 }
 
@@ -173,20 +176,9 @@ impl Scheduler {
                 .or_else(|| {
                     if !steal_local_flag {
                         steal_local_flag = true;
-
-                        let parked_threads = self.workers.parked.load(Ordering::Relaxed);
-
-                        let mut next_steal_id = 1;
-                        let next_id = loop {
-                            let next_id = (id + next_steal_id) % self.stealers.len();
-                            if parked_threads & (1 << next_id) == 0 {
-                                break next_id; // at least we could stop by self bit
-                            }
-                            next_steal_id += 1;
-                        };
-
+                        let next_id = self.workers.next_busy_thread(id);
                         let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                        steal_local(stealer, &local)
+                        steal_local(stealer, local)
                     } else {
                         None
                     }
@@ -245,7 +237,7 @@ impl Scheduler {
         let global_queue = unsafe { self.global_queues.get_unchecked(thread_id) };
         global_queue.push(co);
         // signal one waiting thread if any
-        self.workers.wake_one(thread_id, self);
+        self.get_selector().wakeup(thread_id);
     }
 
     #[inline]
