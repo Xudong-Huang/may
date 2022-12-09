@@ -1,6 +1,5 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::{io, ptr};
 
