@@ -110,17 +110,11 @@ impl Selector {
             .unwrap_or(-1);
         // info!("select; timeout={:?}", timeout_ms);
 
-        let mask = 1 << id;
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
-        // first register thread handle
-        scheduler.workers.parked.fetch_or(mask, Ordering::Relaxed);
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
-
-        // clear the park stat after comeback
-        scheduler.workers.parked.fetch_and(!mask, Ordering::Relaxed);
 
         // collect coroutines
         for event in events[..n].iter() {
@@ -128,7 +122,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                while read(single_selector.evfd, &mut buf).is_ok() {}
+                read(single_selector.evfd, &mut buf).ok();
                 // info!("got wakeup event in select, id={}", id);
                 continue;
             }

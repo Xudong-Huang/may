@@ -1,5 +1,5 @@
 use std::io;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
@@ -31,49 +31,6 @@ type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
 
 static mut SCHED: *const Scheduler = std::ptr::null();
-
-pub struct ParkStatus {
-    pub parked: AtomicU64,
-    workers: usize,
-}
-
-impl ParkStatus {
-    fn new(workers: usize) -> Self {
-        assert!(workers <= 64);
-        let parked = AtomicU64::new(((1u128 << workers) - 1) as u64);
-        ParkStatus { parked, workers }
-    }
-
-    // #[inline]
-    // fn get_idle_thread(&self) -> usize {
-    //     // when the worker thread is idle, the corresponding bit would set to 1
-    //     let parked = self.parked.load(Ordering::Relaxed);
-    //     // find the right most set bit
-    //     let rms = parked & !parked.wrapping_sub(1);
-    //     let first_thread = rms.trailing_zeros() as usize;
-    //     // if all threads are busy, we would not send any signal to wake up
-    //     // any worker thread. In case worker thread missing the signal it will
-    //     // wake up itself every 1 second, this is a rarely case
-    //     if first_thread < self.workers {
-    //         first_thread
-    //     } else {
-    //         0
-    //     }
-    // }
-
-    #[inline]
-    fn next_busy_thread(&self, id: usize) -> usize {
-        let parked_threads = self.parked.load(Ordering::Relaxed);
-        let mut next_steal_id = 1;
-        loop {
-            let next_id = (id + next_steal_id) % self.workers;
-            if parked_threads & (1 << next_id) == 0 {
-                return next_id; // at least we could stop by self bit
-            }
-            next_steal_id += 1;
-        }
-    }
-}
 
 #[inline(never)]
 fn init_scheduler() {
@@ -145,7 +102,6 @@ fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Opti
 
 #[repr(align(128))]
 pub struct Scheduler {
-    pub(crate) workers: ParkStatus,
     local_queues: Vec<deque::Worker<CoroutineImpl>>,
     global_queues: Vec<deque::Injector<CoroutineImpl>>,
     stealers: Vec<deque::Stealer<CoroutineImpl>>,
@@ -168,7 +124,6 @@ impl Scheduler {
             global_queues,
             stealers,
             timer_thread: TimerThread::new(),
-            workers: ParkStatus::new(workers),
         })
     }
 
@@ -176,24 +131,20 @@ impl Scheduler {
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { self.local_queues.get_unchecked(id) };
         let global = unsafe { self.global_queues.get_unchecked(id) };
-        let mut steal_local_flag = false;
+
+        let mut next_id = id;
 
         let mut get_co = || {
-            // Try get a task from the local queue.
             local
+                // Try get a task from the local queue.
                 .pop()
                 // Try get a task from the global queue.
                 .or_else(|| steal_global(global, local))
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
-                    if !steal_local_flag {
-                        steal_local_flag = true;
-                        let next_id = self.workers.next_busy_thread(id);
-                        let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                        steal_local(stealer, local)
-                    } else {
-                        None
-                    }
+                    next_id = (next_id + 1) % self.local_queues.len();
+                    let stealer = unsafe { self.stealers.get_unchecked(next_id) };
+                    steal_local(stealer, local)
                 })
         };
 
@@ -203,7 +154,15 @@ impl Scheduler {
         if let Some(co) = &cur_co {
             co.prefetch();
         } else {
-            return;
+            let steal_id = (id + 4) % self.local_queues.len();
+            let stealer = unsafe { self.stealers.get_unchecked(steal_id) };
+            cur_co = match steal_local(stealer, local) {
+                Some(co) => {
+                    co.prefetch();
+                    Some(co)
+                }
+                None => return,
+            };
         }
 
         loop {
