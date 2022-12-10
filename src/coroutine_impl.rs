@@ -257,13 +257,6 @@ impl Builder {
         let sched = get_scheduler();
         let Builder { name, stack_size } = self;
         let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
-        let _co = if stack_size == config().get_stack_size() {
-            let co = sched.pool.get();
-            co.prefetch();
-            Some(co)
-        } else {
-            None
-        };
 
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(AtomicCell::new(None));
@@ -289,10 +282,10 @@ impl Builder {
             subscriber
         };
 
-        let mut co = if let Some(mut c) = _co {
-            // re-init the closure
-            c.init_code(closure);
-            c
+        let mut co = if stack_size == config().get_stack_size() {
+            let mut co = sched.pool.get();
+            co.init_code(closure);
+            co
         } else {
             Gn::new_opt(stack_size, closure)
         };
