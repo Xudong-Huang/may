@@ -1,6 +1,6 @@
 [package]
 name = "may"
-version = "0.3.25"
+version = "0.3.26"
 edition = "2021"
 authors = ["Xudong Huang <huangxu008@hotmail.com>"]
 license = "MIT/Apache-2.0"
