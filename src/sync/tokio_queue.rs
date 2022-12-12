@@ -372,7 +372,7 @@ fn pack(steal: u16, real: u16) -> u32 {
 
 #[test]
 fn test_local_queue_capacity() {
-    assert!(LOCAL_QUEUE_CAPACITY - 1 <= u8::MAX as usize);
+    assert!(LOCAL_QUEUE_CAPACITY - 1 <= u16::MAX as usize);
 }
 
 /// `AtomicU16` providing an additional `load_unsync` function.
