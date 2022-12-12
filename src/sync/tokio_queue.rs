@@ -84,7 +84,7 @@ impl<T> Drop for Inner<T> {
     }
 }
 
-const LOCAL_QUEUE_CAPACITY: usize = 256;
+const LOCAL_QUEUE_CAPACITY: usize = 1024;
 const MASK: usize = LOCAL_QUEUE_CAPACITY - 1;
 
 /// Limit the number of tasks to be stolen in order to match the behavior of
