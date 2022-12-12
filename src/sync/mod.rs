@@ -12,6 +12,7 @@ pub(crate) mod atomic_dur;
 pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;
+pub(crate) mod tokio_queue;
 pub use self::atomic_option::{AtomicOption, PointerType};
 pub use self::blocking::{Blocker, FastBlocker};
 pub use self::condvar::{Condvar, WaitTimeoutResult};

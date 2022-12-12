@@ -13,6 +13,7 @@ use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
+use crate::sync::tokio_queue::{Local, Steal};
 use crossbeam::deque;
 use crossbeam::utils::Backoff;
 
@@ -81,10 +82,10 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 #[inline]
-fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
+fn steal_global<T>(global: &deque::Injector<T>) -> Option<T> {
     let backoff = Backoff::new();
     loop {
-        match global.steal_batch_and_pop(local) {
+        match global.steal() {
             deque::Steal::Success(t) => return Some(t),
             deque::Steal::Empty => return None,
             deque::Steal::Retry => backoff.snooze(),
@@ -93,18 +94,18 @@ fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Opt
 }
 
 #[inline]
-fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
-    match stealer.steal_batch_and_pop(local) {
-        deque::Steal::Success(t) => Some(t),
+fn steal_local<T>(stealer: &Steal<T>, local: &Local<T>) -> Option<T> {
+    match stealer.steal_into(local) {
+        Ok(t) => Some(t),
         _ => None,
     }
 }
 
 #[repr(align(128))]
 pub struct Scheduler {
-    local_queues: Vec<deque::Worker<CoroutineImpl>>,
+    local_queues: Vec<Local<CoroutineImpl>>,
     global_queues: Vec<deque::Injector<CoroutineImpl>>,
-    stealers: Vec<deque::Stealer<CoroutineImpl>>,
+    stealers: Vec<Steal<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
@@ -113,7 +114,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         let mut local_queues = Vec::with_capacity(workers);
-        (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
+        (0..workers).for_each(|_| local_queues.push(Local::new()));
         let stealers = local_queues.iter().map(|l| l.stealer()).collect();
         let global_queues = (0..workers).map(|_| deque::Injector::new()).collect();
 
@@ -139,7 +140,7 @@ impl Scheduler {
                 // Try get a task from the local queue.
                 .pop()
                 // Try get a task from the global queue.
-                .or_else(|| steal_global(global, local))
+                .or_else(|| steal_global(global))
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1) % self.local_queues.len();
@@ -193,7 +194,9 @@ impl Scheduler {
         let id = WORKER_ID.with(|id| id.load(Ordering::Relaxed));
 
         if id != !1 {
-            unsafe { self.local_queues.get_unchecked(id) }.push(co);
+            if let Err(co) = unsafe { self.local_queues.get_unchecked(id) }.push_back(co) {
+                self.schedule_global(co);
+            }
         } else {
             self.schedule_global(co);
         }
