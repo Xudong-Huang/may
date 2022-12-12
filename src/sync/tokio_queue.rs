@@ -92,7 +92,7 @@ const MASK: usize = LOCAL_QUEUE_CAPACITY - 1;
 const MAX_BATCH_SIZE: u16 = 32;
 
 /// Error returned when stealing is unsuccessful.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum StealError {
     /// The source queue is empty.
     Empty,
