@@ -478,7 +478,7 @@ pub(crate) fn co_get_handle(co: &CoroutineImpl) -> Coroutine {
 /// timeout block the current coroutine until it's get unparked
 #[inline]
 fn park_timeout_impl(dur: Option<Duration>) {
-    if !is_coroutine() {
+    if crate::likely::unlikely(!is_coroutine()) {
         // in thread context we do nothing
         return;
     }
@@ -488,11 +488,13 @@ fn park_timeout_impl(dur: Option<Duration>) {
 }
 
 /// block the current coroutine until it's get unparked
+#[inline]
 pub fn park() {
     park_timeout_impl(None);
 }
 
 /// timeout block the current coroutine until it's get unparked
+#[inline]
 pub fn park_timeout(dur: Duration) {
     park_timeout_impl(Some(dur));
 }

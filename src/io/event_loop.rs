@@ -2,12 +2,10 @@ use std::io;
 use std::sync::atomic::Ordering;
 
 use super::sys::{Selector, SysEvent};
-use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::{get_scheduler, WORKER_ID};
 
-use smallvec::SmallVec;
+const IO_POLLS_MAX: usize = 128;
 
-pub(crate) const IO_POLLS_MAX: usize = 128;
 /// Single threaded IO event loop.
 pub struct EventLoop {
     selector: Selector,
@@ -27,23 +25,21 @@ impl EventLoop {
         WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
 
         let mut events_buf: [SysEvent; IO_POLLS_MAX] = unsafe { std::mem::zeroed() };
-        let mut co_vec: SmallVec<[CoroutineImpl; IO_POLLS_MAX]> = SmallVec::new();
         // wake up every 1 second
         let mut next_expire = Some(1_000_000_000);
 
         let scheduler = get_scheduler();
         loop {
-            next_expire =
-                match self
-                    .selector
-                    .select(scheduler, id, &mut events_buf, &mut co_vec, next_expire)
-                {
-                    Ok(v) => v.or(Some(1_000_000_000)),
-                    Err(e) => {
-                        error!("selector error={:?}", e);
-                        continue;
-                    }
+            next_expire = match self
+                .selector
+                .select(scheduler, id, &mut events_buf, next_expire)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("selector error={:?}", e);
+                    continue;
                 }
+            }
         }
     }
 

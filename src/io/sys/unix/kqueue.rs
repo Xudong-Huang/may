@@ -6,7 +6,6 @@ use std::{io, ptr};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
-use crate::io::event_loop::IO_POLLS_MAX;
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
@@ -92,12 +91,12 @@ impl Selector {
         Ok(s)
     }
 
+    #[inline]
     pub fn select(
         &self,
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        co_vec: &mut SmallVec<[CoroutineImpl; IO_POLLS_MAX]>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         let timeout = timeout.map(|to| {
@@ -116,7 +115,9 @@ impl Selector {
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
 
-        // Wait for epoll events for at most timeout_ms milliseconds
+        let mut co_vec: SmallVec<[CoroutineImpl; 4]> = SmallVec::new();
+
+        // Wait for kqueue events for at most timeout_ms milliseconds
         let kqfd = single_selector.kqfd;
         let n = unsafe {
             libc::kevent(
@@ -164,7 +165,11 @@ impl Selector {
                 h.remove()
             });
 
-            co_vec.push(co);
+            if co_vec.len() < co_vec.capacity() {
+                co_vec.push(co);
+            } else {
+                scheduler.schedule_with_id(co, id);
+            }
         }
 
         // schedule the coroutine

@@ -345,7 +345,7 @@ impl TcpListener {
         for addr in addrs {
             listener.bind(&addr.into())?;
         }
-        listener.listen(256)?;
+        listener.listen(1024)?;
 
         let s = listener.into();
         TcpListener::new(s)

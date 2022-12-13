@@ -202,6 +202,16 @@ impl Scheduler {
         }
     }
 
+    /// called by selector with known id
+    #[inline]
+    pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
+        if let Err(co) = unsafe { self.local_queues.get_unchecked(id) }.push_back(co) {
+            // no need to wake up, already alive
+            let global_queue = unsafe { self.global_queues.get_unchecked(id) };
+            global_queue.push(co);
+        }
+    }
+
     /// put the coroutine to global queue so that next time it can be scheduled
     #[inline]
     pub fn schedule_global(&self, co: CoroutineImpl) {

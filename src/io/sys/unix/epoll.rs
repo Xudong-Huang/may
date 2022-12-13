@@ -9,7 +9,6 @@ use super::{from_nix_error, EventData, IoData};
 #[cfg(feature = "io_timeout")]
 use super::{timeout_handler, TimerList};
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
-use crate::io::event_loop::IO_POLLS_MAX;
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::now;
@@ -44,7 +43,7 @@ impl SingleSelector {
         // wakeup data is 0
         let mut info = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, 0);
 
-        let epfd = epoll_create().map_err(from_nix_error)?;
+        let epfd = epoll_create1(EpollCreateFlags::EPOLL_CLOEXEC).map_err(from_nix_error)?;
         let evfd = match create_eventfd() {
             Ok(fd) => fd,
             Err(err) => {
@@ -96,15 +95,14 @@ impl Selector {
         Ok(s)
     }
 
+    #[inline]
     pub fn select(
         &self,
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        co_vec: &mut SmallVec<[CoroutineImpl; IO_POLLS_MAX]>,
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        // let mut ev = EpollEvent::new(EpollFlags::EPOLLIN, 0);
         let timeout_ms = timeout
             .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
@@ -112,6 +110,8 @@ impl Selector {
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
+
+        let mut co_vec: SmallVec<[CoroutineImpl; 2]> = SmallVec::new();
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
@@ -122,7 +122,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                read(single_selector.evfd, &mut buf).ok();
+                while read(single_selector.evfd, &mut buf).is_ok() {}
                 // info!("got wakeup event in select, id={}", id);
                 continue;
             }
@@ -147,10 +147,14 @@ impl Selector {
                 h.remove()
             });
 
-            co_vec.push(co);
+            if co_vec.len() < co_vec.capacity() {
+                co_vec.push(co);
+            } else {
+                scheduler.schedule_with_id(co, id);
+            }
         }
 
-        // schedule the coroutine
+        // schedule the io coroutine
         while let Some(co) = co_vec.pop() {
             if let Some(next) = co_vec.last() {
                 next.prefetch();
@@ -170,7 +174,7 @@ impl Selector {
             .timer_list
             .schedule_timer(now(), &timeout_handler);
         #[cfg(not(feature = "io_timeout"))]
-        let next_expire = Some(1_000_000_000);
+        let next_expire = None;
         Ok(next_expire)
     }
 
