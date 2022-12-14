@@ -65,16 +65,19 @@ impl<T: AsRawHandle> CoIo<T> {
     }
 
     /// get inner ref
+    #[inline]
     pub fn inner(&self) -> &T {
         &self.inner
     }
 
     /// get inner mut ref
+    #[inline]
     pub fn inner_mut(&mut self) -> &T {
         &mut self.inner
     }
 
     /// convert back to original type
+    #[inline]
     pub fn into_inner(self) -> T {
         self.inner
     }

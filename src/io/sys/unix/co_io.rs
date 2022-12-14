@@ -107,11 +107,13 @@ impl<T: AsRawFd> CoIo<T> {
     }
 
     /// get inner ref
+    #[inline]
     pub fn inner(&self) -> &T {
         &self.inner
     }
 
     /// get inner mut ref
+    #[inline]
     pub fn inner_mut(&mut self) -> &mut T {
         &mut self.inner
     }

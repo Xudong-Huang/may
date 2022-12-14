@@ -45,10 +45,12 @@ impl TcpStream {
         })
     }
 
+    #[inline]
     pub fn inner(&self) -> &net::TcpStream {
         &self.sys
     }
 
+    #[inline]
     pub fn inner_mut(&mut self) -> &mut net::TcpStream {
         &mut self.sys
     }
@@ -322,6 +324,7 @@ impl TcpListener {
         io_impl::add_socket(&s).map(|io| TcpListener { _io: io, sys: s })
     }
 
+    #[inline]
     pub fn inner(&self) -> &net::TcpListener {
         &self.sys
     }

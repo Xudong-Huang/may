@@ -267,10 +267,12 @@ impl UnixStream {
         self.0.inner().shutdown(how)
     }
 
+    #[inline]
     pub fn inner(&self) -> &net::UnixStream {
         self.0.inner()
     }
 
+    #[inline]
     pub fn inner_mut(&mut self) -> &mut net::UnixStream {
         self.0.inner_mut()
     }
