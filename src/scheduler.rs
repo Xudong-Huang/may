@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
@@ -21,10 +22,10 @@ use crossbeam::utils::Backoff;
 #[cfg(nightly)]
 #[thread_local]
 #[no_mangle]
-pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1);
+pub static WORKER_ID: Cell<usize> = Cell::new(!1);
 
 #[cfg(not(nightly))]
-thread_local! { pub static WORKER_ID: AtomicUsize = AtomicUsize::new(!1); }
+thread_local! { pub static WORKER_ID: Cell<usize> = Cell::new(!1); }
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
@@ -37,9 +38,7 @@ static mut SCHED: *const Scheduler = std::ptr::null();
 fn init_scheduler() {
     let workers = config().get_workers();
     let b: Box<Scheduler> = Scheduler::new(workers);
-    unsafe {
-        SCHED = Box::into_raw(b);
-    }
+    unsafe { SCHED = Box::into_raw(b) };
 
     // timer thread
     thread::spawn(move || {
@@ -189,9 +188,9 @@ impl Scheduler {
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
         #[cfg(nightly)]
-        let id = WORKER_ID.load(Ordering::Relaxed);
+        let id = WORKER_ID.get();
         #[cfg(not(nightly))]
-        let id = WORKER_ID.with(|id| id.load(Ordering::Relaxed));
+        let id = WORKER_ID.with(|id| id.get());
 
         if id != !1 {
             if let Err(co) = unsafe { self.local_queues.get_unchecked(id) }.push_back(co) {

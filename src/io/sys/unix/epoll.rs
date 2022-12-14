@@ -1,9 +1,9 @@
+use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
-use std::{cmp, io, isize};
 
 use super::{from_nix_error, EventData, IoData};
 #[cfg(feature = "io_timeout")]
@@ -11,8 +11,7 @@ use super::{timeout_handler, TimerList};
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
-use crate::timeout_list::now;
-use crate::timeout_list::ns_to_ms;
+use crate::timeout_list::{now, ns_to_ms};
 
 use crossbeam::queue::SegQueue;
 use libc::{eventfd, EFD_NONBLOCK};
@@ -101,20 +100,24 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        timeout: Option<u64>,
+        _timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let timeout_ms = timeout
-            .map(|to| cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
+        #[cfg(feature = "io_timeout")]
+        let timeout_ms = _timeout
+            .map(|to| std::cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
             .unwrap_or(-1);
+        #[cfg(not(feature = "io_timeout"))]
+        let timeout_ms = -1;
         // info!("select; timeout={:?}", timeout_ms);
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
 
-        let mut co_vec: SmallVec<[CoroutineImpl; 2]> = SmallVec::new();
+        let mut co_vec: SmallVec<[CoroutineImpl; 4]> = SmallVec::new();
 
         // Wait for epoll events for at most timeout_ms milliseconds
         let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
+        // println!("epoll_wait = {}", n);
 
         // collect coroutines
         for event in events[..n].iter() {

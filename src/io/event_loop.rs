@@ -1,5 +1,4 @@
 use std::io;
-use std::sync::atomic::Ordering;
 
 use super::sys::{Selector, SysEvent};
 use crate::scheduler::{get_scheduler, WORKER_ID};
@@ -20,26 +19,17 @@ impl EventLoop {
     /// any of the registered handles are ready.
     pub fn run(&self, id: usize) -> io::Result<()> {
         #[cfg(nightly)]
-        WORKER_ID.store(id, Ordering::Relaxed);
+        WORKER_ID.set(id);
         #[cfg(not(nightly))]
-        WORKER_ID.with(|worker_id| worker_id.store(id, Ordering::Relaxed));
+        WORKER_ID.with(|worker_id| worker_id.set(id, Ordering::Relaxed));
 
         let mut events_buf: [SysEvent; IO_POLLS_MAX] = unsafe { std::mem::zeroed() };
-        // wake up every 1 second
-        let mut next_expire = Some(1_000_000_000);
-
+        let mut next_expire = None;
+        let selector = &self.selector;
         let scheduler = get_scheduler();
+
         loop {
-            next_expire = match self
-                .selector
-                .select(scheduler, id, &mut events_buf, next_expire)
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("selector error={:?}", e);
-                    continue;
-                }
-            }
+            next_expire = selector.select(scheduler, id, &mut events_buf, next_expire)?;
         }
     }
 

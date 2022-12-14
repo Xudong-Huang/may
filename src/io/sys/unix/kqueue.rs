@@ -59,7 +59,7 @@ impl SingleSelector {
         }
 
         Ok(SingleSelector {
-            kqfd: kqfd,
+            kqfd,
             free_ev: SegQueue::new(),
             timer_list: TimerList::new(),
         })
