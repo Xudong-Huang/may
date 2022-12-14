@@ -21,7 +21,7 @@ impl EventLoop {
         #[cfg(nightly)]
         WORKER_ID.set(id);
         #[cfg(not(nightly))]
-        WORKER_ID.with(|worker_id| worker_id.set(id, Ordering::Relaxed));
+        WORKER_ID.with(|worker_id| worker_id.set(id));
 
         let mut events_buf: [SysEvent; IO_POLLS_MAX] = unsafe { std::mem::zeroed() };
         let mut next_expire = None;
