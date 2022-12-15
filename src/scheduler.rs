@@ -60,9 +60,7 @@ fn init_scheduler() {
     for id in 0..workers {
         thread::spawn(move || {
             let s = unsafe { &*SCHED };
-            s.event_loop.run(id).unwrap_or_else(|e| {
-                panic!("event_loop failed running, err={}", e);
-            });
+            s.event_loop.run(id);
         });
     }
 }

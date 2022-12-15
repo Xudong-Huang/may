@@ -17,7 +17,7 @@ impl EventLoop {
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
     /// any of the registered handles are ready.
-    pub fn run(&self, id: usize) -> io::Result<()> {
+    pub fn run(&self, id: usize) {
         #[cfg(nightly)]
         WORKER_ID.set(id);
         #[cfg(not(nightly))]
@@ -29,7 +29,13 @@ impl EventLoop {
         let scheduler = get_scheduler();
 
         loop {
-            next_expire = selector.select(scheduler, id, &mut events_buf, next_expire)?;
+            next_expire = match selector.select(scheduler, id, &mut events_buf, next_expire) {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("select error = {:?}", e);
+                    continue;
+                }
+            }
         }
     }
 
