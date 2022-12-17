@@ -109,10 +109,9 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
-        let mut local_queues = Vec::with_capacity(workers);
-        (0..workers).for_each(|_| local_queues.push(deque::Worker::new_fifo()));
-        let stealers = local_queues.iter().map(|l| l.stealer()).collect();
-        let global_queues = (0..workers).map(|_| deque::Injector::new()).collect();
+        let local_queues = Vec::from_iter((0..workers).map(|_| deque::Worker::new_fifo()));
+        let stealers = Vec::from_iter(local_queues.iter().map(|l| l.stealer()));
+        let global_queues = Vec::from_iter((0..workers).map(|_| deque::Injector::new()));
 
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
@@ -139,7 +138,7 @@ impl Scheduler {
                 .or_else(|| steal_global(global, local))
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
-                    next_id = (next_id + 1) % self.local_queues.len();
+                    next_id = (next_id + 1).rem_euclid(self.local_queues.len());
                     let stealer = unsafe { self.stealers.get_unchecked(next_id) };
                     steal_local(stealer, local)
                 })
@@ -151,7 +150,7 @@ impl Scheduler {
         if let Some(co) = &cur_co {
             co.prefetch();
         } else {
-            let steal_id = (id + 4) % self.local_queues.len();
+            let steal_id = (id + 4).rem_euclid(self.local_queues.len());
             let stealer = unsafe { self.stealers.get_unchecked(steal_id) };
             cur_co = match steal_local(stealer, local) {
                 Some(co) => {
@@ -190,7 +189,7 @@ impl Scheduler {
         let id = WORKER_ID.with(|id| id.get());
 
         if id != !1 {
-            unsafe { self.local_queues.get_unchecked(id) }.push(co);
+            self.schedule_with_id(co, id);
         } else {
             self.schedule_global(co);
         }
@@ -207,9 +206,10 @@ impl Scheduler {
     pub fn schedule_global(&self, co: CoroutineImpl) {
         // let thread_id = self.workers.get_idle_thread();
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
-        let thread_id = NEXT_THREAD_ID.fetch_add(1, Ordering::Relaxed) % self.global_queues.len();
-        let global_queue = unsafe { self.global_queues.get_unchecked(thread_id) };
-        global_queue.push(co);
+        let thread_id = NEXT_THREAD_ID
+            .fetch_add(1, Ordering::Relaxed)
+            .rem_euclid(self.global_queues.len());
+        self.schedule_with_id(co, thread_id);
         // signal one waiting thread if any
         self.get_selector().wakeup(thread_id);
     }
