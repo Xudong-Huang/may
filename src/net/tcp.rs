@@ -341,13 +341,13 @@ impl TcpListener {
         // windows not have reuse port but reuse address is not safe
         listener.set_reuse_address(true)?;
 
-        #[cfg(unix)]
-        listener.set_reuse_port(true)?;
+        // #[cfg(unix)]
+        // listener.set_reuse_port(true)?;
 
         listener.bind(&addr.into())?;
-        for addr in addrs {
-            listener.bind(&addr.into())?;
-        }
+        // for addr in addrs {
+        //     listener.bind(&addr.into())?;
+        // }
         listener.listen(1024)?;
 
         let s = listener.into();
