@@ -14,8 +14,8 @@ use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
-use crossbeam::deque;
-use crossbeam::utils::Backoff;
+use crate::sync::tokio_queue::{Local, Steal};
+use crossbeam::queue::SegQueue;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -78,30 +78,23 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 #[inline]
-fn steal_global<T>(global: &deque::Injector<T>, local: &deque::Worker<T>) -> Option<T> {
-    let backoff = Backoff::new();
-    loop {
-        match global.steal_batch_and_pop(local) {
-            deque::Steal::Success(t) => return Some(t),
-            deque::Steal::Empty => return None,
-            deque::Steal::Retry => backoff.snooze(),
-        }
-    }
+fn steal_global<T>(global: &SegQueue<T>) -> Option<T> {
+    global.pop()
 }
 
 #[inline]
-fn steal_local<T>(stealer: &deque::Stealer<T>, local: &deque::Worker<T>) -> Option<T> {
-    match stealer.steal_batch_and_pop(local) {
-        deque::Steal::Success(t) => Some(t),
+fn steal_local<T>(stealer: &Steal<T>, local: &Local<T>) -> Option<T> {
+    match stealer.steal_into(local) {
+        Ok(t) => Some(t),
         _ => None,
     }
 }
 
 #[repr(align(128))]
 pub struct Scheduler {
-    local_queues: Vec<deque::Worker<CoroutineImpl>>,
-    global_queues: Vec<deque::Injector<CoroutineImpl>>,
-    stealers: Vec<deque::Stealer<CoroutineImpl>>,
+    local_queues: Vec<Local<CoroutineImpl>>,
+    stealers: Vec<Steal<CoroutineImpl>>,
+    global_queues: Vec<SegQueue<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
@@ -109,16 +102,16 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
-        let local_queues = Vec::from_iter((0..workers).map(|_| deque::Worker::new_fifo()));
+        let local_queues = Vec::from_iter((0..workers).map(|_| Local::new()));
         let stealers = Vec::from_iter(local_queues.iter().map(|l| l.stealer()));
-        let global_queues = Vec::from_iter((0..workers).map(|_| deque::Injector::new()));
+        let global_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
 
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(workers).expect("can't create event_loop"),
             local_queues,
-            global_queues,
             stealers,
+            global_queues,
             timer_thread: TimerThread::new(),
         })
     }
@@ -135,7 +128,7 @@ impl Scheduler {
                 // Try get a task from the local queue.
                 .pop()
                 // Try get a task from the global queue.
-                .or_else(|| steal_global(global, local))
+                .or_else(|| steal_global(global))
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(self.local_queues.len());
@@ -198,7 +191,11 @@ impl Scheduler {
     /// called by selector with known id
     #[inline]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
-        unsafe { self.local_queues.get_unchecked(id) }.push(co);
+        let queue = unsafe { self.local_queues.get_unchecked(id) };
+        match queue.push_back(co) {
+            Ok(()) => {}
+            Err(co) => self.schedule_global(co),
+        }
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -209,7 +206,8 @@ impl Scheduler {
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::Relaxed)
             .rem_euclid(self.global_queues.len());
-        self.schedule_with_id(co, thread_id);
+        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
+        global.push(co);
         // signal one waiting thread if any
         self.get_selector().wakeup(thread_id);
     }
