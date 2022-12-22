@@ -42,7 +42,7 @@ impl SingleSelector {
         // wakeup data is 0
         let mut info = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, 0);
 
-        let epfd = epoll_create1(EpollCreateFlags::EPOLL_CLOEXEC).map_err(from_nix_error)?;
+        let epfd = epoll_create().map_err(from_nix_error)?;
         let evfd = match create_eventfd() {
             Ok(fd) => fd,
             Err(err) => {
