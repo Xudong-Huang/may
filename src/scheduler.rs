@@ -78,11 +78,6 @@ pub fn get_scheduler() -> &'static Scheduler {
 }
 
 #[inline]
-fn steal_global<T>(global: &SegQueue<T>) -> Option<T> {
-    global.pop()
-}
-
-#[inline]
 fn steal_local<T>(stealer: &Steal<T>, local: &Local<T>) -> Option<T> {
     match stealer.steal_into(local) {
         Ok(t) => Some(t),
@@ -119,7 +114,6 @@ impl Scheduler {
     #[inline]
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { self.local_queues.get_unchecked(id) };
-        let global = unsafe { self.global_queues.get_unchecked(id) };
 
         let mut next_id = id;
 
@@ -127,8 +121,6 @@ impl Scheduler {
             local
                 // Try get a task from the local queue.
                 .pop()
-                // Try get a task from the global queue.
-                .or_else(|| steal_global(global))
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(self.local_queues.len());
@@ -204,12 +196,30 @@ impl Scheduler {
         // let thread_id = self.workers.get_idle_thread();
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
         let thread_id = NEXT_THREAD_ID
-            .fetch_add(1, Ordering::Relaxed)
+            .fetch_add(1, Ordering::AcqRel)
             .rem_euclid(self.global_queues.len());
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
         // signal one waiting thread if any
         self.get_selector().wakeup(thread_id);
+    }
+
+    #[inline]
+    pub fn collect_global(&self, id: usize) {
+        let local = unsafe { self.local_queues.get_unchecked(id) };
+        let global = unsafe { self.global_queues.get_unchecked(id) };
+        while let Some(co) = global.pop() {
+            match local.push_back(co) {
+                Ok(()) => {}
+                Err(co) => {
+                    run_coroutine(co);
+                    // self.schedule_global(co);
+                    // wake up self again in future
+                    self.get_selector().wakeup(id);
+                    break;
+                }
+            }
+        }
     }
 
     #[inline]

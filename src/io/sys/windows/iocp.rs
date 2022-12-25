@@ -116,11 +116,12 @@ impl Selector {
             Err(e) => return Err(e),
         };
 
-        for status in events[..n].iter() {
+        for status in unsafe { events.get_unchecked(..n) } {
             // need to check the status for each io
             let overlapped = status.overlapped();
             if overlapped.is_null() {
                 // this is just a wakeup event, ignore it
+                scheduler.collect_global(id);
                 continue;
             }
 

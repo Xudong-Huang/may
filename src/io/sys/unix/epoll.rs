@@ -40,7 +40,7 @@ struct SingleSelector {
 impl SingleSelector {
     pub fn new() -> io::Result<Self> {
         // wakeup data is 0
-        let mut info = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, 0);
+        let mut info = EpollEvent::new(EpollFlags::EPOLLIN, 0);
 
         let epfd = epoll_create().map_err(from_nix_error)?;
         let evfd = match create_eventfd() {
@@ -120,13 +120,14 @@ impl Selector {
         // println!("epoll_wait = {}", n);
 
         // collect coroutines
-        for event in events[..n].iter() {
+        for event in unsafe { events.get_unchecked(..n) } {
             if event.data() == 0 {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
                 while read(single_selector.evfd, &mut buf).is_ok() {}
                 // info!("got wakeup event in select, id={}", id);
+                scheduler.collect_global(id);
                 continue;
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
@@ -219,7 +220,7 @@ impl Selector {
             )
         } else {
             EpollEvent::new(
-                EpollFlags::EPOLLOUT | EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLET,
+                EpollFlags::EPOLLOUT | EpollFlags::EPOLLHUP | EpollFlags::EPOLLET,
                 io_data.as_ref() as *const _ as _,
             )
         };

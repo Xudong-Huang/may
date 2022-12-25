@@ -136,13 +136,14 @@ impl Selector {
 
         let n = n as usize;
 
-        for event in events[..n].iter() {
+        for event in unsafe { events.get_unchecked(..n) } {
             if event.udata.is_null() {
                 // this is just a wakeup event, ignore it
                 // let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
                 // read(self.vec[id].evfd, &mut buf).ok();
                 info!("got wakeup event in select, id={}", id);
+                scheduler.collect_global(id);
                 continue;
             }
             let data = unsafe { &mut *(event.udata as *mut EventData) };
