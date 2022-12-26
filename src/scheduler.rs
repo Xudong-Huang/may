@@ -56,9 +56,11 @@ fn init_scheduler() {
         s.timer_thread.run(&timer_event_handler);
     });
 
+    let core_ids = core_affinity::get_core_ids().unwrap();
     // io event loop thread
-    for id in 0..workers {
+    for (id, core) in (0..workers).zip(core_ids.into_iter().cycle()) {
         thread::spawn(move || {
+            core_affinity::set_for_current(core);
             let s = unsafe { &*SCHED };
             s.event_loop.run(id);
         });
