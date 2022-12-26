@@ -10,7 +10,7 @@ use crate::cancel::Cancel;
 use crate::coroutine_impl::co_get_handle;
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io as io_impl;
-use crate::yield_now::yield_with;
+use crate::yield_now::yield_with_io;
 
 pub struct RawIoBlock<'a> {
     io_data: &'a io_impl::IoData,
@@ -89,7 +89,7 @@ impl<T: io_impl::AsIoData> WaitIo for T {
             return;
         }
         let blocker = RawIoBlock::new(self.as_io_data());
-        yield_with(&blocker);
+        yield_with_io(&blocker, true);
     }
 
     fn waker(&self) -> WaitIoWaker {
