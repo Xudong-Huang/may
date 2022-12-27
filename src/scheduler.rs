@@ -14,8 +14,7 @@ use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
-use crate::sync::tokio_queue::{Local, Steal};
-use crossbeam::queue::SegQueue;
+use crate::sync::seg_queue::SegQueue;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -79,19 +78,9 @@ pub fn get_scheduler() -> &'static Scheduler {
     unsafe { &*SCHED }
 }
 
-#[inline]
-fn steal_local<T>(stealer: &Steal<T>, local: &Local<T>) -> Option<T> {
-    match stealer.steal_into(local) {
-        Ok(t) => Some(t),
-        _ => None,
-    }
-}
-
 #[repr(align(128))]
 pub struct Scheduler {
-    local_queues: Vec<Local<CoroutineImpl>>,
-    stealers: Vec<Steal<CoroutineImpl>>,
-    global_queues: Vec<SegQueue<CoroutineImpl>>,
+    local_queues: Vec<SegQueue<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
@@ -99,16 +88,12 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
-        let local_queues = Vec::from_iter((0..workers).map(|_| Local::new()));
-        let stealers = Vec::from_iter(local_queues.iter().map(|l| l.stealer()));
-        let global_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
+        let local_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
 
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(workers).expect("can't create event_loop"),
             local_queues,
-            stealers,
-            global_queues,
             timer_thread: TimerThread::new(),
         })
     }
@@ -119,50 +104,35 @@ impl Scheduler {
 
         let mut next_id = id;
 
-        let mut get_co = || {
+        let mut get_group = || {
             local
                 // Try get a task from the local queue.
-                .pop()
+                .pop_bulk()
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(self.local_queues.len());
-                    let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                    steal_local(stealer, local)
+                    let stealer = unsafe { self.local_queues.get_unchecked(next_id) };
+                    stealer.pop_bulk()
                 })
         };
 
         // Pop a task from the local queue
-        let mut cur_co = get_co();
-
-        if let Some(co) = &cur_co {
-            co.prefetch();
-        } else {
-            let steal_id = (id + 4).rem_euclid(self.local_queues.len());
-            let stealer = unsafe { self.stealers.get_unchecked(steal_id) };
-            cur_co = match steal_local(stealer, local) {
-                Some(co) => {
-                    co.prefetch();
-                    Some(co)
-                }
-                None => return,
-            };
-        }
+        let mut cur_group = get_group();
 
         loop {
-            // Pop a task from the local queue
-            let next_co = get_co();
-
-            if let Some(co) = cur_co {
-                if let Some(next) = &next_co {
-                    next.prefetch();
+            if let Some(mut group) = cur_group {
+                while let Some(cur_co) = group.pop() {
+                    if let Some(next_c) = group.last() {
+                        next_c.prefetch();
+                    }
+                    run_coroutine(cur_co);
                 }
-                run_coroutine(co);
-                cur_co = next_co;
-            } else if let Some(next) = &next_co {
-                next.prefetch();
-                cur_co = next_co;
+                cur_group = get_group();
             } else {
-                break;
+                cur_group = get_group();
+                if cur_group.is_none() {
+                    break;
+                }
             }
         }
     }
@@ -186,10 +156,7 @@ impl Scheduler {
     #[inline]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
         let queue = unsafe { self.local_queues.get_unchecked(id) };
-        match queue.push_back(co) {
-            Ok(()) => {}
-            Err(co) => self.schedule_global(co),
-        }
+        queue.push(co);
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -199,30 +166,15 @@ impl Scheduler {
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::AcqRel)
-            .rem_euclid(self.global_queues.len());
-        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
+            .rem_euclid(self.local_queues.len());
+        let global = unsafe { self.local_queues.get_unchecked(thread_id) };
         global.push(co);
         // signal one waiting thread if any
         self.get_selector().wakeup(thread_id);
     }
 
     #[inline]
-    pub fn collect_global(&self, id: usize) {
-        let local = unsafe { self.local_queues.get_unchecked(id) };
-        let global = unsafe { self.global_queues.get_unchecked(id) };
-        while let Some(co) = global.pop() {
-            match local.push_back(co) {
-                Ok(()) => {}
-                Err(co) => {
-                    run_coroutine(co);
-                    // self.schedule_global(co);
-                    // wake up self again in future
-                    self.get_selector().wakeup(id);
-                    break;
-                }
-            }
-        }
-    }
+    pub fn collect_global(&self, _id: usize) {}
 
     #[inline]
     pub fn add_timer(
