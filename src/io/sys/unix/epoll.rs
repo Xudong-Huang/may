@@ -235,8 +235,6 @@ impl Selector {
 
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
-        let mut info = EpollEvent::empty();
-
         #[cfg(feature = "io_timeout")]
         if let Some(h) = io_data.timer.borrow_mut().take() {
             unsafe {
@@ -253,7 +251,7 @@ impl Selector {
         let single_selector = unsafe { self.vec.get_unchecked(id) };
         let epfd = single_selector.epfd;
         info!("del fd from epoll select, fd={:?}", fd);
-        epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, &mut info).ok();
+        epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, None).ok();
 
         // after EpollCtlDel push the unused event data
         single_selector.free_ev.push((*io_data).clone());
