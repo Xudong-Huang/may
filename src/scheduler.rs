@@ -104,35 +104,50 @@ impl Scheduler {
 
         let mut next_id = id;
 
-        let mut get_group = || {
+        let mut get_co = || {
             local
                 // Try get a task from the local queue.
-                .pop_bulk()
+                .pop()
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(self.local_queues.len());
                     let stealer = unsafe { self.local_queues.get_unchecked(next_id) };
-                    stealer.pop_bulk()
+                    stealer.pop()
                 })
         };
 
         // Pop a task from the local queue
-        let mut cur_group = get_group();
+        let mut cur_co = get_co();
+
+        if let Some(co) = &cur_co {
+            co.prefetch();
+        } else {
+            let steal_id = (id + 4).rem_euclid(self.local_queues.len());
+            let stealer = unsafe { self.local_queues.get_unchecked(steal_id) };
+            cur_co = match stealer.pop() {
+                Some(co) => {
+                    co.prefetch();
+                    Some(co)
+                }
+                None => return,
+            };
+        }
 
         loop {
-            if let Some(mut group) = cur_group {
-                while let Some(cur_co) = group.pop() {
-                    if let Some(next_c) = group.last() {
-                        next_c.prefetch();
-                    }
-                    run_coroutine(cur_co);
+            // Pop a task from the local queue
+            let next_co = get_co();
+
+            if let Some(co) = cur_co {
+                if let Some(next) = &next_co {
+                    next.prefetch();
                 }
-                cur_group = get_group();
+                run_coroutine(co);
+                cur_co = next_co;
+            } else if let Some(next) = &next_co {
+                next.prefetch();
+                cur_co = next_co;
             } else {
-                cur_group = get_group();
-                if cur_group.is_none() {
-                    break;
-                }
+                break;
             }
         }
     }
