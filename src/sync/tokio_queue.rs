@@ -278,7 +278,7 @@ impl<T> Steal<T> {
             let res = self
                 .0
                 .head
-                .compare_exchange(prev_packed, next_packed, Acquire, Acquire);
+                .compare_exchange(prev_packed, next_packed, AcqRel, Acquire);
 
             match res {
                 Ok(_) => break n,
