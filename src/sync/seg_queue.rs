@@ -97,7 +97,6 @@ impl<T> Block<T> {
             }
         }
 
-        println!("destroying block");
         // No thread is using the block, now it is safe to destroy it.
         drop(Box::from_raw(this));
     }
@@ -112,10 +111,11 @@ impl<T> Block<T> {
             slot.wait_write();
             let value = unsafe { slot.value.get().read().assume_init() };
             ret.push(value);
-            // slot.state.fetch_or(READ, Ordering::AcqRel);
+            if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
+                unsafe { Block::destroy(this, start + 1) };
+            }
             start += 1;
         }
-        println!("copy_to_bulk: {:?}", ret.len());
         ret
     }
 }
@@ -482,15 +482,6 @@ impl<T> SegQueue<T> {
                     // destroy but couldn't because we were busy reading from the slot.
                     if end == BLOCK_CAP {
                         Block::destroy(block, 0);
-                    } else {
-                        let mut start = offset;
-                        while start < end {
-                            let slot = (*block).slots.get_unchecked(start);
-                            if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-                                Block::destroy(block, offset + 1);
-                            }
-                            start += 1;
-                        }
                     }
 
                     return Some(value);
