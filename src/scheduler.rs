@@ -10,12 +10,11 @@ use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::io::{EventLoop, Selector};
 use crate::likely::likely;
 use crate::pool::CoroutinePool;
+use crate::sync::queue::mpsc_seg_queue::SegQueue;
 use crate::sync::queue::tokio_queue::{Local, Steal};
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
-
-use crossbeam::queue::SegQueue;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]

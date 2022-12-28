@@ -6,9 +6,9 @@ use std::{io, ptr};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
 use crate::scheduler::Scheduler;
+use crate::sync::queue::mpsc_seg_queue::SegQueue;
 use crate::timeout_list::{now, ns_to_dur};
 
-use crossbeam::queue::SegQueue;
 use smallvec::SmallVec;
 
 pub type SysEvent = libc::kevent;

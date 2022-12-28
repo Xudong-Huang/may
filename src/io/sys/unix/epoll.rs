@@ -9,10 +9,10 @@ use super::{from_nix_error, EventData, IoData};
 #[cfg(feature = "io_timeout")]
 use super::{timeout_handler, TimerList};
 use crate::scheduler::Scheduler;
+use crate::sync::queue::mpsc_seg_queue::SegQueue;
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::{now, ns_to_ms};
 
-use crossbeam::queue::SegQueue;
 use libc::{eventfd, EFD_NONBLOCK};
 use nix::sys::epoll::*;
 use nix::unistd::{close, read, write};
