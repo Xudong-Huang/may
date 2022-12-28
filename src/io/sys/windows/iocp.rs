@@ -3,6 +3,7 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 use std::{io, ptr};
 
+use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
