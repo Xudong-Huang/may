@@ -50,6 +50,7 @@ pub fn get_co_local_data() -> Option<NonNull<CoroutineLocal>> {
     NonNull::new(ptr as *mut CoroutineLocal)
 }
 
+#[inline]
 fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     match get_co_local_data() {
         Some(v) => f(&(unsafe { v.as_ref() }.local_data)),
@@ -124,6 +125,7 @@ impl<T: 'static> LocalKey<T> {
     ///
     /// * If the initialization expression is run and it panics
     /// * If the closure provided panics
+    #[inline]
     pub fn with<F, R>(&'static self, f: F) -> R
     where
         F: FnOnce(&T) -> R,

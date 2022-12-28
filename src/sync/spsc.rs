@@ -1,5 +1,4 @@
-//! compatible with std::sync::mpsc except for both thread and coroutine
-//! please ref the doc from std::sync::mpsc
+//! provide single consumer single producer channel
 use std::fmt;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -7,11 +6,10 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::queue::mpsc_seg_queue::SegQueue;
+use super::queue::spsc_seg_queue::SegQueue;
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
 
-// TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
 /// /////////////////////////////////////////////////////////////////////////////
@@ -324,19 +322,7 @@ mod tests {
     #[test]
     fn drop_full_shared() {
         let (tx, _rx) = channel::<Box<isize>>();
-        drop(tx.clone());
-        drop(tx.clone());
         tx.send(Box::new(1)).unwrap();
-    }
-
-    #[test]
-    fn smoke_shared() {
-        let (tx, rx) = channel::<i32>();
-        tx.send(1).unwrap();
-        assert_eq!(rx.recv().unwrap(), 1);
-        let tx = tx.clone();
-        tx.send(1).unwrap();
-        assert_eq!(rx.recv().unwrap(), 1);
     }
 
     #[test]
@@ -365,15 +351,6 @@ mod tests {
     }
 
     #[test]
-    fn smoke_shared_port_gone2() {
-        let (tx, rx) = channel::<i32>();
-        drop(rx);
-        let tx2 = tx.clone();
-        drop(tx);
-        assert!(tx2.send(1).is_err());
-    }
-
-    #[test]
     fn port_gone_concurrent() {
         let (tx, rx) = channel::<i32>();
         let _t = thread::spawn(move || {
@@ -392,28 +369,9 @@ mod tests {
     }
 
     #[test]
-    fn port_gone_concurrent_shared() {
-        let (tx, rx) = channel::<i32>();
-        let tx2 = tx.clone();
-        let _t = thread::spawn(move || {
-            rx.recv().unwrap();
-        });
-        while tx.send(1).is_ok() && tx2.send(1).is_ok() {}
-    }
-
-    #[test]
     fn smoke_chan_gone() {
         let (tx, rx) = channel::<i32>();
         drop(tx);
-        assert!(rx.recv().is_err());
-    }
-
-    #[test]
-    fn smoke_chan_gone_shared() {
-        let (tx, rx) = channel::<()>();
-        let tx2 = tx.clone();
-        drop(tx);
-        drop(tx2);
         assert!(rx.recv().is_err());
     }
 
@@ -438,31 +396,6 @@ mod tests {
         for _ in 0..10000 {
             assert_eq!(rx.recv().unwrap(), 1);
         }
-        t.join().ok().unwrap();
-    }
-
-    #[test]
-    fn stress_shared() {
-        const AMT: u32 = 10000;
-        const NTHREADS: u32 = 8;
-        let (tx, rx) = channel::<i32>();
-
-        let t = thread::spawn(move || {
-            for _ in 0..AMT * NTHREADS {
-                assert_eq!(rx.recv().unwrap(), 1);
-            }
-            if rx.try_recv().is_ok() {
-                panic!();
-            }
-        });
-
-        for _ in 0..NTHREADS {
-            let tx = tx.clone();
-            go!(move || for _ in 0..AMT {
-                tx.send(1).unwrap();
-            });
-        }
-        drop(tx);
         t.join().ok().unwrap();
     }
 
@@ -761,43 +694,12 @@ mod tests {
 
     #[test]
     fn recv_timeout_upgrade() {
-        let (tx, rx) = channel::<()>();
+        let (_tx, rx) = channel::<()>();
         let timeout = Duration::from_millis(1);
-        let _tx_clone = tx.clone();
 
         let start = Instant::now();
         assert_eq!(rx.recv_timeout(timeout), Err(RecvTimeoutError::Timeout));
         assert!(Instant::now() >= start + timeout);
-    }
-
-    #[test]
-    fn stress_recv_timeout_shared() {
-        let (tx, rx) = channel();
-        let stress = stress_factor() + 100;
-
-        for i in 0..stress {
-            let tx = tx.clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(i as u64 * 10));
-                tx.send(1usize).unwrap();
-            });
-        }
-
-        drop(tx);
-
-        let mut recv_count = 0;
-        loop {
-            match rx.recv_timeout(Duration::from_millis(30)) {
-                Ok(n) => {
-                    assert_eq!(n, 1usize);
-                    recv_count += 1;
-                }
-                Err(RecvTimeoutError::Timeout) => continue,
-                Err(RecvTimeoutError::Disconnected) => break,
-            }
-        }
-
-        assert_eq!(recv_count, stress);
     }
 
     #[test]
@@ -808,45 +710,6 @@ mod tests {
             tx.send(()).unwrap();
         }
         for _ in 0..10000 {
-            rx.recv().unwrap();
-        }
-    }
-
-    #[test]
-    fn shared_recv_timeout() {
-        let (tx, rx) = channel();
-        let total = 5;
-        for _ in 0..total {
-            let tx = tx.clone();
-            thread::spawn(move || {
-                tx.send(()).unwrap();
-            });
-        }
-
-        for _ in 0..total {
-            rx.recv().unwrap();
-        }
-
-        assert_eq!(
-            rx.recv_timeout(Duration::from_millis(1)),
-            Err(RecvTimeoutError::Timeout)
-        );
-        tx.send(()).unwrap();
-        assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
-    }
-
-    #[test]
-    fn shared_chan_stress() {
-        let (tx, rx) = channel();
-        let total = stress_factor() + 100;
-        for _ in 0..total {
-            let tx = tx.clone();
-            thread::spawn(move || {
-                tx.send(()).unwrap();
-            });
-        }
-
-        for _ in 0..total {
             rx.recv().unwrap();
         }
     }
@@ -990,10 +853,7 @@ mod tests {
             thread::yield_now();
         }
 
-        // upgrade to a shared chan and send a message
-        let t = tx.clone();
-        drop(tx);
-        t.send(()).unwrap();
+        tx.send(()).unwrap();
 
         // wait for the child thread to exit before we exit
         rx2.recv().unwrap();

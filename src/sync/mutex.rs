@@ -10,10 +10,9 @@ use std::sync::{LockResult, TryLockError, TryLockResult};
 
 use super::blocking::SyncBlocker;
 use super::poison;
+use super::queue::mpsc_seg_queue::SegQueue;
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
-
-use crossbeam::queue::SegQueue;
 
 pub struct Mutex<T: ?Sized> {
     // the waiting blocker list

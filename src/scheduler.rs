@@ -10,11 +10,11 @@ use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::io::{EventLoop, Selector};
 use crate::likely::likely;
 use crate::pool::CoroutinePool;
+use crate::sync::queue::tokio_queue::{Local, Steal};
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
-use crate::sync::tokio_queue::{Local, Steal};
 use crossbeam::queue::SegQueue;
 
 // thread id, only workers are normal ones
@@ -188,7 +188,8 @@ impl Scheduler {
         let queue = unsafe { self.local_queues.get_unchecked(id) };
         match queue.push_back(co) {
             Ok(()) => {}
-            Err(co) => self.schedule_global(co),
+            // Err(co) => self.schedule_global(co),
+            Err(co) => run_coroutine(co),
         }
     }
 
