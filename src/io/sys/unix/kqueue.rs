@@ -5,7 +5,6 @@ use std::time::Duration;
 use std::{io, ptr};
 
 use super::{timeout_handler, EventData, IoData, TimerList};
-use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
@@ -115,8 +114,6 @@ impl Selector {
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
 
-        let mut co_vec: SmallVec<[CoroutineImpl; 4]> = SmallVec::new();
-
         // Wait for kqueue events for at most timeout_ms milliseconds
         let kqfd = single_selector.kqfd;
         let n = unsafe {
@@ -166,19 +163,7 @@ impl Selector {
                 h.remove()
             });
 
-            if co_vec.len() < co_vec.capacity() {
-                co_vec.push(co);
-            } else {
-                scheduler.schedule_with_id(co, id);
-            }
-        }
-
-        // schedule the coroutine
-        while let Some(co) = co_vec.pop() {
-            if let Some(next) = co_vec.last() {
-                next.prefetch();
-            }
-            run_coroutine(co);
+            scheduler.schedule_with_id(co, id);
         }
 
         // run all the local tasks
