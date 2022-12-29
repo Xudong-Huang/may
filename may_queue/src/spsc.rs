@@ -1,7 +1,12 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::cell::UnsafeCell;
+use std::fmt;
+use std::ops::Deref;
+use std::sync::atomic::Ordering;
 
 use crate::block_node::*;
+
 use crossbeam::utils::CachePadded;
+use smallvec::SmallVec;
 
 /// spsc queue
 #[derive(Debug)]
@@ -35,8 +40,8 @@ impl<T> Queue<T> {
 
     /// push a value to the queue
     pub fn push(&self, v: T) {
-        let tail = unsafe { &mut *self.tail.load(Ordering::Relaxed) };
-        let push_index = self.push_index.load(Ordering::Relaxed);
+        let tail = unsafe { &mut *self.tail.unsync_load() };
+        let push_index = unsafe { self.push_index.unsync_load() };
         // store the data
         tail.set(push_index, v);
 
@@ -49,7 +54,7 @@ impl<T> Queue<T> {
         }
 
         // commit the push
-        self.push_index.store(new_index, Ordering::Relaxed);
+        self.push_index.store(new_index, Ordering::Release);
     }
 
     /// peek the head
@@ -58,25 +63,25 @@ impl<T> Queue<T> {
     ///
     /// not safe if you pop out the head value when hold the data ref
     pub unsafe fn peek(&self) -> Option<&T> {
-        let index = self.pop_index.load(Ordering::Relaxed);
-        let push_index = self.push_index.load(Ordering::Relaxed);
+        let index = self.pop_index.unsync_load();
+        let push_index = self.push_index.load(Ordering::Acquire);
         if index == push_index {
             return None;
         }
 
-        let head = &mut *self.head.load(Ordering::Relaxed);
+        let head = &mut *self.head.unsync_load();
         Some(head.peek(index))
     }
 
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let index = self.pop_index.load(Ordering::Relaxed);
-        let push_index = self.push_index.load(Ordering::Relaxed);
+        let index = unsafe { self.pop_index.unsync_load() };
+        let push_index = self.push_index.load(Ordering::Acquire);
         if index == push_index {
             return None;
         }
 
-        let head = unsafe { &mut *self.head.load(Ordering::Relaxed) };
+        let head = unsafe { &mut *self.head.unsync_load() };
 
         // get the data
         let v = head.get(index);
@@ -100,7 +105,7 @@ impl<T> Queue<T> {
     #[inline]
     pub fn len(&self) -> usize {
         let pop_index = self.pop_index.load(Ordering::Relaxed);
-        let push_index = self.push_index.load(Ordering::Relaxed);
+        let push_index = self.push_index.load(Ordering::Acquire);
         push_index.wrapping_sub(pop_index)
     }
 
@@ -110,25 +115,27 @@ impl<T> Queue<T> {
         self.len() == 0
     }
 
-    // here the max bulk pop should be within a block node
-    pub fn bulk_pop_expect<V: Extend<T>>(&self, expect: usize, vec: &mut V) -> usize {
-        let index = self.pop_index.load(Ordering::Relaxed);
-        let push_index = self.push_index.load(Ordering::Relaxed);
+    // bulk pop as much as possible
+    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+        // self.bulk_pop_expect(0, vec)
+        let index = unsafe { self.pop_index.unsync_load() };
+        let push_index = self.push_index.load(Ordering::Acquire);
         if index == push_index {
-            return 0;
+            return None;
         }
 
-        let head = unsafe { &mut *self.head.load(Ordering::Relaxed) };
+        let head = unsafe { self.head.unsync_load() };
 
         // only pop within a block
-        let end = bulk_end(index, push_index, expect);
-        let size = unsafe { head.bulk_get(index, end, vec) };
+        let end = bulk_end(index, push_index);
+        // let size = unsafe { head.bulk_get(index, end, vec) };
+        let value = BlockNode::copy_to_bulk(head, index, end);
 
         let new_index = end;
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let new_head = head.next.load(Ordering::Acquire);
+            let new_head = unsafe { &*head }.next.load(Ordering::Acquire);
             assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.store(new_head, Ordering::Relaxed);
@@ -137,12 +144,7 @@ impl<T> Queue<T> {
         // commit the pop
         self.pop_index.store(new_index, Ordering::Relaxed);
 
-        size
-    }
-
-    // bulk pop as much as possible
-    pub fn bulk_pop<V: Extend<T>>(&self, vec: &mut V) -> usize {
-        self.bulk_pop_expect(0, vec)
+        Some(value)
     }
 }
 
@@ -192,14 +194,15 @@ mod tests {
     fn bulk_pop_test() {
         let q = Queue::<usize>::new();
         let total_size = BLOCK_SIZE + 17;
-        let mut vec = Vec::with_capacity(BLOCK_SIZE * 2);
         for i in 0..total_size {
             q.push(i);
         }
-        assert_eq!(q.bulk_pop_expect(0, &mut vec), BLOCK_SIZE);
+        let vec = q.bulk_pop().unwrap();
+        assert_eq!(vec.len(), BLOCK_SIZE);
         assert_eq!(q.len(), total_size - BLOCK_SIZE);
-        assert_eq!(q.bulk_pop_expect(8, &mut vec), 8);
-        assert_eq!(q.bulk_pop_expect(0, &mut vec), total_size - 8 - BLOCK_SIZE);
+        let v = q.bulk_pop().unwrap();
+        assert_eq!(v[0], BLOCK_SIZE);
+        assert_eq!(v.len(), 17);
         assert_eq!(q.len(), 0);
         println!("{:?}", q);
 
@@ -259,13 +262,13 @@ mod bench {
             });
 
             let mut size = 0;
-            let mut vec = Vec::with_capacity(total_work);
             while size < total_work {
-                size += q.bulk_pop(&mut vec);
-            }
-
-            for (i, item) in vec.iter().enumerate() {
-                assert_eq!(i, *item);
+                if let Some(v) = q.bulk_pop() {
+                    for (start, i) in v.iter().enumerate() {
+                        assert_eq!(*i, start + size);
+                    }
+                    size += v.len();
+                }
             }
         });
     }
@@ -322,5 +325,85 @@ mod bench {
                 assert_eq!(i, rx.recv().unwrap());
             }
         });
+    }
+}
+
+pub(crate) struct AtomicUsize {
+    inner: UnsafeCell<std::sync::atomic::AtomicUsize>,
+}
+
+unsafe impl Send for AtomicUsize {}
+unsafe impl Sync for AtomicUsize {}
+
+impl AtomicUsize {
+    pub(crate) const fn new(val: usize) -> AtomicUsize {
+        let inner = UnsafeCell::new(std::sync::atomic::AtomicUsize::new(val));
+        AtomicUsize { inner }
+    }
+
+    /// Performs an unsynchronized load.
+    ///
+    /// # Safety
+    ///
+    /// All mutations must have happened before the unsynchronized load.
+    /// Additionally, there must be no concurrent mutations.
+    pub(crate) unsafe fn unsync_load(&self) -> usize {
+        *(*self.inner.get()).get_mut()
+    }
+}
+
+impl Deref for AtomicUsize {
+    type Target = std::sync::atomic::AtomicUsize;
+
+    fn deref(&self) -> &Self::Target {
+        // safety: it is always safe to access `&self` fns on the inner value as
+        // we never perform unsafe mutations.
+        unsafe { &*self.inner.get() }
+    }
+}
+
+impl fmt::Debug for AtomicUsize {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.deref().fmt(fmt)
+    }
+}
+
+pub(crate) struct AtomicPtr<T> {
+    inner: UnsafeCell<std::sync::atomic::AtomicPtr<T>>,
+}
+
+unsafe impl<T> Send for AtomicPtr<T> {}
+unsafe impl<T> Sync for AtomicPtr<T> {}
+
+impl<T> AtomicPtr<T> {
+    pub(crate) const fn new(val: *mut T) -> AtomicPtr<T> {
+        let inner = UnsafeCell::new(std::sync::atomic::AtomicPtr::new(val));
+        AtomicPtr { inner }
+    }
+
+    /// Performs an unsynchronized load.
+    ///
+    /// # Safety
+    ///
+    /// All mutations must have happened before the unsynchronized load.
+    /// Additionally, there must be no concurrent mutations.
+    pub(crate) unsafe fn unsync_load(&self) -> *mut T {
+        *(*self.inner.get()).get_mut()
+    }
+}
+
+impl<T> Deref for AtomicPtr<T> {
+    type Target = std::sync::atomic::AtomicPtr<T>;
+
+    fn deref(&self) -> &Self::Target {
+        // safety: it is always safe to access `&self` fns on the inner value as
+        // we never perform unsafe mutations.
+        unsafe { &*self.inner.get() }
+    }
+}
+
+impl<T> fmt::Debug for AtomicPtr<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.deref().fmt(fmt)
     }
 }
