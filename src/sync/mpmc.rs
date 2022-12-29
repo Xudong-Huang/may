@@ -11,7 +11,7 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::Semphore;
+use super::Semaphore;
 use crossbeam::queue::SegQueue;
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -20,7 +20,7 @@ use crossbeam::queue::SegQueue;
 struct InnerQueue<T> {
     queue: SegQueue<T>,
     // thread/coroutine for wake up
-    sem: Semphore,
+    sem: Semaphore,
     // The number of tx channels which are currently using this queue.
     tx_ports: AtomicUsize,
     // if rx is dropped
@@ -31,7 +31,7 @@ impl<T> InnerQueue<T> {
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
             queue: SegQueue::new(),
-            sem: Semphore::new(0),
+            sem: Semaphore::new(0),
             tx_ports: AtomicUsize::new(1),
             rx_ports: AtomicUsize::new(1),
         }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use generator::Generator;
 
-/// Wrapper for a pinter type
+/// Wrapper for a pointer type
 pub trait PointerType {
     /// underlying type
     type Data;

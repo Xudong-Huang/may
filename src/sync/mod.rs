@@ -4,7 +4,7 @@ mod condvar;
 mod mutex;
 mod poison;
 mod rwlock;
-mod semphore;
+mod semaphore;
 mod sync_flag;
 
 pub(crate) mod atomic_dur;
@@ -19,5 +19,5 @@ pub use self::blocking::{Blocker, FastBlocker};
 pub use self::condvar::{Condvar, WaitTimeoutResult};
 pub use self::mutex::{Mutex, MutexGuard};
 pub use self::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-pub use self::semphore::Semphore;
+pub use self::semaphore::Semaphore;
 pub use self::sync_flag::SyncFlag;

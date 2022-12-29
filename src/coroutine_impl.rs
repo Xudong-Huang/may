@@ -143,7 +143,7 @@ impl Coroutine {
     /// # Safety
     ///
     /// This function would force a coroutine exist when next scheduling
-    /// And would drop all the resource tha the coroutine currently holding
+    /// And would drop all the resource that the coroutine currently holding
     /// This may have unexpected side effects if you are not fully aware it
     pub unsafe fn cancel(&self) {
         self.inner.cancel.cancel();
@@ -293,7 +293,7 @@ impl Builder {
         let handle = Coroutine::new(name, stack_size);
         // create the local storage
         let local = CoroutineLocal::new(handle.clone(), join.clone());
-        // attache the local storage to the coroutine
+        // attached the local storage to the coroutine
         co.set_local_data(Box::into_raw(local) as *mut u8);
 
         Ok((co, make_join_handle(handle, join, packet, panic)))

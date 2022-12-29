@@ -8,7 +8,7 @@ use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
 
-/// Semphore primitive
+/// Semaphore primitive
 ///
 /// semaphores allow threads and coroutines to synchronize their actions.
 ///
@@ -24,9 +24,9 @@ use crossbeam::queue::SegQueue;
 /// ```rust
 /// use std::sync::Arc;
 /// use may::coroutine;
-/// use may::sync::Semphore;
+/// use may::sync::Semaphore;
 ///
-/// let sem = Arc::new(Semphore::new(0));
+/// let sem = Arc::new(Semaphore::new(0));
 /// let sem2 = sem.clone();
 ///
 /// // spawn a coroutine, and then wait for it to start
@@ -39,19 +39,19 @@ use crossbeam::queue::SegQueue;
 /// // wait for the coroutine to start up
 /// sem.wait();
 /// ```
-pub struct Semphore {
-    // track how many resources available for the semphore
+pub struct Semaphore {
+    // track how many resources available for the semaphore
     // if it's negative means how many threads are waiting for
     cnt: AtomicIsize,
     // the waiting blocker list, must be mpmc
     to_wake: SegQueue<Arc<SyncBlocker>>,
 }
 
-impl Semphore {
-    /// create a semphore with the initial value
+impl Semaphore {
+    /// create a semaphore with the initial value
     pub fn new(init: usize) -> Self {
         assert!(init < ::std::isize::MAX as usize);
-        Semphore {
+        Semaphore {
             to_wake: SegQueue::new(),
             cnt: AtomicIsize::new(init as isize),
         }
@@ -109,8 +109,8 @@ impl Semphore {
         }
     }
 
-    /// wait for a semphore
-    /// if the semphore value is bigger than zero the function returns immediately
+    /// wait for a semaphore
+    /// if the semaphore value is bigger than zero the function returns immediately
     /// otherwise it would block the until a `post` is executed
     pub fn wait(&self) {
         self.wait_timeout_impl(None);
@@ -123,7 +123,7 @@ impl Semphore {
     }
 
     /// return false if would block
-    /// return true if successfully acquire one semphore resource
+    /// return true if successfully acquire one semaphore resource
     pub fn try_wait(&self) -> bool {
         // we not register ourself at all
         // just manipulate the cnt is enough
@@ -140,7 +140,7 @@ impl Semphore {
         false
     }
 
-    /// increment the semphore value
+    /// increment the semaphore value
     /// and would wakeup a thread/coroutine that is calling `wait`
     pub fn post(&self) {
         let cnt = self.cnt.fetch_add(1, Ordering::SeqCst);
@@ -152,7 +152,7 @@ impl Semphore {
         }
     }
 
-    /// return the current semphore value
+    /// return the current semaphore value
     pub fn get_value(&self) -> usize {
         let cnt = self.cnt.load(Ordering::SeqCst);
         if cnt > 0 {
@@ -162,10 +162,10 @@ impl Semphore {
     }
 }
 
-impl fmt::Debug for Semphore {
+impl fmt::Debug for Semaphore {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cnt = self.cnt.load(Ordering::SeqCst);
-        write!(f, "Semphore {{ cnt: {} }}", cnt)
+        write!(f, "Semaphore {{ cnt: {} }}", cnt)
     }
 }
 
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn sanity_1() {
-        let sem = Arc::new(Semphore::new(0));
+        let sem = Arc::new(Semaphore::new(0));
         let sem2 = sem.clone();
 
         // spawn a new thread, and then wait for it to start
@@ -195,10 +195,10 @@ mod tests {
     fn sanity_2() {
         let total = 10;
         let init = 5;
-        let sem = Arc::new(Semphore::new(init));
+        let sem = Arc::new(Semaphore::new(init));
         let (tx, rx) = channel();
 
-        // create 10 thread and let them wait for the semphore
+        // create 10 thread and let them wait for the semaphore
         println!("sem={:?}", sem);
         for i in 0..total {
             let sem2 = sem.clone();
@@ -234,10 +234,10 @@ mod tests {
     }
 
     #[test]
-    fn test_semphore_canceled() {
+    fn test_semaphore_canceled() {
         use crate::sleep::sleep;
 
-        let sem1 = Arc::new(Semphore::new(0));
+        let sem1 = Arc::new(Semaphore::new(0));
         let sem2 = sem1.clone();
         let sem3 = sem1.clone();
 
@@ -257,16 +257,16 @@ mod tests {
         // cancel h1
         unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
-        // release the semphore
+        // release the semaphore
         sem1.post();
         h2.join().unwrap();
     }
 
     #[test]
-    fn test_semphore_co_timeout() {
+    fn test_semaphore_co_timeout() {
         use crate::sleep::sleep;
 
-        let sem1 = Arc::new(Semphore::new(0));
+        let sem1 = Arc::new(Semaphore::new(0));
         let sem2 = sem1.clone();
         let sem3 = sem1.clone();
 
@@ -283,16 +283,16 @@ mod tests {
 
         // wait h1 timeout
         h1.join().unwrap();
-        // release the semphore
+        // release the semaphore
         sem1.post();
         h2.join().unwrap();
     }
 
     #[test]
-    fn test_semphore_thread_timeout() {
+    fn test_semaphore_thread_timeout() {
         use crate::sleep::sleep;
 
-        let sem1 = Arc::new(Semphore::new(0));
+        let sem1 = Arc::new(Semaphore::new(0));
         let sem2 = sem1.clone();
         let sem3 = sem1.clone();
 
@@ -309,7 +309,7 @@ mod tests {
 
         // wait h1 timeout
         h1.join().unwrap();
-        // release the semphore
+        // release the semaphore
         sem1.post();
         h2.join().unwrap();
     }

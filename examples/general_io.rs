@@ -23,7 +23,7 @@ fn main() {
             let mut stdin = CoIo::new(io::stdin()).expect("failed to create stdio");
             loop {
                 let mut msg = [0, 4];
-                let _n = stdin.read(&mut msg).expect("failed ot read stdio");
+                let _n = stdin.read(&mut msg).expect("failed to read stdio");
                 println!("another coroutine, msg={:?}", msg);
             }
         },

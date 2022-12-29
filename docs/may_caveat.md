@@ -2,7 +2,7 @@ Though [MAY][may] is easy to use, but it does have some restrictions. And these 
 
 If you are not aware of them, your application will easily lost performance or even trigger undefined behaviors.
 
-I will list 4 rules bellow
+I will list 4 rules below
 
 ## Don't call thread blocking APIs
 This is obvious. Calling thread block version APIs in coroutine would halt the worker thread and can't schedule other ready coroutines. It will hurt the performance. 

@@ -592,7 +592,7 @@ mod tests {
                 tx.send(i).unwrap();
                 // println!("got wlock, id={}", i);
 
-                // wait the mater to let it go
+                // wait the matter to let it go
                 let &(ref lock, ref cond) = &*sync;
                 let mut cnt = lock.lock().unwrap();
                 while *cnt != i {
