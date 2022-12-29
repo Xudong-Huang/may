@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 
@@ -8,19 +9,37 @@ use crate::block_node::*;
 use crossbeam::utils::CachePadded;
 use smallvec::SmallVec;
 
+/// A position in a queue.
+#[derive(Debug)]
+struct Position<T> {
+    /// The index in the queue.
+    index: AtomicUsize,
+
+    /// The block in the linked list.
+    block: AtomicPtr<BlockNode<T>>,
+}
+
+impl<T> Position<T> {
+    fn new(block: *mut BlockNode<T>) -> Self {
+        Position {
+            index: AtomicUsize::new(0),
+            block: AtomicPtr::new(block),
+        }
+    }
+}
+
 /// spsc queue
 #[derive(Debug)]
 pub struct Queue<T> {
     // ----------------------------------------
     // use for pop
-    head: CachePadded<AtomicPtr<BlockNode<T>>>,
-    // used to track the pop number
-    pop_index: AtomicUsize,
+    head: CachePadded<Position<T>>,
     // -----------------------------------------
     // use for push
-    tail: CachePadded<AtomicPtr<BlockNode<T>>>,
-    // used to track the push number
-    push_index: AtomicUsize,
+    tail: CachePadded<Position<T>>,
+
+    /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
+    _marker: PhantomData<T>,
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
@@ -31,17 +50,16 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let init_block = BlockNode::<T>::new();
         Queue {
-            head: AtomicPtr::new(init_block).into(),
-            tail: AtomicPtr::new(init_block).into(),
-            push_index: AtomicUsize::new(0),
-            pop_index: AtomicUsize::new(0),
+            head: Position::new(init_block).into(),
+            tail: Position::new(init_block).into(),
+            _marker: PhantomData,
         }
     }
 
     /// push a value to the queue
     pub fn push(&self, v: T) {
-        let tail = unsafe { &mut *self.tail.unsync_load() };
-        let push_index = unsafe { self.push_index.unsync_load() };
+        let tail = unsafe { &mut *self.tail.block.unsync_load() };
+        let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
 
@@ -50,11 +68,11 @@ impl<T> Queue<T> {
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new();
             tail.next.store(new_tail, Ordering::Release);
-            self.tail.store(new_tail, Ordering::Relaxed);
+            self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
         // commit the push
-        self.push_index.store(new_index, Ordering::Release);
+        self.tail.index.store(new_index, Ordering::Release);
     }
 
     /// peek the head
@@ -63,26 +81,25 @@ impl<T> Queue<T> {
     ///
     /// not safe if you pop out the head value when hold the data ref
     pub unsafe fn peek(&self) -> Option<&T> {
-        let index = self.pop_index.unsync_load();
-        let push_index = self.push_index.load(Ordering::Acquire);
+        let index = self.head.index.unsync_load();
+        let push_index = self.tail.index.load(Ordering::Acquire);
         if index == push_index {
             return None;
         }
 
-        let head = &mut *self.head.unsync_load();
+        let head = &mut *self.head.block.unsync_load();
         Some(head.peek(index))
     }
 
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let index = unsafe { self.pop_index.unsync_load() };
-        let push_index = self.push_index.load(Ordering::Acquire);
+        let index = unsafe { self.head.index.unsync_load() };
+        let push_index = self.tail.index.load(Ordering::Acquire);
         if index == push_index {
             return None;
         }
 
-        let head = unsafe { &mut *self.head.unsync_load() };
-
+        let head = unsafe { &mut *self.head.block.unsync_load() };
         // get the data
         let v = head.get(index);
 
@@ -92,11 +109,11 @@ impl<T> Queue<T> {
             let new_head = head.next.load(Ordering::Acquire);
             assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
-            self.head.store(new_head, Ordering::Relaxed);
+            self.head.block.store(new_head, Ordering::Relaxed);
         }
 
         // commit the pop
-        self.pop_index.store(new_index, Ordering::Relaxed);
+        self.head.index.store(new_index, Ordering::Relaxed);
 
         Some(v)
     }
@@ -104,8 +121,8 @@ impl<T> Queue<T> {
     /// get the size of queue
     #[inline]
     pub fn len(&self) -> usize {
-        let pop_index = self.pop_index.load(Ordering::Relaxed);
-        let push_index = self.push_index.load(Ordering::Acquire);
+        let pop_index = self.head.index.load(Ordering::Relaxed);
+        let push_index = self.tail.index.load(Ordering::Acquire);
         push_index.wrapping_sub(pop_index)
     }
 
@@ -118,13 +135,13 @@ impl<T> Queue<T> {
     // bulk pop as much as possible
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
         // self.bulk_pop_expect(0, vec)
-        let index = unsafe { self.pop_index.unsync_load() };
-        let push_index = self.push_index.load(Ordering::Acquire);
+        let index = unsafe { self.head.index.unsync_load() };
+        let push_index = self.tail.index.load(Ordering::Acquire);
         if index == push_index {
             return None;
         }
 
-        let head = unsafe { self.head.unsync_load() };
+        let head = unsafe { self.head.block.unsync_load() };
 
         // only pop within a block
         let end = bulk_end(index, push_index);
@@ -138,11 +155,11 @@ impl<T> Queue<T> {
             let new_head = unsafe { &*head }.next.load(Ordering::Acquire);
             assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
-            self.head.store(new_head, Ordering::Relaxed);
+            self.head.block.store(new_head, Ordering::Relaxed);
         }
 
         // commit the pop
-        self.pop_index.store(new_index, Ordering::Relaxed);
+        self.head.index.store(new_index, Ordering::Relaxed);
 
         Some(value)
     }
@@ -157,9 +174,9 @@ impl<T> Default for Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
-        while self.pop().is_some() {}
-        let head = self.head.load(Ordering::Relaxed);
-        let tail = self.tail.load(Ordering::Relaxed);
+        while self.bulk_pop().is_some() {}
+        let head = self.head.block.load(Ordering::Relaxed);
+        let tail = self.tail.block.load(Ordering::Relaxed);
         assert_eq!(head, tail);
 
         unsafe {

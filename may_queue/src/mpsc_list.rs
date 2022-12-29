@@ -1,7 +1,6 @@
 use std::cell::UnsafeCell;
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::thread;
 
 use crossbeam::utils::CachePadded;
 
@@ -69,21 +68,13 @@ impl<T> Queue<T> {
 
             // spin until tail next become non-null
             let mut next;
-            let mut i = 0;
+            let backoff = crossbeam::utils::Backoff::new();
             loop {
                 next = (*tail).next.load(Ordering::Acquire);
                 if !next.is_null() {
                     break;
                 }
-                i += 1;
-                if i > 100 {
-                    {
-                        thread::yield_now();
-                        i = 0;
-                    }
-                } else {
-                    std::hint::spin_loop()
-                }
+                backoff.snooze();
             }
             // value is not an atomic operation it may read out old shadow value
             // assert!((*tail).value.is_none());

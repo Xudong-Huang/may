@@ -7,7 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam::atomic::AtomicCell;
-use crossbeam::queue::SegQueue;
+use may_queue::mpsc_seg_queue::SegQueue;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
 use parking_lot::{Mutex, RwLock};
@@ -97,7 +97,7 @@ impl<T> IntervalEntry<T> {
         while let Some(timeout) = self.list.inner.pop_if(&p) {
             f(timeout.data);
         }
-        self.list.inner.peek().map(|t| t.time)
+        unsafe { self.list.inner.peek() }.map(|t| t.time)
     }
 }
 
@@ -258,7 +258,7 @@ impl<T> TimeOutList<T> {
                         // release the w lock first, we don't need it any more
                         mem::drop(interval_map_w);
                         // the list is push some data by other thread
-                        entry.time = entry.list.inner.peek().unwrap().time;
+                        entry.time = unsafe { entry.list.inner.peek() }.unwrap().time;
                         self.timer_bh.lock().push(entry);
                     }
                 }

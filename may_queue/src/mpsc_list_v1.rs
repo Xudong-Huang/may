@@ -1,7 +1,6 @@
 use std::cell::UnsafeCell;
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::thread;
 
 use crossbeam::utils::CachePadded;
 
@@ -187,38 +186,30 @@ impl<T> Queue<T> {
     }
 
     /// get the head ref
+    /// # Safety
+    /// the if you pop the head, it's unsafe hold the head ref
     #[inline]
-    pub fn peek(&self) -> Option<&T> {
-        unsafe {
-            let tail = *self.tail.get();
-            // the list is empty
-            if self.head.load(Ordering::Acquire) == tail {
-                return None;
-            }
-            // spin until tail next become non-null
-            let mut next;
-            let mut i = 0;
-            loop {
-                next = (*tail).next.load(Ordering::Acquire);
-                if !next.is_null() {
-                    break;
-                }
-                i += 1;
-                if i > 500 {
-                    {
-                        thread::yield_now();
-                        i = 0;
-                    }
-                } else {
-                    std::hint::spin_loop()
-                }
-            }
-
-            assert!((*tail).value.is_none());
-            assert!((*next).value.is_some());
-
-            (*next).value.as_ref()
+    pub unsafe fn peek(&self) -> Option<&T> {
+        let tail = *self.tail.get();
+        // the list is empty
+        if self.head.load(Ordering::Acquire) == tail {
+            return None;
         }
+        // spin until tail next become non-null
+        let mut next;
+        let backoff = crossbeam::utils::Backoff::new();
+        loop {
+            next = (*tail).next.load(Ordering::Acquire);
+            if !next.is_null() {
+                break;
+            }
+            backoff.snooze();
+        }
+
+        assert!((*tail).value.is_none());
+        assert!((*next).value.is_some());
+
+        (*next).value.as_ref()
     }
 
     pub fn pop_if<F>(&self, f: &F) -> Option<T>
@@ -234,17 +225,13 @@ impl<T> Queue<T> {
 
             // spin until tail next become non-null
             let mut next;
-            let mut i = 0;
+            let backoff = crossbeam::utils::Backoff::new();
             loop {
                 next = (*tail).next.load(Ordering::Acquire);
                 if !next.is_null() {
                     break;
                 }
-                i += 1;
-                if i > 100 {
-                    thread::yield_now();
-                    i = 0;
-                }
+                backoff.snooze();
             }
 
             assert!((*tail).value.is_none());
@@ -293,21 +280,13 @@ impl<T> Queue<T> {
 
             // spin until tail next become non-null
             let mut next;
-            let mut i = 0;
+            let backoff = crossbeam::utils::Backoff::new();
             loop {
                 next = (*tail).next.load(Ordering::Acquire);
                 if !next.is_null() {
                     break;
                 }
-                i += 1;
-                if i > 100 {
-                    {
-                        thread::yield_now();
-                        i = 0;
-                    }
-                } else {
-                    std::hint::spin_loop()
-                }
+                backoff.snooze();
             }
             (*next).prev = ptr::null_mut();
             // move the tail to next
@@ -371,7 +350,7 @@ mod tests {
         q.push(6);
         q.push(7);
         let co = |v: &usize| *v < 7;
-        assert_eq!(q.peek(), Some(&5));
+        assert_eq!(unsafe { q.peek() }, Some(&5));
         assert_eq!(q.pop_if(&co), Some(5));
         assert_eq!(q.pop_if(&co), Some(6));
         assert_eq!(q.pop_if(&co), None);

@@ -11,7 +11,7 @@ pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 // block mask
 pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 // block shift
-pub const BLOCK_SHIFT: usize = 8;
+pub const BLOCK_SHIFT: usize = 5;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -29,8 +29,8 @@ impl<T> Slot<T> {
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
 pub struct BlockNode<T> {
-    data: [Slot<T>; BLOCK_SIZE],
     pub next: AtomicPtr<BlockNode<T>>,
+    data: [Slot<T>; BLOCK_SIZE],
 }
 
 /// we don't implement the block node Drop trait
@@ -68,7 +68,7 @@ impl<T> BlockNode<T> {
     pub fn get(&self, index: usize) -> T {
         unsafe {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
-            (*data.value.get()).assume_init_read()
+            data.value.get().read().assume_init()
         }
     }
 }
