@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
-use crate::queue::mpsc_seg_queue::SegQueue;
+
+use may_queue::mpsc_seg_queue::SegQueue;
 
 // TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////

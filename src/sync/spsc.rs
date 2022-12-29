@@ -8,7 +8,8 @@ use std::time::{Duration, Instant};
 
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
-use crate::queue::spsc::Queue;
+
+use may_queue::spsc::Queue;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue

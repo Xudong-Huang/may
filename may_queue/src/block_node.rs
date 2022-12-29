@@ -1,22 +1,6 @@
-#[derive(Debug)]
-pub struct RawVec<T> {
-    buf: Vec<T>,
-}
-
-impl<T> RawVec<T> {
-    pub fn with_capacity(cap: usize) -> Self {
-        RawVec {
-            buf: Vec::with_capacity(cap),
-        }
-    }
-
-    pub fn ptr(&self) -> *mut T {
-        let ptr = self.buf.as_ptr();
-        ptr as *mut T
-    }
-}
-
+use std::cell::UnsafeCell;
 use std::cmp;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::atomic::AtomicPtr;
 
@@ -27,6 +11,18 @@ pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 // block shift
 pub const BLOCK_SHIFT: usize = 8;
 
+/// A slot in a block.
+struct Slot<T> {
+    /// The value.
+    value: UnsafeCell<MaybeUninit<T>>,
+}
+
+impl<T> Slot<T> {
+    const UNINIT: Self = Self {
+        value: UnsafeCell::new(MaybeUninit::uninit()),
+    };
+}
+
 /// a block node contains a bunch of items stored in a array
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
@@ -34,7 +30,7 @@ pub struct BlockNode<T> {
     pub next: AtomicPtr<BlockNode<T>>,
     // we use RawVec to manage the memory
     // use an array would have it's own drop semantics which is not desired
-    data: RawVec<T>,
+    data: [Slot<T>; BLOCK_SIZE],
 }
 
 /// we don't implement the block node Drop trait
@@ -45,7 +41,7 @@ impl<T> BlockNode<T> {
     pub fn new() -> *mut BlockNode<T> {
         Box::into_raw(Box::new(BlockNode {
             next: AtomicPtr::new(ptr::null_mut()),
-            data: RawVec::with_capacity(BLOCK_SIZE),
+            data: [Slot::UNINIT; BLOCK_SIZE],
         }))
     }
 
@@ -53,8 +49,8 @@ impl<T> BlockNode<T> {
     #[inline]
     pub fn set(&self, index: usize, v: T) {
         unsafe {
-            let data = self.data.ptr().add(index & BLOCK_MASK);
-            ptr::write(data, v);
+            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            (*data.value.get()).write(v);
         }
     }
 
@@ -62,8 +58,8 @@ impl<T> BlockNode<T> {
     /// not safe if pop out a value when hold the data ref
     #[inline]
     pub unsafe fn peek(&self, index: usize) -> &T {
-        let data = self.data.ptr().add(index & BLOCK_MASK);
-        &*data
+        let data = self.data.get_unchecked(index & BLOCK_MASK);
+        (*data.value.get()).assume_init_ref()
     }
 
     /// read out indexed value
@@ -71,8 +67,8 @@ impl<T> BlockNode<T> {
     #[inline]
     pub fn get(&self, index: usize) -> T {
         unsafe {
-            let data = self.data.ptr().add(index & BLOCK_MASK);
-            ptr::read(data)
+            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            (*data.value.get()).assume_init_read()
         }
     }
 
@@ -82,11 +78,9 @@ impl<T> BlockNode<T> {
     #[inline]
     pub unsafe fn bulk_get<V: Extend<T>>(&self, start: usize, end: usize, vec: &mut V) -> usize {
         let size = end.wrapping_sub(start);
-        let mut p_data = self.data.ptr().add(start & BLOCK_MASK);
         // vec.reserve(size);
-        for _i in 0..size {
-            vec.extend(Some(ptr::read(p_data)));
-            p_data = p_data.offset(1);
+        for i in 0..size {
+            vec.extend(Some(self.get(start + i)));
         }
         size
     }
