@@ -145,7 +145,7 @@ impl<T> Position<T> {
 /// # Examples
 ///
 /// ```
-/// use may::sync::queue::mpsc_seg_queue::SegQueue;
+/// use may_queue::mpsc_seg_queue::SegQueue;
 ///
 /// let q = SegQueue::new();
 ///
@@ -176,7 +176,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::<i32>::new();
     /// ```
@@ -199,7 +199,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -293,7 +293,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -374,7 +374,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -463,7 +463,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -482,7 +482,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::mpsc_seg_queue::SegQueue;
+    /// use may_queue::mpsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     /// assert_eq!(q.len(), 0);

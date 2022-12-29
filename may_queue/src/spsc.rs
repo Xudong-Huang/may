@@ -98,10 +98,16 @@ impl<T> Queue<T> {
 
     /// get the size of queue
     #[inline]
-    pub fn size(&self) -> usize {
+    pub fn len(&self) -> usize {
         let pop_index = self.pop_index.load(Ordering::Relaxed);
         let push_index = self.push_index.load(Ordering::Relaxed);
         push_index.wrapping_sub(pop_index)
+    }
+
+    /// if the queue is empty
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     // here the max bulk pop should be within a block node
@@ -168,18 +174,18 @@ mod tests {
     #[test]
     fn queue_sanity() {
         let q = Queue::<usize>::new();
-        assert_eq!(q.size(), 0);
+        assert_eq!(q.len(), 0);
         for i in 0..100 {
             q.push(i);
         }
-        assert_eq!(q.size(), 100);
+        assert_eq!(q.len(), 100);
         println!("{:?}", q);
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
         }
         assert_eq!(q.pop(), None);
-        assert_eq!(q.size(), 0);
+        assert_eq!(q.len(), 0);
     }
 
     #[test]
@@ -191,10 +197,10 @@ mod tests {
             q.push(i);
         }
         assert_eq!(q.bulk_pop_expect(0, &mut vec), BLOCK_SIZE);
-        assert_eq!(q.size(), total_size - BLOCK_SIZE);
+        assert_eq!(q.len(), total_size - BLOCK_SIZE);
         assert_eq!(q.bulk_pop_expect(8, &mut vec), 8);
         assert_eq!(q.bulk_pop_expect(0, &mut vec), total_size - 8 - BLOCK_SIZE);
-        assert_eq!(q.size(), 0);
+        assert_eq!(q.len(), 0);
         println!("{:?}", q);
 
         for (i, item) in vec.iter().enumerate() {
@@ -214,6 +220,18 @@ mod bench {
     use std::thread;
 
     use crate::test_queue::ScBlockPop;
+
+    impl<T> ScBlockPop<T> for super::Queue<T> {
+        fn block_pop(&self) -> T {
+            let backoff = crossbeam::utils::Backoff::new();
+            loop {
+                match self.pop() {
+                    Some(v) => return v,
+                    None => backoff.snooze(),
+                }
+            }
+        }
+    }
 
     #[test]
     fn spsc_peek() {

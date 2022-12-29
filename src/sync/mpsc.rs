@@ -7,9 +7,9 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::queue::mpsc_seg_queue::SegQueue;
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
+use crate::queue::mpsc_seg_queue::SegQueue;
 
 // TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////

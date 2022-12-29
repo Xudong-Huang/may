@@ -51,3 +51,5 @@ pub mod os;
 pub mod sync;
 pub use crate::config::{config, Config};
 pub use crate::local::LocalKey;
+// re-export may_queue
+pub use may_queue as queue;

@@ -6,15 +6,15 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::queue::spsc_seg_queue::SegQueue;
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
+use crate::queue::spsc::Queue;
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
 /// /////////////////////////////////////////////////////////////////////////////
 struct InnerQueue<T> {
-    queue: SegQueue<T>,
+    queue: Queue<T>,
     // thread/coroutine for wake up
     to_wake: AtomicOption<Arc<Blocker>>,
     // The number of tx channels which are currently using this queue.
@@ -26,7 +26,7 @@ struct InnerQueue<T> {
 impl<T> InnerQueue<T> {
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
-            queue: SegQueue::new(),
+            queue: Queue::new(),
             to_wake: AtomicOption::none(),
             channels: AtomicUsize::new(1),
             port_dropped: AtomicBool::new(false),

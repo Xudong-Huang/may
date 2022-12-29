@@ -1,22 +1,17 @@
-//! modified from crossbeam seg queue to support bulk pop
-
 use core::cell::UnsafeCell;
 use core::fmt;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr;
-use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam::utils::{Backoff, CachePadded};
-use smallvec::SmallVec;
 
 // Bits indicating the state of a slot:
 // * If a value has been written into the slot, `WRITE` is set.
 // * If a value has been read from the slot, `READ` is set.
 // * If the block is being destroyed, `DESTROY` is set.
 const WRITE: usize = 1;
-const READ: usize = 2;
-const DESTROY: usize = 4;
 
 // Each block covers one "lap" of indices.
 const LAP: usize = 32;
@@ -84,41 +79,9 @@ impl<T> Block<T> {
     }
 
     /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
-    unsafe fn destroy(this: *mut Block<T>, start: usize) {
-        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
-        // begun destruction of the block.
-        for i in start..BLOCK_CAP - 1 {
-            let slot = (*this).slots.get_unchecked(i);
-
-            // Mark the `DESTROY` bit if a thread is still using the slot.
-            if slot.state.load(Ordering::Acquire) & READ == 0
-                && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
-            {
-                // If a thread is still using the slot, it will continue destruction of the block.
-                return;
-            }
-        }
-
+    unsafe fn destroy(this: *mut Block<T>) {
         // No thread is using the block, now it is safe to destroy it.
         drop(Box::from_raw(this));
-    }
-}
-
-impl<T> Block<T> {
-    fn copy_to_bulk(this: *mut Block<T>, mut start: usize, end: usize) -> SmallVec<[T; BLOCK_CAP]> {
-        let mut ret = SmallVec::<[T; BLOCK_CAP]>::new();
-        while start < end {
-            // Read the value.
-            let slot = unsafe { (*this).slots.get_unchecked(start) };
-            slot.wait_write();
-            let value = unsafe { slot.value.get().read().assume_init() };
-            ret.push(value);
-            if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-                unsafe { Block::destroy(this, start + 1) };
-            }
-            start += 1;
-        }
-        ret
     }
 }
 
@@ -129,6 +92,32 @@ struct Position<T> {
 
     /// The block in the linked list.
     block: AtomicPtr<Block<T>>,
+}
+
+impl<T> Position<T> {
+    fn load_index(&self) -> usize {
+        #[allow(clippy::cast_ref_to_mut)]
+        let index = unsafe { &mut *(&self.index as *const _ as *mut AtomicUsize) };
+        *index.get_mut()
+    }
+
+    fn set_index(&self, index: usize) {
+        #[allow(clippy::cast_ref_to_mut)]
+        let idx = unsafe { &mut *(&self.index as *const _ as *mut AtomicUsize) };
+        *idx.get_mut() = index;
+    }
+
+    fn load_block(&self) -> *mut Block<T> {
+        #[allow(clippy::cast_ref_to_mut)]
+        let block = unsafe { &mut *(&self.block as *const _ as *mut AtomicPtr<Block<T>>) };
+        *block.get_mut()
+    }
+
+    fn set_block(&self, block: *mut Block<T>) {
+        #[allow(clippy::cast_ref_to_mut)]
+        let blk = unsafe { &mut *(&self.block as *const _ as *mut AtomicPtr<Block<T>>) };
+        *blk.get_mut() = block;
+    }
 }
 
 /// An unbounded multi-producer multi-consumer queue.
@@ -143,7 +132,7 @@ struct Position<T> {
 /// # Examples
 ///
 /// ```
-/// use may::sync::queue::seg_queue::SegQueue;
+/// use may_queue::spsc_seg_queue::SegQueue;
 ///
 /// let q = SegQueue::new();
 ///
@@ -174,7 +163,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
+    /// use may_queue::spsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::<i32>::new();
     /// ```
@@ -197,7 +186,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
+    /// use may_queue::spsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -205,82 +194,47 @@ impl<T> SegQueue<T> {
     /// q.push(20);
     /// ```
     pub fn push(&self, value: T) {
-        let backoff = Backoff::new();
-        let mut tail = self.tail.index.load(Ordering::Acquire);
-        let mut block = self.tail.block.load(Ordering::Acquire);
+        // let backoff = Backoff::new();
+        let tail = self.tail.load_index();
+        let mut block = self.tail.load_block();
         let mut next_block = None;
 
-        loop {
-            // Calculate the offset of the index into the block.
-            let offset = (tail >> SHIFT) % LAP;
+        // loop {
+        // Calculate the offset of the index into the block.
+        let offset = (tail >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
-            if offset == BLOCK_CAP {
-                backoff.snooze();
-                tail = self.tail.index.load(Ordering::Acquire);
-                block = self.tail.block.load(Ordering::Acquire);
-                continue;
-            }
+        // If we're going to have to install the next block, allocate it in advance in order to
+        // make the wait for other threads as short as possible.
+        if offset + 1 == BLOCK_CAP && next_block.is_none() {
+            next_block = Some(Box::new(Block::<T>::new()));
+        }
 
-            // If we're going to have to install the next block, allocate it in advance in order to
-            // make the wait for other threads as short as possible.
-            if offset + 1 == BLOCK_CAP && next_block.is_none() {
-                next_block = Some(Box::new(Block::<T>::new()));
-            }
+        // If this is the first push operation, we need to allocate the first block.
+        if block.is_null() {
+            let new = Box::into_raw(Box::new(Block::<T>::new()));
+            self.tail.set_block(new);
+            self.head.block.store(new, Ordering::Release);
+            block = new;
+        }
 
-            // If this is the first push operation, we need to allocate the first block.
-            if block.is_null() {
-                let new = Box::into_raw(Box::new(Block::<T>::new()));
+        let new_tail = tail + (1 << SHIFT);
+        self.tail.index.store(new_tail, Ordering::Release);
 
-                if self
-                    .tail
-                    .block
-                    .compare_exchange(block, new, Ordering::Release, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    self.head.block.store(new, Ordering::Release);
-                    block = new;
-                } else {
-                    next_block = unsafe { Some(Box::from_raw(new)) };
-                    tail = self.tail.index.load(Ordering::Acquire);
-                    block = self.tail.block.load(Ordering::Acquire);
-                    continue;
-                }
-            }
+        // If we've reached the end of the block, install the next one.
+        if offset + 1 == BLOCK_CAP {
+            let next_block = Box::into_raw(next_block.unwrap());
+            let next_index = new_tail.wrapping_add(1 << SHIFT);
 
-            let new_tail = tail + (1 << SHIFT);
+            self.tail.set_block(next_block);
+            self.tail.index.store(next_index, Ordering::Release);
+            unsafe { (*block).next.store(next_block, Ordering::Relaxed) };
+        }
 
-            // Try advancing the tail forward.
-            match self.tail.index.compare_exchange_weak(
-                tail,
-                new_tail,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => unsafe {
-                    // If we've reached the end of the block, install the next one.
-                    if offset + 1 == BLOCK_CAP {
-                        let next_block = Box::into_raw(next_block.unwrap());
-                        let next_index = new_tail.wrapping_add(1 << SHIFT);
-
-                        self.tail.block.store(next_block, Ordering::Release);
-                        self.tail.index.store(next_index, Ordering::Release);
-                        (*block).next.store(next_block, Ordering::Release);
-                    }
-
-                    // Write the value into the slot.
-                    let slot = (*block).slots.get_unchecked(offset);
-                    slot.value.get().write(MaybeUninit::new(value));
-                    slot.state.fetch_or(WRITE, Ordering::Release);
-
-                    return;
-                },
-                Err(t) => {
-                    tail = t;
-                    block = self.tail.block.load(Ordering::Acquire);
-                    backoff.spin();
-                }
-            }
+        // Write the value into the slot.
+        unsafe {
+            let slot = (*block).slots.get_unchecked(offset);
+            slot.value.get().write(MaybeUninit::new(value));
+            slot.state.fetch_or(WRITE, Ordering::Release);
         }
     }
 
@@ -291,7 +245,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
+    /// use may_queue::spsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -301,26 +255,18 @@ impl<T> SegQueue<T> {
     /// ```
     pub fn pop(&self) -> Option<T> {
         let backoff = Backoff::new();
-        let mut head = self.head.index.load(Ordering::Acquire);
+        let mut head = self.head.load_index();
         let mut block = self.head.block.load(Ordering::Acquire);
 
         loop {
             // Calculate the offset of the index into the block.
             let offset = (head >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
-            if offset == BLOCK_CAP {
-                backoff.snooze();
-                head = self.head.index.load(Ordering::Acquire);
-                block = self.head.block.load(Ordering::Acquire);
-                continue;
-            }
-
             let mut new_head = head + (1 << SHIFT);
 
             if new_head & HAS_NEXT == 0 {
-                atomic::fence(Ordering::SeqCst);
-                let tail = self.tail.index.load(Ordering::Relaxed);
+                // atomic::fence(Ordering::SeqCst);
+                let tail = self.tail.index.load(Ordering::Acquire);
 
                 // If the tail equals the head, that means the queue is empty.
                 if head >> SHIFT == tail >> SHIFT {
@@ -337,162 +283,38 @@ impl<T> SegQueue<T> {
             // case, just wait until it gets initialized.
             if block.is_null() {
                 backoff.snooze();
-                head = self.head.index.load(Ordering::Acquire);
+                head = self.head.load_index();
                 block = self.head.block.load(Ordering::Acquire);
                 continue;
             }
 
-            // Try moving the head index forward.
-            match self.head.index.compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => unsafe {
-                    // If we've reached the end of the block, move to the next one.
-                    if offset + 1 == BLOCK_CAP {
-                        let next = (*block).wait_next();
-                        let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
-                        if !(*next).next.load(Ordering::Relaxed).is_null() {
-                            next_index |= HAS_NEXT;
-                        }
+            self.head.set_index(new_head);
 
-                        self.head.block.store(next, Ordering::Release);
-                        self.head.index.store(next_index, Ordering::Release);
+            unsafe {
+                // If we've reached the end of the block, move to the next one.
+                if offset + 1 == BLOCK_CAP {
+                    let next = (*block).wait_next();
+                    let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
+                    if !(*next).next.load(Ordering::Relaxed).is_null() {
+                        next_index |= HAS_NEXT;
                     }
 
-                    // Read the value.
-                    let slot = (*block).slots.get_unchecked(offset);
-                    slot.wait_write();
-                    let value = slot.value.get().read().assume_init();
-
-                    // Destroy the block if we've reached the end, or if another thread wanted to
-                    // destroy but couldn't because we were busy reading from the slot.
-                    if offset + 1 == BLOCK_CAP {
-                        Block::destroy(block, 0);
-                    } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
-                        Block::destroy(block, offset + 1);
-                    }
-
-                    return Some(value);
-                },
-                Err(h) => {
-                    head = h;
-                    block = self.head.block.load(Ordering::Acquire);
-                    backoff.spin();
-                }
-            }
-        }
-    }
-
-    /// Pops a block of elements from the queue.
-    ///
-    /// If the queue is empty, `None` is returned.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
-    ///
-    /// let q = SegQueue::new();
-    ///
-    /// q.push(10);
-    /// q.push(11);
-    /// let mut bulk = q.pop_bulk().unwrap();
-    /// assert_eq!(bulk.pop(), Some(11));
-    /// assert_eq!(bulk.pop(), Some(10));
-    /// assert_eq!(bulk.pop(), None);
-    /// assert_eq!(q.pop_bulk(), None);
-    /// q.push(12);
-    /// q.push(13);
-    /// let mut bulk = q.pop_bulk().unwrap();
-    /// assert_eq!(bulk.pop(), Some(13));
-    /// assert_eq!(bulk.pop(), Some(12));
-    /// assert_eq!(bulk.pop(), None);
-    /// ```
-    pub fn pop_bulk(&self) -> Option<SmallVec<[T; BLOCK_CAP]>> {
-        let backoff = Backoff::new();
-        let mut head = self.head.index.load(Ordering::Acquire);
-        let mut block = self.head.block.load(Ordering::Acquire);
-
-        loop {
-            // Calculate the offset of the index into the block.
-            let offset = (head >> SHIFT) % LAP;
-
-            // If we reached the end of the block, wait until the next one is installed.
-            if offset == BLOCK_CAP {
-                backoff.snooze();
-                head = self.head.index.load(Ordering::Acquire);
-                block = self.head.block.load(Ordering::Acquire);
-                continue;
-            }
-
-            let mut new_head = head + (1 << SHIFT);
-
-            if new_head & HAS_NEXT == 0 {
-                atomic::fence(Ordering::SeqCst);
-                let tail = self.tail.index.load(Ordering::Relaxed);
-
-                // If the tail equals the head, that means the queue is empty.
-                if head >> SHIFT == tail >> SHIFT {
-                    return None;
+                    self.head.set_block(next);
+                    self.head.set_index(next_index);
                 }
 
-                // If head and tail are not in the same block, set `HAS_NEXT` in head.
-                if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
-                    new_head = head | (BLOCK_CAP << SHIFT) | HAS_NEXT;
-                } else {
-                    // take all the elements in the same block
-                    new_head = tail;
+                // Read the value.
+                let slot = (*block).slots.get_unchecked(offset);
+                slot.wait_write();
+                let value = slot.value.get().read().assume_init();
+
+                // Destroy the block if we've reached the end, or if another thread wanted to
+                // destroy but couldn't because we were busy reading from the slot.
+                if offset + 1 == BLOCK_CAP {
+                    Block::destroy(block);
                 }
-            }
 
-            // The block can be null here only if the first push operation is in progress. In that
-            // case, just wait until it gets initialized.
-            if block.is_null() {
-                backoff.snooze();
-                head = self.head.index.load(Ordering::Acquire);
-                block = self.head.block.load(Ordering::Acquire);
-                continue;
-            }
-
-            // Try moving the head index forward.
-            match self.head.index.compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::SeqCst,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => unsafe {
-                    let end = (new_head >> SHIFT) % LAP;
-                    // If we've reached the end of the block, move to the next one.
-                    if end == BLOCK_CAP {
-                        let next = (*block).wait_next();
-                        let mut next_index = (new_head & !HAS_NEXT).wrapping_add(1 << SHIFT);
-                        if !(*next).next.load(Ordering::Relaxed).is_null() {
-                            next_index |= HAS_NEXT;
-                        }
-
-                        self.head.block.store(next, Ordering::Release);
-                        self.head.index.store(next_index, Ordering::Release);
-                    }
-
-                    let value = Block::copy_to_bulk(block, offset, end);
-
-                    // Destroy the block if we've reached the end, or if another thread wanted to
-                    // destroy but couldn't because we were busy reading from the slot.
-                    if end == BLOCK_CAP {
-                        Block::destroy(block, 0);
-                    }
-
-                    return Some(value);
-                },
-                Err(h) => {
-                    head = h;
-                    block = self.head.block.load(Ordering::Acquire);
-                    backoff.spin();
-                }
+                return Some(value);
             }
         }
     }
@@ -502,7 +324,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
+    /// use may_queue::spsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     ///
@@ -521,7 +343,7 @@ impl<T> SegQueue<T> {
     /// # Examples
     ///
     /// ```
-    /// use may::sync::queue::seg_queue::SegQueue;
+    /// use may_queue::spsc_seg_queue::SegQueue;
     ///
     /// let q = SegQueue::new();
     /// assert_eq!(q.len(), 0);
@@ -674,5 +496,83 @@ impl<T> Iterator for IntoIter<T> {
             }
             Some(item)
         }
+    }
+}
+
+#[cfg(all(nightly, test))]
+mod bench {
+    extern crate test;
+    use self::test::Bencher;
+
+    use super::*;
+    use std::sync::Arc;
+    use std::thread;
+
+    use crate::test_queue::ScBlockPop;
+
+    impl<T> ScBlockPop<T> for super::SegQueue<T> {
+        fn block_pop(&self) -> T {
+            let backoff = crossbeam::utils::Backoff::new();
+            loop {
+                match self.pop() {
+                    Some(v) => return v,
+                    None => backoff.snooze(),
+                }
+            }
+        }
+    }
+
+    #[bench]
+    fn bulk_pop_1p1c_bench(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
+
+            let mut size = 0;
+            while size < total_work {
+                assert_eq!(q.block_pop(), size);
+                size += 1;
+            }
+        });
+    }
+
+    #[bench]
+    fn single_thread_test(b: &mut Bencher) {
+        let q = SegQueue::new();
+        let mut i = 0;
+        b.iter(|| {
+            q.push(i);
+            assert_eq!(q.pop(), Some(i));
+            i += 1;
+        });
+    }
+
+    #[bench]
+    fn multi_1p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
+
+            for i in 0..total_work {
+                let v = q.block_pop();
+                assert_eq!(i, v);
+            }
+        });
     }
 }
