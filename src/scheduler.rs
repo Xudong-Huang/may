@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, UnsafeCell};
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
@@ -15,7 +15,7 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
 use may_queue::mpsc_seg_queue::SegQueue;
-use may_queue::tokio_queue::{Local, Steal};
+use may_queue::tokio_queue::{self, Local, Steal};
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -79,17 +79,9 @@ pub fn get_scheduler() -> &'static Scheduler {
     unsafe { &*SCHED }
 }
 
-#[inline]
-fn steal_local<T>(stealer: &Steal<T>, local: &Local<T>) -> Option<T> {
-    match stealer.steal_into(local) {
-        Ok(t) => Some(t),
-        _ => None,
-    }
-}
-
 #[repr(align(128))]
 pub struct Scheduler {
-    local_queues: Vec<Local<CoroutineImpl>>,
+    local_queues: Vec<UnsafeCell<Local<CoroutineImpl>>>,
     stealers: Vec<Steal<CoroutineImpl>>,
     global_queues: Vec<SegQueue<CoroutineImpl>>,
     event_loop: EventLoop,
@@ -99,8 +91,9 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
-        let local_queues = Vec::from_iter((0..workers).map(|_| Local::new()));
-        let stealers = Vec::from_iter(local_queues.iter().map(|l| l.stealer()));
+        let queues = Vec::from_iter((0..workers).map(|_| tokio_queue::local()));
+        let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
+        let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
         let global_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
 
         Box::new(Scheduler {
@@ -115,7 +108,7 @@ impl Scheduler {
 
     #[inline]
     pub fn run_queued_tasks(&self, id: usize) {
-        let local = unsafe { self.local_queues.get_unchecked(id) };
+        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
         let mut next_id = id;
 
@@ -127,7 +120,7 @@ impl Scheduler {
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(self.local_queues.len());
                     let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                    steal_local(stealer, local)
+                    stealer.steal_into(local)
                 })
         };
 
@@ -137,9 +130,7 @@ impl Scheduler {
         if let Some(co) = &cur_co {
             co.prefetch();
         } else {
-            let steal_id = (id + 4).rem_euclid(self.local_queues.len());
-            let stealer = unsafe { self.stealers.get_unchecked(steal_id) };
-            cur_co = match steal_local(stealer, local) {
+            cur_co = match get_co() {
                 Some(co) => {
                     co.prefetch();
                     Some(co)
@@ -185,8 +176,8 @@ impl Scheduler {
     /// called by selector with known id
     #[inline]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
-        let queue = unsafe { self.local_queues.get_unchecked(id) };
-        match queue.push_back(co) {
+        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
+        match local.push_back(co) {
             Ok(()) => {}
             // Err(co) => self.schedule_global(co),
             Err(co) => run_coroutine(co),
@@ -209,7 +200,7 @@ impl Scheduler {
 
     #[inline]
     pub fn collect_global(&self, id: usize) {
-        let local = unsafe { self.local_queues.get_unchecked(id) };
+        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
         let global = unsafe { self.global_queues.get_unchecked(id) };
         while let Some(co) = global.pop() {
             match local.push_back(co) {

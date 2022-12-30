@@ -31,15 +31,81 @@
 //! IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 //! DEALINGS IN THE SOFTWARE.
 
-use std::cell::UnsafeCell;
+//! Run-queue structures to support a work-stealing scheduler
+
 use std::fmt;
-use std::mem::MaybeUninit;
+use std::mem::{self, MaybeUninit};
 use std::ops::Deref;
-use std::sync::{
-    atomic::AtomicU32,
-    atomic::Ordering::{AcqRel, Acquire, Relaxed, Release},
-    Arc,
-};
+use std::ptr;
+use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
+use std::sync::Arc;
+
+#[derive(Debug)]
+pub(crate) struct UnsafeCell<T>(std::cell::UnsafeCell<T>);
+
+impl<T> UnsafeCell<T> {
+    pub(crate) const fn new(data: T) -> UnsafeCell<T> {
+        UnsafeCell(std::cell::UnsafeCell::new(data))
+    }
+
+    pub(crate) fn with<R>(&self, f: impl FnOnce(*const T) -> R) -> R {
+        f(self.0.get())
+    }
+
+    pub(crate) fn with_mut<R>(&self, f: impl FnOnce(*mut T) -> R) -> R {
+        f(self.0.get())
+    }
+}
+
+/// `AtomicU32` providing an additional `unsync_load` function.
+pub(crate) struct AtomicU32 {
+    inner: std::cell::UnsafeCell<std::sync::atomic::AtomicU32>,
+}
+
+unsafe impl Send for AtomicU32 {}
+unsafe impl Sync for AtomicU32 {}
+
+impl AtomicU32 {
+    pub(crate) const fn new(val: u32) -> AtomicU32 {
+        let inner = std::cell::UnsafeCell::new(std::sync::atomic::AtomicU32::new(val));
+        AtomicU32 { inner }
+    }
+
+    /// Performs an unsynchronized load.
+    ///
+    /// # Safety
+    ///
+    /// All mutations must have happened before the unsynchronized load.
+    /// Additionally, there must be no concurrent mutations.
+    pub(crate) unsafe fn unsync_load(&self) -> u32 {
+        core::ptr::read(self.inner.get() as *const u32)
+    }
+}
+
+impl Deref for AtomicU32 {
+    type Target = std::sync::atomic::AtomicU32;
+
+    fn deref(&self) -> &Self::Target {
+        // safety: it is always safe to access `&self` fns on the inner value as
+        // we never perform unsafe mutations.
+        unsafe { &*self.inner.get() }
+    }
+}
+
+impl fmt::Debug for AtomicU32 {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.deref().fmt(fmt)
+    }
+}
+
+// Use wider integers when possible to increase ABA resilience.
+//
+// See issue #5041: <https://github.com/tokio-rs/tokio/issues/5041>.
+
+type UnsignedShort = u32;
+type UnsignedLong = u64;
+type AtomicUnsignedShort = AtomicU32;
+type AtomicUnsignedLong = std::sync::atomic::AtomicU64;
 
 /// Producer handle. May only be used from a single thread.
 pub struct Local<T: 'static> {
@@ -49,56 +115,35 @@ pub struct Local<T: 'static> {
 /// Consumer handle. May be used from many threads.
 pub struct Steal<T: 'static>(Arc<Inner<T>>);
 
-pub struct Inner<T: 'static> {
+pub(crate) struct Inner<T: 'static> {
     /// Concurrently updated by many threads.
     ///
-    /// Contains two `u16` values. The LSB byte is the "real" head of the queue.
-    /// The `u16` in the MSB is set by a stealer in process of stealing values.
-    /// It represents the first value being stolen in the batch. `u16` is used
-    /// in order to distinguish between `head == tail` and `head == tail -
-    /// capacity`.
+    /// Contains two `UnsignedShort` values. The LSB byte is the "real" head of
+    /// the queue. The `UnsignedShort` in the MSB is set by a stealer in process
+    /// of stealing values. It represents the first value being stolen in the
+    /// batch. The `UnsignedShort` indices are intentionally wider than strictly
+    /// required for buffer indexing in order to provide ABA mitigation and make
+    /// it possible to distinguish between full and empty buffers.
     ///
-    /// When both `u16` values are the same, there is no active stealer.
+    /// When both `UnsignedShort` values are the same, there is no active
+    /// stealer.
     ///
     /// Tracking an in-progress stealer prevents a wrapping scenario.
-    head: AtomicU32,
+    head: AtomicUnsignedLong,
 
     /// Only updated by producer thread but read by many threads.
-    tail: AtomicU16,
+    tail: AtomicUnsignedShort,
 
-    /// Tasks.
+    /// Elements
     buffer: Box<[UnsafeCell<MaybeUninit<T>>; LOCAL_QUEUE_CAPACITY]>,
 }
 
-impl<T> Drop for Inner<T> {
-    fn drop(&mut self) {
-        let head = unpack(self.head.load(Relaxed)).0;
-        let tail = self.tail.load(Relaxed);
-
-        let count = tail.wrapping_sub(head);
-
-        for offset in 0..count {
-            let idx = head.wrapping_add(offset) as usize & MASK;
-            drop(unsafe { self.buffer[idx].get().read().assume_init() });
-        }
-    }
-}
+unsafe impl<T> Send for Inner<T> {}
+unsafe impl<T> Sync for Inner<T> {}
 
 const LOCAL_QUEUE_CAPACITY: usize = 1024;
+
 const MASK: usize = LOCAL_QUEUE_CAPACITY - 1;
-
-/// Limit the number of tasks to be stolen in order to match the behavior of
-/// `crossbeam-dequeue`. NOTE: this does not exist in the original tokio queue.
-const MAX_BATCH_SIZE: u16 = 32;
-
-/// Error returned when stealing is unsuccessful.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum StealError {
-    /// The source queue is empty.
-    Empty,
-    /// Another concurrent stealing operation is ongoing.
-    Busy,
-}
 
 // Constructing the fixed size array directly is very awkward. The only way to
 // do it is to repeat `UnsafeCell::new(MaybeUninit::uninit())` 256 times, as
@@ -111,60 +156,79 @@ fn make_fixed_size<T>(buffer: Box<[T]>) -> Box<[T; LOCAL_QUEUE_CAPACITY]> {
     unsafe { Box::from_raw(Box::into_raw(buffer).cast()) }
 }
 
-impl<T> Default for Local<T> {
-    fn default() -> Self {
-        Self::new()
+/// Create a new local run-queue
+pub fn local<T: 'static>() -> (Steal<T>, Local<T>) {
+    let mut buffer = Vec::with_capacity(LOCAL_QUEUE_CAPACITY);
+
+    for _ in 0..LOCAL_QUEUE_CAPACITY {
+        buffer.push(UnsafeCell::new(MaybeUninit::uninit()));
     }
+
+    let inner = Arc::new(Inner {
+        head: AtomicUnsignedLong::new(0),
+        tail: AtomicUnsignedShort::new(0),
+        buffer: make_fixed_size(buffer.into_boxed_slice()),
+    });
+
+    let local = Local {
+        inner: inner.clone(),
+    };
+
+    let remote = Steal(inner);
+
+    (remote, local)
 }
 
 impl<T> Local<T> {
-    /// Creates a new queue and returns a `Local` handle.
-    pub fn new() -> Self {
-        let mut buffer = Vec::with_capacity(LOCAL_QUEUE_CAPACITY);
-
-        for _ in 0..LOCAL_QUEUE_CAPACITY {
-            buffer.push(UnsafeCell::new(MaybeUninit::uninit()));
-        }
-
-        let inner = Arc::new(Inner {
-            head: AtomicU32::new(0),
-            tail: AtomicU16::new(0),
-            buffer: make_fixed_size(buffer.into_boxed_slice()),
-        });
-
-        Local { inner }
+    /// Returns true if the queue has entries that can be stolen.
+    pub fn is_stealable(&self) -> bool {
+        !self.inner.is_empty()
     }
 
-    /// Creates a new `Steal` handle associated to this `Local` handle.
-    pub fn stealer(&self) -> Steal<T> {
-        Steal(self.inner.clone())
+    /// Returns false if there are any entries in the queue
+    ///
+    /// Separate to is_stealable so that refactors of is_stealable to "protect"
+    /// some tasks from stealing won't affect this
+    pub fn has_tasks(&self) -> bool {
+        !self.inner.is_empty()
     }
 
     /// Pushes a task to the back of the local queue, skipping the LIFO slot.
-    pub fn push_back(&self, task: T) -> Result<(), T> {
+    pub fn push_back(&mut self, task: T) -> Result<(), T> {
         let head = self.inner.head.load(Acquire);
-        let steal = unpack(head).0;
+        let (steal, _real) = unpack(head);
 
         // safety: this is the **only** thread that updates this cell.
         let tail = unsafe { self.inner.tail.unsync_load() };
 
-        if tail.wrapping_sub(steal) >= LOCAL_QUEUE_CAPACITY as u16 {
+        if tail.wrapping_sub(steal) >= LOCAL_QUEUE_CAPACITY as UnsignedShort {
+            // Concurrently stealing, this will free up capacity, so only
+            // push the task onto the inject queue
             return Err(task);
         }
 
         // Map the position to a slot index.
         let idx = tail as usize & MASK;
-        unsafe { self.inner.buffer[idx].get().write(MaybeUninit::new(task)) };
+
+        self.inner.buffer[idx].with_mut(|ptr| {
+            // Write the task to the slot
+            //
+            // Safety: There is only one producer and the above `if`
+            // condition ensures we don't touch a cell if there is a
+            // value, thus no consumer.
+            unsafe {
+                ptr::write((*ptr).as_mut_ptr(), task);
+            }
+        });
 
         // Make the task available. Synchronizes with a load in
         // `steal_into2`.
         self.inner.tail.store(tail.wrapping_add(1), Release);
-
         Ok(())
     }
 
     /// Pops a task from the local queue.
-    pub fn pop(&self) -> Option<T> {
+    pub fn pop(&mut self) -> Option<T> {
         let mut head = self.inner.head.load(Acquire);
 
         let idx = loop {
@@ -201,15 +265,17 @@ impl<T> Local<T> {
             }
         };
 
-        Some(unsafe { self.inner.buffer[idx].get().read().assume_init() })
+        Some(self.inner.buffer[idx].with(|ptr| unsafe { ptr::read(ptr).assume_init() }))
     }
 }
 
-unsafe impl<T> Send for Local<T> {}
-
 impl<T> Steal<T> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Steals half the tasks from self and place them into `dst`.
-    pub fn steal_into(&self, dst: &Local<T>) -> Result<T, StealError> {
+    pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
         // Safety: the caller is the only thread that mutates `dst.tail` and
         // holds a mutable reference.
         let dst_tail = unsafe { dst.inner.tail.unsync_load() };
@@ -219,31 +285,45 @@ impl<T> Steal<T> {
         // from `dst` there may not be enough capacity to steal.
         let (steal, _) = unpack(dst.inner.head.load(Acquire));
 
-        let dest_free_capacity = dst_tail.wrapping_sub(steal);
+        if dst_tail.wrapping_sub(steal) > LOCAL_QUEUE_CAPACITY as UnsignedShort / 2 {
+            // we *could* try to steal less here, but for simplicity, we're just
+            // going to abort.
+            return None;
+        }
 
         // Steal the tasks into `dst`'s buffer. This does not yet expose the
-        // tasks in `dst`. NOTE: the original tokio queue behavior has been
-        // modified to impose a limit on the maximum number of tasks to steal.
-        let (ret, mut n) =
-            self.steal_into2(dst, dst_tail, (dest_free_capacity + 1).min(MAX_BATCH_SIZE))?;
+        // tasks in `dst`.
+        let mut n = self.steal_into2(dst, dst_tail);
+
+        if n == 0 {
+            // No tasks were stolen
+            return None;
+        }
 
         // We are returning a task here
         n -= 1;
 
-        // Make the stolen tasks available to consumers
+        let ret_pos = dst_tail.wrapping_add(n);
+        let ret_idx = ret_pos as usize & MASK;
+
+        // safety: the value was written as part of `steal_into2` and not
+        // exposed to stealers, so no other thread can access it.
+        let ret = dst.inner.buffer[ret_idx].with(|ptr| unsafe { ptr::read((*ptr).as_ptr()) });
+
+        if n == 0 {
+            // The `dst` queue is empty, but a single task was stolen
+            return Some(ret);
+        }
+
+        // Make the stolen items available to consumers
         dst.inner.tail.store(dst_tail.wrapping_add(n), Release);
 
-        Ok(ret)
+        Some(ret)
     }
 
     // Steal tasks from `self`, placing them into `dst`. Returns the number of
     // tasks that were stolen.
-    fn steal_into2(
-        &self,
-        dst: &Local<T>,
-        dst_tail: u16,
-        max_tasks: u16,
-    ) -> Result<(T, u16), StealError> {
+    fn steal_into2(&self, dst: &mut Local<T>, dst_tail: UnsignedShort) -> UnsignedShort {
         let mut prev_packed = self.0.head.load(Acquire);
         let mut next_packed;
 
@@ -254,17 +334,16 @@ impl<T> Steal<T> {
             // If these two do not match, another thread is concurrently
             // stealing from the queue.
             if src_head_steal != src_head_real {
-                return Err(StealError::Busy);
+                return 0;
             }
 
             // Number of available tasks to steal
             let n = src_tail.wrapping_sub(src_head_real);
-
-            let n = (n - n / 2).min(max_tasks);
+            let n = n - n / 2;
 
             if n == 0 {
                 // No tasks available to steal
-                return Err(StealError::Empty);
+                return 0;
             }
 
             // Update the real head index to acquire the tasks.
@@ -286,12 +365,16 @@ impl<T> Steal<T> {
             }
         };
 
-        assert!(n <= LOCAL_QUEUE_CAPACITY as u16 / 2, "actual = {}", n);
+        assert!(
+            n <= LOCAL_QUEUE_CAPACITY as UnsignedShort / 2,
+            "actual = {}",
+            n
+        );
 
         let (first, _) = unpack(next_packed);
 
-        // Move all the tasks but the last one
-        for i in 0..(n - 1) {
+        // Take all the tasks
+        for i in 0..n {
             // Compute the positions
             let src_pos = first.wrapping_add(i);
             let dst_pos = dst_tail.wrapping_add(i);
@@ -303,22 +386,15 @@ impl<T> Steal<T> {
             // Read the task
             //
             // safety: We acquired the task with the atomic exchange above.
-            let task = unsafe { self.0.buffer[src_idx].get().read().assume_init() };
+            let task = self.0.buffer[src_idx].with(|ptr| unsafe { ptr::read((*ptr).as_ptr()) });
 
             // Write the task to the new slot
             //
             // safety: `dst` queue is empty and we are the only producer to
             // this queue.
-            unsafe {
-                dst.inner.buffer[dst_idx]
-                    .get()
-                    .write(MaybeUninit::new(task))
-            };
+            dst.inner.buffer[dst_idx]
+                .with_mut(|ptr| unsafe { ptr::write((*ptr).as_mut_ptr(), task) });
         }
-
-        // Take the last task
-        let src_idx = first.wrapping_add(n - 1) as usize & MASK;
-        let ret = unsafe { self.0.buffer[src_idx].get().read().assume_init() };
 
         let mut prev_packed = next_packed;
 
@@ -334,7 +410,7 @@ impl<T> Steal<T> {
                 .compare_exchange(prev_packed, next_packed, AcqRel, Acquire);
 
             match res {
-                Ok(_) => return Ok((ret, n)),
+                Ok(_) => return n,
                 Err(actual) => {
                     let (actual_steal, actual_real) = unpack(actual);
 
@@ -345,10 +421,11 @@ impl<T> Steal<T> {
             }
         }
     }
-}
 
-unsafe impl<T> Send for Steal<T> {}
-unsafe impl<T> Sync for Steal<T> {}
+    pub fn len(&self) -> usize {
+        self.0.len() as _
+    }
+}
 
 impl<T> Clone for Steal<T> {
     fn clone(&self) -> Steal<T> {
@@ -356,62 +433,42 @@ impl<T> Clone for Steal<T> {
     }
 }
 
+impl<T> Drop for Local<T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.pop().is_none(), "queue not empty");
+        }
+    }
+}
+
+impl<T> Inner<T> {
+    fn len(&self) -> UnsignedShort {
+        let (_, head) = unpack(self.head.load(Acquire));
+        let tail = self.tail.load(Acquire);
+
+        tail.wrapping_sub(head)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 /// Split the head value into the real head and the index a stealer is working
 /// on.
-fn unpack(n: u32) -> (u16, u16) {
-    let real = n & u16::MAX as u32;
-    let steal = n >> 16;
+fn unpack(n: UnsignedLong) -> (UnsignedShort, UnsignedShort) {
+    let real = n & UnsignedShort::MAX as UnsignedLong;
+    let steal = n >> (mem::size_of::<UnsignedShort>() * 8);
 
-    (steal as u16, real as u16)
+    (steal as UnsignedShort, real as UnsignedShort)
 }
 
 /// Join the two head values
-fn pack(steal: u16, real: u16) -> u32 {
-    (real as u32) | ((steal as u32) << 16)
+fn pack(steal: UnsignedShort, real: UnsignedShort) -> UnsignedLong {
+    (real as UnsignedLong) | ((steal as UnsignedLong) << (mem::size_of::<UnsignedShort>() * 8))
 }
 
 #[test]
 fn test_local_queue_capacity() {
     assert!(LOCAL_QUEUE_CAPACITY - 1 <= u16::MAX as usize);
-}
-
-/// `AtomicU16` providing an additional `load_unsync` function.
-pub(crate) struct AtomicU16 {
-    inner: UnsafeCell<std::sync::atomic::AtomicU16>,
-}
-
-unsafe impl Send for AtomicU16 {}
-unsafe impl Sync for AtomicU16 {}
-
-impl AtomicU16 {
-    pub(crate) const fn new(val: u16) -> AtomicU16 {
-        let inner = UnsafeCell::new(std::sync::atomic::AtomicU16::new(val));
-        AtomicU16 { inner }
-    }
-
-    /// Performs an unsynchronized load.
-    ///
-    /// # Safety
-    ///
-    /// All mutations must have happened before the unsynchronized load.
-    /// Additionally, there must be no concurrent mutations.
-    pub(crate) unsafe fn unsync_load(&self) -> u16 {
-        *(*self.inner.get()).get_mut()
-    }
-}
-
-impl Deref for AtomicU16 {
-    type Target = std::sync::atomic::AtomicU16;
-
-    fn deref(&self) -> &Self::Target {
-        // safety: it is always safe to access `&self` fns on the inner value as
-        // we never perform unsafe mutations.
-        unsafe { &*self.inner.get() }
-    }
-}
-
-impl fmt::Debug for AtomicU16 {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.deref().fmt(fmt)
-    }
 }
