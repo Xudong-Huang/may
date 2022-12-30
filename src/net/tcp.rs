@@ -457,7 +457,7 @@ impl AsRawFd for TcpStream {
 impl FromRawFd for TcpStream {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpStream {
         TcpStream::new(FromRawFd::from_raw_fd(fd))
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpStream, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpStream, err = {e:?}"))
     }
 }
 
@@ -481,7 +481,7 @@ impl FromRawFd for TcpListener {
     unsafe fn from_raw_fd(fd: RawFd) -> TcpListener {
         let s: net::TcpListener = FromRawFd::from_raw_fd(fd);
         TcpListener::new(s)
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {e:?}"))
     }
 }
 

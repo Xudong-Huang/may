@@ -367,8 +367,7 @@ impl<T> Steal<T> {
 
         assert!(
             n <= LOCAL_QUEUE_CAPACITY as UnsignedShort / 2,
-            "actual = {}",
-            n
+            "actual = {n}"
         );
 
         let (first, _) = unpack(next_packed);

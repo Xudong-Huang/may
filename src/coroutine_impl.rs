@@ -65,15 +65,12 @@ impl Done {
         // recycle the coroutine
         let (size, used) = co.stack_usage();
         if used == size {
-            eprintln!("stack overflow detected, size={}", size);
+            eprintln!("stack overflow detected, size={size}");
             ::std::process::exit(1);
         }
         // show the actual used stack size in debug log
         if local.get_co().stack_size() & 1 == 1 {
-            println!(
-                "coroutine name = {:?}, stack size = {},  used size = {}",
-                name, size, used
-            );
+            println!("coroutine name = {name:?}, stack size = {size},  used size = {used}");
         }
 
         if size == config().get_stack_size() {

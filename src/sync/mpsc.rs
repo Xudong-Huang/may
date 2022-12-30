@@ -98,7 +98,7 @@ impl<T> InnerQueue<T> {
                 .map(|w| w.unpark())
                 .unwrap_or(()),
             n if n > 1 => {}
-            n => panic!("bad number of channels left {}", n),
+            n => panic!("bad number of channels left {n}"),
         }
     }
 

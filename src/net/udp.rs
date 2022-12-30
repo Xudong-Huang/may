@@ -304,7 +304,7 @@ impl AsRawFd for UdpSocket {
 impl FromRawFd for UdpSocket {
     unsafe fn from_raw_fd(fd: RawFd) -> UdpSocket {
         UdpSocket::new(FromRawFd::from_raw_fd(fd))
-            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {e:?}"))
     }
 }
 

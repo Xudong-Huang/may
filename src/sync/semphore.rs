@@ -165,7 +165,7 @@ impl Semphore {
 impl fmt::Debug for Semphore {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cnt = self.cnt.load(Ordering::SeqCst);
-        write!(f, "Semphore {{ cnt: {} }}", cnt)
+        f.debug_struct("Semphore").field("cnt", &cnt).finish()
     }
 }
 

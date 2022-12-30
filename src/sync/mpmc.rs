@@ -103,7 +103,7 @@ impl<T> InnerQueue<T> {
                 }
             }
             n if n > 1 => {}
-            n => panic!("bad number of tx_ports left {}", n),
+            n => panic!("bad number of tx_ports left {n}"),
         }
     }
 
@@ -118,7 +118,7 @@ impl<T> InnerQueue<T> {
                 while self.queue.pop().is_some() {}
             }
             n if n > 1 => {}
-            n => panic!("bad number of rx_ports left {}", n),
+            n => panic!("bad number of rx_ports left {n}"),
         }
     }
 }
