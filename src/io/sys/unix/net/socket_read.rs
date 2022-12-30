@@ -79,7 +79,7 @@ impl<'a> EventSource for SocketRead<'a> {
         // after register the coroutine, it's possible that other thread run it immediately
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here
-        io_data.co.swap(co, Ordering::Release);
+        io_data.co.swap(co);
         // till here the io may be done in other thread
 
         // there is event, re-run the coroutine

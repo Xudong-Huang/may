@@ -66,7 +66,7 @@ fn co_io_result(is_coroutine: bool) -> io::Result<()> {
             Some(err) => Err(err),
         }
     } else {
-        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
+        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take());
         match err {
             None => Ok(()),
             Some(err) => Err(*err),
@@ -90,7 +90,7 @@ fn timeout_handler(data: TimerData) {
     event_data.timer.borrow_mut().take();
 
     // get and check the coroutine
-    let mut co = match event_data.co.take(Ordering::Relaxed) {
+    let mut co = match event_data.co.take() {
         Some(co) => co,
         None => return,
     };
@@ -146,7 +146,7 @@ impl EventData {
     #[inline]
     pub fn schedule(&self) {
         info!("event schedule");
-        let co = match self.co.take(Ordering::Acquire) {
+        let co = match self.co.take() {
             None => return, // it's already take by selector
             Some(co) => co,
         };

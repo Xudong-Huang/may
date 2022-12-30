@@ -132,7 +132,7 @@ impl Selector {
             data.io_flag.store(true, Ordering::Release);
 
             // first check the atomic co, this may be grab by the worker first
-            let co = match data.co.take(Ordering::Acquire) {
+            let co = match data.co.take() {
                 Some(co) => co,
                 None => continue,
             };

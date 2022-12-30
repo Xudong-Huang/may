@@ -39,7 +39,7 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        if let Some(w) = self.to_wake.take(Ordering::Acquire) {
+        if let Some(w) = self.to_wake.take() {
             w.unpark();
         }
         Ok(())
@@ -53,7 +53,7 @@ impl<T> InnerQueue<T> {
 
         let cur = Blocker::current();
         // register the waiter
-        self.to_wake.swap(cur.clone(), Ordering::Release);
+        self.to_wake.swap(cur.clone());
         // re-check the queue
         match self.try_recv() {
             Err(TryRecvError::Empty) => {
@@ -61,7 +61,7 @@ impl<T> InnerQueue<T> {
             }
             data => {
                 // no need to park, contention with send
-                self.to_wake.take(Ordering::Acquire);
+                self.to_wake.take();
                 return data;
             }
         }
@@ -90,11 +90,7 @@ impl<T> InnerQueue<T> {
 
     pub fn drop_chan(&self) {
         match self.channels.fetch_sub(1, Ordering::AcqRel) {
-            1 => self
-                .to_wake
-                .take(Ordering::Relaxed)
-                .map(|w| w.unpark())
-                .unwrap_or(()),
+            1 => self.to_wake.take().map(|w| w.unpark()).unwrap_or(()),
             n if n > 1 => {}
             n => panic!("bad number of channels left {n}"),
         }

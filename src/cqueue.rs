@@ -120,7 +120,7 @@ impl<'a> EventSource for EventSender<'a> {
             kind: EventKind::Normal,
             co: Some(co),
         });
-        if let Some(w) = self.cqueue.to_wake.take(Ordering::Acquire) {
+        if let Some(w) = self.cqueue.to_wake.take() {
             w.unpark();
         }
     }
@@ -141,7 +141,7 @@ impl<'a> Drop for EventSender<'a> {
             co: None,
         });
         self.cqueue.cnt.fetch_sub(1, Ordering::Relaxed);
-        if let Some(w) = self.cqueue.to_wake.take(Ordering::Acquire) {
+        if let Some(w) = self.cqueue.to_wake.take() {
             w.unpark();
         }
     }
@@ -253,14 +253,14 @@ impl Cqueue {
 
             let cur = Blocker::current();
             // register the waiter
-            self.to_wake.swap(cur.clone(), Ordering::Release);
+            self.to_wake.swap(cur.clone());
             // re-check the queue
             match self.ev_queue.pop() {
                 None => {
                     cur.park(timeout).ok();
                 }
                 Some(mut ev) => {
-                    self.to_wake.take(Ordering::Relaxed);
+                    self.to_wake.take();
                     run_ev!(ev);
                 }
             }

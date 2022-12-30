@@ -44,7 +44,7 @@ fn init_scheduler() {
         // timer function
         let timer_event_handler = |c: Arc<AtomicOption<CoroutineImpl>>| {
             // just re-push the co to the visit list
-            if let Some(mut co) = c.take(Ordering::Relaxed) {
+            if let Some(mut co) = c.take() {
                 // set the timeout result for the coroutine
                 set_co_para(&mut co, io::Error::new(io::ErrorKind::TimedOut, "timeout"));
                 // s.schedule_global(c);

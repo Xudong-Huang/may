@@ -1,7 +1,6 @@
 //! we are using a thread local proxy coroutine to send the io request
 //!
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::coroutine::spawn;
@@ -24,7 +23,7 @@ thread_local! {
             while let Ok(es) = rx.recv() {
                 co_yield_with(es);
                 if let Some(r) = co_get_yield::<EventResult>() {
-                    io_ret.swap(Box::new(r), Ordering::Relaxed);
+                    io_ret.swap(Box::new(r));
                 }
                 // wake up the master thread
                 parker.unpark();

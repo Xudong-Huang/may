@@ -40,7 +40,7 @@ impl Join {
 
     pub fn trigger(&self) {
         self.state.store(false, Ordering::Release);
-        if let Some(w) = self.to_wake.take(Ordering::Acquire) {
+        if let Some(w) = self.to_wake.take() {
             w.unpark();
         }
     }
@@ -49,13 +49,13 @@ impl Join {
         if self.state.load(Ordering::Acquire) {
             let cur = Blocker::current();
             // register the blocker first
-            self.to_wake.swap(cur.clone(), Ordering::Release);
+            self.to_wake.swap(cur.clone());
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
                 cur.park(None).ok();
             } else {
-                self.to_wake.take(Ordering::Acquire);
+                self.to_wake.take();
             }
         }
     }

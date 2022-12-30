@@ -65,7 +65,7 @@ impl<'a> EventSource for UnixListenerAccept<'a> {
         let io_data = self.io_data;
 
         // if there is no timer we don't need to call add_io_timer
-        io_data.co.swap(co, Ordering::Release);
+        io_data.co.swap(co);
 
         // there is event happened
         if io_data.io_flag.load(Ordering::Acquire) {
