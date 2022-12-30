@@ -20,7 +20,6 @@ pub mod net;
 mod pipe;
 
 use std::os::windows::io::AsRawSocket;
-use std::sync::atomic::Ordering;
 use std::{fmt, io};
 
 use super::thread::ASSOCIATED_IO_RET;
@@ -67,7 +66,7 @@ fn co_io_result(io: &EventData, is_coroutine: bool) -> io::Result<usize> {
             Some(err) => Err(err),
         }
     } else {
-        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take(Ordering::Relaxed));
+        let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take());
         match err {
             None => Ok(io.get_io_size()),
             Some(err) => Err(*err),
