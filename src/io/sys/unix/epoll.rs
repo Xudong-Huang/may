@@ -122,7 +122,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                while read(single_selector.evfd, &mut buf).is_ok() {}
+                read(single_selector.evfd, &mut buf).ok();
                 // info!("got wakeup event in select, id={}", id);
                 scheduler.collect_global(id);
                 continue;
