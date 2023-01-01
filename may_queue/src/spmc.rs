@@ -5,6 +5,7 @@ use crate::atomic::{AtomicPtr, AtomicUsize};
 use crate::block_node::*;
 
 use crossbeam::utils::CachePadded;
+use smallvec::SmallVec;
 
 /// A position in a queue.
 #[derive(Debug)]
@@ -77,7 +78,7 @@ impl<T> Queue<T> {
         let backoff = crossbeam::utils::Backoff::new();
         let mut index = self.head.index.load(Ordering::Acquire);
         // this is use for local pop, we can sure that push_index is not changed
-        let push_index = unsafe { self.tail.index.unsync_load() };
+        let push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
             if index == push_index {
@@ -119,6 +120,62 @@ impl<T> Queue<T> {
                         let _unused_block = unsafe { Box::from_raw(head) };
                     }
                     return Some(v);
+                }
+                Err(i) => {
+                    index = i;
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// pop from the queue, if it's empty return None
+    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+        let backoff = crossbeam::utils::Backoff::new();
+        let mut index = self.head.index.load(Ordering::Acquire);
+        let push_index = self.tail.index.load(Ordering::Acquire);
+
+        loop {
+            if index == push_index {
+                return None;
+            }
+
+            // let new_index = index.wrapping_add(1);
+            // only pop within a block
+            let end = bulk_end(index, push_index);
+            // commit the pop
+            match self
+                .head
+                .index
+                .compare_exchange(index, end, Ordering::AcqRel, Ordering::Acquire)
+            {
+                Ok(_) => {
+                    let head = loop {
+                        let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
+                        // we have to check the block is the correct one
+                        let start = head.start;
+                        if start == index & !BLOCK_MASK {
+                            break head;
+                        } else {
+                            // let used = head.used.load(Ordering::Relaxed);
+                            // println!("xxxxxxxxxx, index={index}, start={start}, used={used:x}");
+                            backoff.snooze();
+                        }
+                    };
+
+                    // get the data
+                    let value = BlockNode::copy_to_bulk(head, index, end);
+
+                    // free the slot
+                    if head.mark_slots_read(index, end) {
+                        let new_head = head.next.load(Ordering::Acquire);
+                        assert!(!new_head.is_null());
+                        // there may be other thread is using the old head, so we can't change it
+                        self.head.block.store(new_head, Ordering::Release);
+                        // we need to free the old head if it's get empty
+                        let _unused_block = unsafe { Box::from_raw(head) };
+                    }
+                    return Some(value);
                 }
                 Err(i) => {
                     index = i;
@@ -298,6 +355,39 @@ mod bench {
                 }
             });
             assert!(q.is_empty());
+        });
+    }
+
+    #[bench]
+    fn bulk_1p2c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(Queue::new());
+            let total_work: usize = 1000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            for i in 0..total_work {
+                q.push(i);
+            }
+
+            let total = Arc::new(AtomicUsize::new(0));
+
+            thread::scope(|s| {
+                let threads = 20;
+                for _ in 0..threads {
+                    let q = q.clone();
+                    let total = total.clone();
+                    s.spawn(move || {
+                        while !q.is_empty() {
+                            let v = q.bulk_pop();
+                            if let Some(v) = v {
+                                total.fetch_add(v.len(), Ordering::AcqRel);
+                            }
+                        }
+                    });
+                }
+            });
+            assert!(q.is_empty());
+            assert_eq!(total.load(Ordering::Acquire), total_work);
         });
     }
 }

@@ -86,6 +86,19 @@ impl<T> BlockNode<T> {
         let old = self.used.fetch_or(mask, Ordering::AcqRel);
         (old | mask) == (1 << BLOCK_SIZE) - 1
     }
+
+    /// make a range slots read
+    /// if all slots read, then we can safely free the block
+    /// when return true, we can free the block safely
+    #[inline]
+    pub fn mark_slots_read(&self, index: usize, end: usize) -> bool {
+        let mut mask = 0;
+        for i in index..end {
+            mask |= 1 << (i & BLOCK_MASK);
+        }
+        let old = self.used.fetch_or(mask, Ordering::AcqRel);
+        (old | mask) == (1 << BLOCK_SIZE) - 1
+    }
 }
 
 impl<T> BlockNode<T> {
