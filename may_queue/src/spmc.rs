@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};
 use crate::block_node::*;
@@ -79,6 +80,62 @@ impl<T> Queue<T> {
         let mut index = self.head.index.load(Ordering::Acquire);
         // this is use for local pop, we can sure that push_index is not changed
         let push_index = self.tail.index.load(Ordering::Acquire);
+
+        loop {
+            if index == push_index {
+                return None;
+            }
+
+            let new_index = index.wrapping_add(1);
+            // commit the pop
+            match self.head.index.compare_exchange(
+                index,
+                new_index,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    let head = loop {
+                        let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
+                        // we have to check the block is the correct one
+                        let start = head.start;
+                        if start == index & !BLOCK_MASK {
+                            break head;
+                        } else {
+                            // let used = head.used.load(Ordering::Relaxed);
+                            // println!("xxxxxxxxxx, index={index}, start={start}, used={used:x}");
+                            backoff.snooze();
+                        }
+                    };
+
+                    // get the data
+                    let v = head.get(index);
+
+                    // free the slot
+                    if head.mark_slot_read(index) {
+                        let new_head = head.next.load(Ordering::Acquire);
+                        assert!(!new_head.is_null());
+                        // there may be other thread is using the old head, so we can't change it
+                        self.head.block.store(new_head, Ordering::Release);
+                        // we need to free the old head if it's get empty
+                        let _unused_block = unsafe { Box::from_raw(head) };
+                    }
+                    return Some(v);
+                }
+                Err(i) => {
+                    index = i;
+                    continue;
+                }
+            }
+        }
+    }
+
+    /// pop from the queue, if it's empty return None
+    fn local_pop(&self) -> Option<T> {
+        let backoff = crossbeam::utils::Backoff::new();
+        let mut index = self.head.index.load(Ordering::Acquire);
+        // this is use for local pop, we can sure that push_index is not changed
+        let push_index = unsafe { self.tail.index.unsync_load() };
 
         loop {
             if index == push_index {
@@ -221,6 +278,86 @@ impl<T> Drop for Queue<T> {
 
         unsafe {
             let _unused_block = Box::from_raw(head);
+        }
+    }
+}
+
+/// Create a new local run-queue
+pub fn local<T: 'static>() -> (Steal<T>, Local<T>) {
+    let inner = Arc::new(Queue::new());
+
+    let local = Local {
+        inner: inner.clone(),
+    };
+
+    let remote = Steal(inner);
+
+    (remote, local)
+}
+
+/// Producer handle. May only be used from a single thread.
+pub struct Local<T: 'static> {
+    inner: Arc<Queue<T>>,
+}
+
+/// Consumer handle. May be used from many threads.
+pub struct Steal<T: 'static>(Arc<Queue<T>>);
+
+impl<T> Local<T> {
+    /// Returns true if the queue has entries that can be stolen.
+    pub fn is_stealable(&self) -> bool {
+        !self.inner.is_empty()
+    }
+
+    /// Returns false if there are any entries in the queue
+    ///
+    /// Separate to is_stealable so that refactors of is_stealable to "protect"
+    /// some tasks from stealing won't affect this
+    pub fn has_tasks(&self) -> bool {
+        !self.inner.is_empty()
+    }
+
+    /// Pushes a task to the back of the local queue, skipping the LIFO slot.
+    pub fn push_back(&mut self, task: T) {
+        self.inner.push(task)
+    }
+
+    /// Pops a task from the local queue.
+    pub fn pop(&mut self) -> Option<T> {
+        self.inner.local_pop()
+    }
+}
+
+impl<T> Steal<T> {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Steals half the tasks from self and place them into `dst`.
+    pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
+        let mut v = self.0.bulk_pop()?;
+        let len = v.len() - 1;
+        for t in v.drain(0..len) {
+            dst.push_back(t);
+        }
+        v.into_iter().next()
+    }
+}
+
+impl<T> Clone for Steal<T> {
+    fn clone(&self) -> Steal<T> {
+        Steal(self.0.clone())
+    }
+}
+
+impl<T> Drop for Local<T> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            assert!(self.pop().is_none(), "queue not empty");
         }
     }
 }
