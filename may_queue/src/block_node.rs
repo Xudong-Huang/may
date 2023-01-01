@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::cmp;
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::atomic::AtomicPtr;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use smallvec::SmallVec;
 
@@ -29,8 +29,10 @@ impl<T> Slot<T> {
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
 pub struct BlockNode<T> {
-    pub next: AtomicPtr<BlockNode<T>>,
     data: [Slot<T>; BLOCK_SIZE],
+    pub next: AtomicPtr<BlockNode<T>>,
+    pub start: usize, // start index of the block
+    pub used: AtomicUsize,
 }
 
 /// we don't implement the block node Drop trait
@@ -38,10 +40,13 @@ pub struct BlockNode<T> {
 /// and would call its get() method for the dropping
 impl<T> BlockNode<T> {
     /// create a new BlockNode with uninitialized data
-    pub fn new() -> *mut BlockNode<T> {
+    #[inline]
+    pub fn new(index: usize) -> *mut BlockNode<T> {
         Box::into_raw(Box::new(BlockNode {
             next: AtomicPtr::new(ptr::null_mut()),
+            used: AtomicUsize::new(0),
             data: [Slot::UNINIT; BLOCK_SIZE],
+            start: index & !BLOCK_MASK,
         }))
     }
 
@@ -70,6 +75,16 @@ impl<T> BlockNode<T> {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
             data.value.get().read().assume_init()
         }
+    }
+
+    /// make a slot read
+    /// if all slots read, then we can safely free the block
+    /// when return true, we can free the block safely
+    #[inline]
+    pub fn mark_slot_read(&self, index: usize) -> bool {
+        let mask = 1 << (index & BLOCK_MASK);
+        let old = self.used.fetch_or(mask, Ordering::AcqRel);
+        (old | mask) == (1 << BLOCK_SIZE) - 1
     }
 }
 
@@ -109,7 +124,7 @@ mod tests {
 
     #[test]
     fn block_node_sanity() {
-        let b = unsafe { &*BlockNode::<Box<usize>>::new() };
+        let b = unsafe { &*BlockNode::<Box<usize>>::new(0) };
         for i in 0..BLOCK_SIZE {
             b.set(i, Box::new(i));
             // assert_eq!(i, *b[i]);

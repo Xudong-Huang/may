@@ -1,9 +1,7 @@
-use std::cell::UnsafeCell;
-use std::fmt;
 use std::marker::PhantomData;
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 
+use crate::atomic::{AtomicPtr, AtomicUsize};
 use crate::block_node::*;
 
 use crossbeam::utils::CachePadded;
@@ -48,7 +46,7 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 impl<T> Queue<T> {
     /// create a spsc queue
     pub fn new() -> Self {
-        let init_block = BlockNode::<T>::new();
+        let init_block = BlockNode::<T>::new(0);
         Queue {
             head: Position::new(init_block).into(),
             tail: Position::new(init_block).into(),
@@ -66,7 +64,7 @@ impl<T> Queue<T> {
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
-            let new_tail = BlockNode::new();
+            let new_tail = BlockNode::new(new_index);
             tail.next.store(new_tail, Ordering::Release);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
@@ -235,7 +233,6 @@ mod bench {
     use self::test::Bencher;
 
     use super::*;
-    use std::sync::mpsc::channel;
     use std::sync::Arc;
     use std::thread;
 
@@ -320,107 +317,5 @@ mod bench {
                 assert_eq!(i, v);
             }
         });
-    }
-
-    // #[bench]
-    // the channel bench result show that it's 10 fold slow than our queue
-    // not to mention the multi core contention
-    #[allow(dead_code)]
-    fn sys_stream_test(b: &mut Bencher) {
-        b.iter(|| {
-            let (tx, rx) = channel();
-            let total_work: usize = 1000_000;
-            // create worker threads that generate mono increasing index
-            // in other thread the value should be still 100
-            thread::spawn(move || {
-                for i in 0..total_work {
-                    tx.send(i).unwrap();
-                }
-            });
-
-            for i in 0..total_work {
-                assert_eq!(i, rx.recv().unwrap());
-            }
-        });
-    }
-}
-
-pub(crate) struct AtomicUsize {
-    inner: UnsafeCell<std::sync::atomic::AtomicUsize>,
-}
-
-unsafe impl Send for AtomicUsize {}
-unsafe impl Sync for AtomicUsize {}
-
-impl AtomicUsize {
-    pub(crate) const fn new(val: usize) -> AtomicUsize {
-        let inner = UnsafeCell::new(std::sync::atomic::AtomicUsize::new(val));
-        AtomicUsize { inner }
-    }
-
-    /// Performs an unsynchronized load.
-    ///
-    /// # Safety
-    ///
-    /// All mutations must have happened before the unsynchronized load.
-    /// Additionally, there must be no concurrent mutations.
-    pub(crate) unsafe fn unsync_load(&self) -> usize {
-        *(*self.inner.get()).get_mut()
-    }
-}
-
-impl Deref for AtomicUsize {
-    type Target = std::sync::atomic::AtomicUsize;
-
-    fn deref(&self) -> &Self::Target {
-        // safety: it is always safe to access `&self` fns on the inner value as
-        // we never perform unsafe mutations.
-        unsafe { &*self.inner.get() }
-    }
-}
-
-impl fmt::Debug for AtomicUsize {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.deref().fmt(fmt)
-    }
-}
-
-pub(crate) struct AtomicPtr<T> {
-    inner: UnsafeCell<std::sync::atomic::AtomicPtr<T>>,
-}
-
-unsafe impl<T> Send for AtomicPtr<T> {}
-unsafe impl<T> Sync for AtomicPtr<T> {}
-
-impl<T> AtomicPtr<T> {
-    pub(crate) const fn new(val: *mut T) -> AtomicPtr<T> {
-        let inner = UnsafeCell::new(std::sync::atomic::AtomicPtr::new(val));
-        AtomicPtr { inner }
-    }
-
-    /// Performs an unsynchronized load.
-    ///
-    /// # Safety
-    ///
-    /// All mutations must have happened before the unsynchronized load.
-    /// Additionally, there must be no concurrent mutations.
-    pub(crate) unsafe fn unsync_load(&self) -> *mut T {
-        *(*self.inner.get()).get_mut()
-    }
-}
-
-impl<T> Deref for AtomicPtr<T> {
-    type Target = std::sync::atomic::AtomicPtr<T>;
-
-    fn deref(&self) -> &Self::Target {
-        // safety: it is always safe to access `&self` fns on the inner value as
-        // we never perform unsafe mutations.
-        unsafe { &*self.inner.get() }
-    }
-}
-
-impl<T> fmt::Debug for AtomicPtr<T> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.deref().fmt(fmt)
     }
 }
