@@ -82,7 +82,7 @@ impl<T> Queue<T> {
         let push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
-            if index == push_index {
+            if index >= push_index {
                 return None;
             }
 
@@ -138,7 +138,7 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
 
         loop {
-            if index == push_index {
+            if index >= push_index {
                 return None;
             }
 
@@ -193,7 +193,7 @@ impl<T> Queue<T> {
         let push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
-            if index == push_index {
+            if index >= push_index {
                 return None;
             }
 
@@ -214,8 +214,6 @@ impl<T> Queue<T> {
                         if start == index & !BLOCK_MASK {
                             break head;
                         } else {
-                            // let used = head.used.load(Ordering::Relaxed);
-                            // println!("xxxxxxxxxx, index={index}, start={start}, used={used:x}");
                             backoff.snooze();
                         }
                     };
@@ -340,11 +338,11 @@ impl<T> Steal<T> {
     /// Steals half the tasks from self and place them into `dst`.
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
         let mut v = self.0.bulk_pop()?;
-        let len = v.len() - 1;
-        for t in v.drain(0..len) {
+        let ret = v.pop();
+        for t in v {
             dst.push_back(t);
         }
-        v.into_iter().next()
+        ret
     }
 }
 

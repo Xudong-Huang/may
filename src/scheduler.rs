@@ -15,7 +15,8 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
 use may_queue::mpsc_seg_queue::SegQueue;
-use may_queue::tokio_queue::{self, Local, Steal};
+// use may_queue::tokio_queue::{self, Local, Steal};
+use may_queue::spmc::{self, Local, Steal};
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -91,7 +92,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
-        let queues = Vec::from_iter((0..workers).map(|_| tokio_queue::local()));
+        let queues = Vec::from_iter((0..workers).map(|_| spmc::local()));
         let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
         let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
         let global_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
@@ -177,11 +178,7 @@ impl Scheduler {
     #[inline]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
-        match local.push_back(co) {
-            Ok(()) => {}
-            // Err(co) => self.schedule_global(co),
-            Err(co) => run_coroutine(co),
-        }
+        local.push_back(co);
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -203,16 +200,7 @@ impl Scheduler {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
         let global = unsafe { self.global_queues.get_unchecked(id) };
         while let Some(co) = global.pop() {
-            match local.push_back(co) {
-                Ok(()) => {}
-                Err(co) => {
-                    run_coroutine(co);
-                    // self.schedule_global(co);
-                    // wake up self again in future
-                    self.get_selector().wakeup(id);
-                    break;
-                }
-            }
+            local.push_back(co);
         }
     }
 
