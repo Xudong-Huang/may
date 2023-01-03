@@ -105,7 +105,7 @@ impl<T> Queue<T> {
         // we need to free the old head if it's get empty
         if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Acquire);
-            assert!(!new_head.is_null());
+            // assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.block.store(new_head, Ordering::Relaxed);
         }

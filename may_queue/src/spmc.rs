@@ -66,7 +66,8 @@ impl<T> Queue<T> {
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new(new_index);
-            tail.next.store(new_tail, Ordering::Release);
+            // when other thread access next, we already Acquire the container node
+            tail.next.store(new_tail, Ordering::Relaxed);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
@@ -78,19 +79,17 @@ impl<T> Queue<T> {
     pub fn pop(&self) -> Option<T> {
         let backoff = crossbeam::utils::Backoff::new();
         let mut index = self.head.index.load(Ordering::Acquire);
-        // this is use for local pop, we can sure that push_index is not changed
-        let push_index = self.tail.index.load(Ordering::Acquire);
+        let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
             if index >= push_index {
                 return None;
             }
 
-            let new_index = index.wrapping_add(1);
             // commit the pop
-            match self.head.index.compare_exchange(
+            match self.head.index.compare_exchange_weak(
                 index,
-                new_index,
+                index.wrapping_add(1),
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
@@ -98,33 +97,32 @@ impl<T> Queue<T> {
                     let head = loop {
                         let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
                         // we have to check the block is the correct one
-                        let start = head.start;
-                        if start == index & !BLOCK_MASK {
+                        // this could be an old block which is already freed
+                        // but we hope access that memory would be fine for
+                        // just comparing the id
+                        if head.start == index & !BLOCK_MASK {
                             break head;
                         } else {
-                            // let used = head.used.load(Ordering::Relaxed);
-                            // println!("xxxxxxxxxx, index={index}, start={start}, used={used:x}");
                             backoff.snooze();
                         }
                     };
-
                     // get the data
                     let v = head.get(index);
 
                     // free the slot
                     if head.mark_slot_read(index) {
-                        let new_head = head.next.load(Ordering::Acquire);
-                        assert!(!new_head.is_null());
-                        // there may be other thread is using the old head, so we can't change it
+                        let new_head = head.next.load(Ordering::Relaxed);
+                        // there may be other thread is using the old head
                         self.head.block.store(new_head, Ordering::Release);
-                        // we need to free the old head if it's get empty
+                        // we need to free the old block
                         let _unused_block = unsafe { Box::from_raw(head) };
                     }
                     return Some(v);
                 }
                 Err(i) => {
                     index = i;
-                    continue;
+                    push_index = self.tail.index.load(Ordering::Acquire);
+                    backoff.spin();
                 }
             }
         }
@@ -137,16 +135,11 @@ impl<T> Queue<T> {
         // this is use for local pop, we can sure that push_index is not changed
         let push_index = unsafe { self.tail.index.unsync_load() };
 
-        loop {
-            if index >= push_index {
-                return None;
-            }
-
-            let new_index = index.wrapping_add(1);
+        while index < push_index {
             // commit the pop
-            match self.head.index.compare_exchange(
+            match self.head.index.compare_exchange_weak(
                 index,
-                new_index,
+                index.wrapping_add(1),
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
@@ -154,12 +147,9 @@ impl<T> Queue<T> {
                     let head = loop {
                         let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
                         // we have to check the block is the correct one
-                        let start = head.start;
-                        if start == index & !BLOCK_MASK {
+                        if head.start == index & !BLOCK_MASK {
                             break head;
                         } else {
-                            // let used = head.used.load(Ordering::Relaxed);
-                            // println!("xxxxxxxxxx, index={index}, start={start}, used={used:x}");
                             backoff.snooze();
                         }
                     };
@@ -169,49 +159,50 @@ impl<T> Queue<T> {
 
                     // free the slot
                     if head.mark_slot_read(index) {
-                        let new_head = head.next.load(Ordering::Acquire);
-                        assert!(!new_head.is_null());
-                        // there may be other thread is using the old head, so we can't change it
+                        let new_head = head.next.load(Ordering::Relaxed);
+                        // there may be other thread is using the old head
                         self.head.block.store(new_head, Ordering::Release);
-                        // we need to free the old head if it's get empty
+                        // we need to free the old block
                         let _unused_block = unsafe { Box::from_raw(head) };
                     }
+
                     return Some(v);
                 }
                 Err(i) => {
                     index = i;
-                    continue;
+                    backoff.spin();
                 }
             }
         }
+
+        None
     }
 
     /// pop from the queue, if it's empty return None
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
         let backoff = crossbeam::utils::Backoff::new();
         let mut index = self.head.index.load(Ordering::Acquire);
-        let push_index = self.tail.index.load(Ordering::Acquire);
+        let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
             if index >= push_index {
                 return None;
             }
 
-            // let new_index = index.wrapping_add(1);
             // only pop within a block
             let end = bulk_end(index, push_index);
             // commit the pop
-            match self
-                .head
-                .index
-                .compare_exchange(index, end, Ordering::AcqRel, Ordering::Acquire)
-            {
+            match self.head.index.compare_exchange_weak(
+                index,
+                end,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => {
                     let head = loop {
                         let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
                         // we have to check the block is the correct one
-                        let start = head.start;
-                        if start == index & !BLOCK_MASK {
+                        if head.start == index & !BLOCK_MASK {
                             break head;
                         } else {
                             backoff.snooze();
@@ -223,18 +214,19 @@ impl<T> Queue<T> {
 
                     // free the slot
                     if head.mark_slots_read(index, end) {
-                        let new_head = head.next.load(Ordering::Acquire);
+                        let new_head = head.next.load(Ordering::Relaxed);
                         assert!(!new_head.is_null());
-                        // there may be other thread is using the old head, so we can't change it
+                        // there may be other thread is using the old head
                         self.head.block.store(new_head, Ordering::Release);
-                        // we need to free the old head if it's get empty
+                        // we need to free the old block
                         let _unused_block = unsafe { Box::from_raw(head) };
                     }
                     return Some(value);
                 }
                 Err(i) => {
                     index = i;
-                    continue;
+                    push_index = self.tail.index.load(Ordering::Acquire);
+                    backoff.spin();
                 }
             }
         }
@@ -513,8 +505,7 @@ mod bench {
                     let total = total.clone();
                     s.spawn(move || {
                         while !q.is_empty() {
-                            let v = q.bulk_pop();
-                            if let Some(v) = v {
+                            if let Some(v) = q.bulk_pop() {
                                 total.fetch_add(v.len(), Ordering::AcqRel);
                             }
                         }

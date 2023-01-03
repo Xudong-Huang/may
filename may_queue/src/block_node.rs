@@ -122,13 +122,8 @@ impl<T> BlockNode<T> {
 /// return the bulk end with in the block
 #[inline]
 pub fn bulk_end(start: usize, end: usize) -> usize {
-    let mut expect = BLOCK_SIZE;
-    let size0 = end.wrapping_sub(start);
-    let size1 = BLOCK_SIZE - (start & BLOCK_MASK);
-    // only pop within a block
-    expect = cmp::min(size0, expect);
-    expect = cmp::min(size1, expect);
-    start.wrapping_add(expect)
+    let block_end = (start + BLOCK_SIZE) & !BLOCK_MASK;
+    cmp::min(end, block_end)
 }
 
 #[cfg(test)]
