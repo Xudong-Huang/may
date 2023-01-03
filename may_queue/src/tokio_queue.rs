@@ -218,7 +218,9 @@ impl<T> Local<T> {
 
             match res {
                 Ok(_) => break real as usize & MASK,
-                Err(actual) => head = actual,
+                Err(actual) => {
+                    head = actual;
+                }
             }
         };
 
@@ -318,7 +320,10 @@ impl<T> Steal<T> {
 
             match res {
                 Ok(_) => break n,
-                Err(actual) => prev_packed = actual,
+                Err(actual) => {
+                    prev_packed = actual;
+                    std::hint::spin_loop();
+                }
             }
         };
 
@@ -373,6 +378,7 @@ impl<T> Steal<T> {
                     assert_ne!(actual_steal, actual_real);
 
                     prev_packed = actual;
+                    std::hint::spin_loop();
                 }
             }
         }

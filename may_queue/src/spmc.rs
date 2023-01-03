@@ -232,11 +232,6 @@ impl<T> Queue<T> {
         }
     }
 
-    // bulk pop as much as possible
-    // pub fn steal(&self, local: &mut Self) -> Option<T> {
-    //     None
-    // }
-
     /// get the size of queue
     #[inline]
     pub fn len(&self) -> usize {
