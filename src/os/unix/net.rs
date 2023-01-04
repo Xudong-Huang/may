@@ -1205,19 +1205,19 @@ mod test {
         );
         match UnixStream::connect(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
-            Err(e) => panic!("unexpected error {}", e),
+            Err(e) => panic!("unexpected error {e}"),
             Ok(_) => panic!("unexpected success"),
         }
 
         match UnixListener::bind(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
-            Err(e) => panic!("unexpected error {}", e),
+            Err(e) => panic!("unexpected error {e}"),
             Ok(_) => panic!("unexpected success"),
         }
 
         match UnixDatagram::bind(&socket_path) {
             Err(ref e) if e.kind() == io::ErrorKind::InvalidInput => {}
-            Err(e) => panic!("unexpected error {}", e),
+            Err(e) => panic!("unexpected error {e}"),
             Ok(_) => panic!("unexpected success"),
         }
     }

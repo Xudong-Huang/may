@@ -244,7 +244,7 @@ mod tests {
             let data = data.clone();
             let tx = tx.clone();
             thread::spawn(move || {
-                let &(ref lock, ref cond) = &*data;
+                let (lock, cond) = &*data;
                 let mut cnt = lock.lock().unwrap();
                 *cnt += 1;
                 if *cnt == N {
@@ -258,7 +258,7 @@ mod tests {
         }
         drop(tx);
 
-        let &(ref lock, ref cond) = &*data;
+        let (lock, cond) = &*data;
         rx.recv().unwrap();
         let mut cnt = lock.lock().unwrap();
         assert_eq!(*cnt, N);
@@ -324,7 +324,7 @@ mod tests {
             let data = data.clone();
             let tx = tx.clone();
             let h = go!(move || {
-                let &(ref lock, ref cond) = &*data;
+                let (lock, cond) = &*data;
                 let mut cnt = lock.lock().unwrap();
                 *cnt += 1;
                 if *cnt == N {
@@ -339,7 +339,7 @@ mod tests {
         }
         drop(tx);
 
-        let &(ref lock, ref cond) = &*data;
+        let (lock, cond) = &*data;
         rx.recv().unwrap();
         let mut cnt = lock.lock().unwrap();
         assert_eq!(*cnt, N);

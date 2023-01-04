@@ -75,7 +75,7 @@ fn main() {
                     match stream.read(&mut temp_buf) {
                         Ok(0) => return, // connection was closed
                         Ok(n) => buf.put(&temp_buf[0..n]),
-                        Err(err) => println!("err = {:?}", err),
+                        Err(err) => println!("err = {err:?}"),
                     }
                 }
             }

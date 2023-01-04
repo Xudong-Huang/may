@@ -339,7 +339,7 @@ mod tests {
         let timer = Arc::new(TimerThread::<usize>::new());
         let t = timer.clone();
         let f = |data: usize| {
-            println!("timeout data:{:?}", data);
+            println!("timeout data:{data:?}");
         };
         thread::spawn(move || t.run(&f));
         let t1 = timer.clone();

@@ -21,7 +21,7 @@ fn main() {
                 a + b
             });
             g.fold((), |_, i| {
-                println!("got {:?}", i);
+                println!("got {i}");
                 // yield_now();
             });
         });

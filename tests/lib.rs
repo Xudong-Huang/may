@@ -16,7 +16,7 @@ fn panic_coroutine() {
     match j.join() {
         Ok(_) => panic!("test should return panic"),
         Err(panic) => match panic.downcast_ref::<&str>() {
-            Some(e) => println!("Panicked inside: {:?}", e),
+            Some(e) => println!("Panicked inside: {e:?}"),
             None => panic!("panic type wrong"),
         },
     }
@@ -60,7 +60,7 @@ fn cancel_io_coroutine() {
         for stream in listener.incoming() {
             match stream {
                 Ok(_s) => println!("got a connection"),
-                Err(e) => println!("err = {:?}", e),
+                Err(e) => println!("err = {e:?}"),
             }
         }
     });
@@ -104,7 +104,7 @@ fn coroutine_result() {
 fn multi_coroutine() {
     for i in 0..10 {
         go!(move || {
-            println!("hi, coroutine{}", i);
+            println!("hi, coroutine{i}");
         });
     }
     thread::sleep(Duration::from_millis(200));
@@ -124,9 +124,9 @@ fn test_yield() {
 fn multi_yield() {
     for i in 0..10 {
         go!(move || {
-            println!("hi, coroutine{}", i);
+            println!("hi, coroutine{i}");
             yield_now();
-            println!("bye, coroutine{}", i);
+            println!("bye, coroutine{i}");
         });
     }
     thread::sleep(Duration::from_millis(200));
@@ -136,16 +136,16 @@ fn multi_yield() {
 fn spawn_inside() {
     go!(coroutine::Builder::new().name("parent".to_owned()), || {
         let me = coroutine::current();
-        println!("hi, I'm parent: {:?}", me);
+        println!("hi, I'm parent: {me:?}");
         for i in 0..10 {
             go!(move || {
-                println!("hi, I'm child{:?}", i);
+                println!("hi, I'm child{i:?}");
                 yield_now();
-                println!("bye from child{:?}", i);
+                println!("bye from child{i:?}");
             });
         }
         yield_now();
-        println!("bye from parent: {:?}", me);
+        println!("bye from parent: {me:?}");
     })
     .unwrap()
     .join()
@@ -161,9 +161,9 @@ fn wait_join() {
         let join = (0..10)
             .map(|i| {
                 go!(move || {
-                    println!("hi, I'm child{:?}", i);
+                    println!("hi, I'm child{i}");
                     yield_now();
-                    println!("bye from child{:?}", i);
+                    println!("bye from child{i}");
                 })
             })
             .collect::<Vec<_>>();
@@ -207,7 +207,7 @@ fn yield_from_gen() {
                 a
             });
             g.fold((), |_, i| {
-                println!("got {:?}", i);
+                println!("got {i}");
             });
         });
     });
@@ -222,7 +222,7 @@ fn unpark() {
     coroutine::scope(|scope| {
         let h = go!(scope, || {
             let co = coroutine::current();
-            println!("child coroutine name:{:?}", co);
+            println!("child coroutine name:{co:?}");
             co.unpark();
             a = 5;
             coroutine::park();

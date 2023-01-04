@@ -1027,7 +1027,7 @@ mod tests {
         // wait for done
         let mut recv_count = 0;
         while let Ok((id, v)) = rx1.recv() {
-            println!("recv from id={:?}, value={}", id, v);
+            println!("recv from id={id}, value={v}");
             recv_count += 1;
 
             if recv_count == stress {

@@ -15,7 +15,7 @@ fn cqueue_drop() {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(0);
-                println!("j={}", j)
+                println!("j={j}")
             });
         }
 
@@ -36,13 +36,13 @@ fn cqueue_in_coroutine() {
                     let token = es.get_token();
                     let j = v[token];
                     es.send(0);
-                    println!("j={}", j)
+                    println!("j={j}")
                 });
             }
 
             loop {
                 match cqueue.poll(None) {
-                    Ok(ev) => println!("ev = {:?}", ev),
+                    Ok(ev) => println!("ev = {ev:?}"),
                     Err(Finished) => break,
                     Err(Timeout) => unreachable!(),
                 }
@@ -64,7 +64,7 @@ fn cqueue_panic() {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(0);
-                println!("j={}", j)
+                println!("j={j}")
             });
         }
 
@@ -97,13 +97,13 @@ fn cqueue_poll() {
                 let token = es.get_token();
                 let j = v[token];
                 es.send(token + 100);
-                println!("j={}", j)
+                println!("j={j}");
             });
         }
 
         loop {
             match cqueue.poll(None) {
-                Ok(ev) => println!("ev = {:?}", ev),
+                Ok(ev) => println!("ev = {ev:?}"),
                 Err(Finished) => break,
                 Err(Timeout) => unreachable!(),
             }
@@ -121,17 +121,17 @@ fn cqueue_oneshot() {
 
     cqueue::scope(|cqueue| {
         cqueue_add_oneshot!(cqueue, 0, _ = rx1.recv() => println!("rx1 received"));
-        cqueue_add_oneshot!(cqueue, 1, a = rx2.recv() => println!("rx2 received, a={:?}", a));
+        cqueue_add_oneshot!(cqueue, 1, a = rx2.recv() => println!("rx2 received, a={a:?}"));
 
         tx1.send("hello").unwrap();
         match cqueue.poll(None) {
-            Ok(ev) => println!("ev = {:?}", ev),
+            Ok(ev) => println!("ev = {ev:?}"),
             _ => unreachable!(),
         }
 
         tx2.send(100).unwrap();
         match cqueue.poll(None) {
-            Ok(ev) => println!("ev = {:?}", ev),
+            Ok(ev) => println!("ev = {ev:?}"),
             _ => unreachable!(),
         }
 
@@ -158,7 +158,7 @@ fn cqueue_select() {
     let id = select!(
         _ = coroutine::sleep(Duration::from_millis(1000)) => {},
         _ = rx1.recv() => println!("rx1 received"),
-        a = rx2.recv() => println!("rx2 received, a={:?}", a)
+        a = rx2.recv() => println!("rx2 received, a={a:?}")
     );
 
     assert_eq!(id, 2);
@@ -219,7 +219,7 @@ fn cqueue_loop() {
                         println!("poll loop finished");
                         return;
                     }
-                    println!("result={}", result);
+                    println!("result={result}");
                 }
                 _ => unreachable!(),
             }

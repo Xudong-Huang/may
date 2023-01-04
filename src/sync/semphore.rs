@@ -199,7 +199,7 @@ mod tests {
         let (tx, rx) = channel();
 
         // create 10 thread and let them wait for the semphore
-        println!("sem={:?}", sem);
+        println!("sem={sem:?}");
         for i in 0..total {
             let sem2 = sem.clone();
             let tx2 = tx.clone();
@@ -227,7 +227,7 @@ mod tests {
         for _i in 0..total - init {
             sum += rx.recv().unwrap();
         }
-        println!("sem={:?}", sem);
+        println!("sem={sem:?}");
 
         assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
         assert_eq!(sum, (0..total).sum());
@@ -253,7 +253,7 @@ mod tests {
 
         // wait h1 and h2 enqueue
         sleep(Duration::from_millis(100));
-        println!("sem1={:?}", sem1);
+        println!("sem1={sem1:?}");
         // cancel h1
         unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();

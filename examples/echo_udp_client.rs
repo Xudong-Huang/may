@@ -62,7 +62,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     if args.flag_v {
-        return println!("echo_udp_client: {}", VERSION);
+        return println!("echo_udp_client: {VERSION}");
     }
 
     let target_addr: &str = &args.flag_a;
@@ -155,20 +155,14 @@ fn main() {
     let in_num = in_num.load(Ordering::Relaxed);
     let out_num = out_num.load(Ordering::Relaxed);
 
-    println!(
-        "==================Benchmarking: {}==================",
-        target_addr
-    );
-    println!(
-        "{} clients, running {} bytes, {} sec.\n",
-        test_conn_num, test_msg_len, test_seconds
-    );
+    println!("==================Benchmarking: {target_addr}==================");
+    println!("{test_conn_num} clients, running {test_msg_len} bytes, {test_seconds} sec.\n");
     println!(
         "Speed: {} request/sec,  {} response/sec, {} kb/sec",
         out_num / test_seconds,
         in_num / test_seconds,
         out_num * test_msg_len / test_seconds / 1024
     );
-    println!("Requests: {}", out_num);
-    println!("Responses: {}", in_num);
+    println!("Requests: {out_num}");
+    println!("Responses: {in_num}");
 }

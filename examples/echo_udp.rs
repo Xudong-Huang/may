@@ -55,7 +55,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     if args.flag_v {
-        return println!("echo_udp: {}", VERSION);
+        return println!("echo_udp: {VERSION}");
     }
 
     let port = args.flag_p;

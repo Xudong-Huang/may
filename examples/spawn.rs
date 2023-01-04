@@ -9,9 +9,9 @@ fn main() {
         let v = (0..100)
             .map(|i| {
                 go!(move || {
-                    println!("hi, I'm child{:?}", i);
+                    println!("hi, I'm child{i}");
                     yield_now();
-                    println!("bye from child{:?}", i);
+                    println!("bye from child{i}");
                 })
             })
             .collect::<Vec<_>>();

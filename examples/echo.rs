@@ -65,7 +65,7 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     if args.flag_v {
-        return println!("echo: {}", VERSION);
+        return println!("echo: {VERSION}");
     }
 
     let port = args.flag_p;
@@ -82,14 +82,14 @@ fn main() {
                     "Starting tcp echo server on {:?}",
                     listener.local_addr().unwrap(),
                 );
-                println!("running on thread id {}", i);
+                println!("running on thread id {i}");
 
                 for stream in listener.incoming() {
                     match stream {
                         Ok(s) => {
                             go!(move || handle_client(s));
                         }
-                        Err(e) => println!("err = {:?}", e),
+                        Err(e) => println!("err = {e:?}"),
                     }
                 }
             });

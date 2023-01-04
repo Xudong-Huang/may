@@ -55,10 +55,7 @@ fn main() {
                     let delta = data - last;
                     let total = unsafe { total.get_mut() };
                     // bottom half that will run sequentially in the poller
-                    println!(
-                        "in selector: update from {}, delta={}, last_total={}",
-                        token, delta, total
-                    );
+                    println!("in selector: update from {token}, delta={delta}, last_total={total}");
 
                     *total += delta;
                     last = data;
@@ -78,7 +75,7 @@ fn main() {
                 break;
             }
             // print the new total
-            println!("in poller: total={}", total);
+            println!("in poller: total={total}");
         }
     });
 

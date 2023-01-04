@@ -543,7 +543,7 @@ mod tests {
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
             Err(e) => assert_eq!(e.into_inner(), NonCopy(10)),
-            Ok(x) => panic!("into_inner of poisoned RwLock is Ok: {:?}", x),
+            Ok(x) => panic!("into_inner of poisoned RwLock is Ok: {x:?}"),
         }
     }
 
@@ -567,7 +567,7 @@ mod tests {
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
             Err(e) => assert_eq!(*e.into_inner(), NonCopy(10)),
-            Ok(x) => panic!("get_mut of poisoned RwLock is Ok: {:?}", x),
+            Ok(x) => panic!("get_mut of poisoned RwLock is Ok: {x:?}"),
         }
     }
 
@@ -593,7 +593,7 @@ mod tests {
                 // println!("got wlock, id={}", i);
 
                 // wait the mater to let it go
-                let &(ref lock, ref cond) = &*sync;
+                let (lock, cond) = &*sync;
                 let mut cnt = lock.lock().unwrap();
                 while *cnt != i {
                     cnt = cond.wait(cnt).unwrap();
@@ -624,7 +624,7 @@ mod tests {
         unsafe { vec[cancel_id - 1].coroutine().cancel() };
 
         // let all coroutine to continue
-        let &(ref lock, ref cond) = &*sync;
+        let (lock, cond) = &*sync;
         for _ in 1..N {
             let mut cnt = lock.lock().unwrap();
             *cnt = id;

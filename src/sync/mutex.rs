@@ -341,7 +341,7 @@ mod tests {
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().into_inner() {
             Err(e) => assert_eq!(e.into_inner(), NonCopy(10)),
-            Ok(x) => panic!("into_inner of poisoned Mutex is Ok: {:?}", x),
+            Ok(x) => panic!("into_inner of poisoned Mutex is Ok: {x:?}"),
         }
     }
 
@@ -365,7 +365,7 @@ mod tests {
         assert!(m.is_poisoned());
         match Arc::try_unwrap(m).unwrap().get_mut() {
             Err(e) => assert_eq!(*e.into_inner(), NonCopy(10)),
-            Ok(x) => panic!("get_mut of poisoned Mutex is Ok: {:?}", x),
+            Ok(x) => panic!("get_mut of poisoned Mutex is Ok: {x:?}"),
         }
     }
 
@@ -377,13 +377,13 @@ mod tests {
         let _t = thread::spawn(move || {
             // wait until parent gets in
             rx.recv().unwrap();
-            let &(ref lock, ref cvar) = &*packet2.0;
+            let (lock, cvar) = &*packet2.0;
             let mut lock = lock.lock().unwrap();
             *lock = true;
             cvar.notify_one();
         });
 
-        let &(ref lock, ref cvar) = &*packet.0;
+        let (lock, cvar) = &*packet.0;
         let mut lock = lock.lock().unwrap();
         tx.send(()).unwrap();
         assert!(!*lock);
@@ -400,14 +400,14 @@ mod tests {
 
         let _t = thread::spawn(move || {
             rx.recv().unwrap();
-            let &(ref lock, ref cvar) = &*packet2.0;
+            let (lock, cvar) = &*packet2.0;
             let _g = lock.lock().unwrap();
             cvar.notify_one();
             // Parent should fail when it wakes up.
             panic!();
         });
 
-        let &(ref lock, ref cvar) = &*packet.0;
+        let (lock, cvar) = &*packet.0;
         let mut lock = lock.lock().unwrap();
         tx.send(()).unwrap();
         while *lock == 1 {

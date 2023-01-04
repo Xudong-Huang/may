@@ -6,7 +6,7 @@ use may::coroutine;
 
 fn main() {
     let mut array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    println!("old array: {:?}", array);
+    println!("old array: {array:?}");
     coroutine::scope(|scope| {
         for i in &mut array {
             go!(scope, move || {
@@ -26,5 +26,5 @@ fn main() {
         }
     });
 
-    println!("new array: {:?}", array);
+    println!("new array: {array:?}");
 }

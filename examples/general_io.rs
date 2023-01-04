@@ -24,7 +24,7 @@ fn main() {
             loop {
                 let mut msg = [0, 4];
                 let _n = stdin.read(&mut msg).expect("failed ot read stdio");
-                println!("another coroutine, msg={:?}", msg);
+                println!("another coroutine, msg={msg:?}");
             }
         },
         {
