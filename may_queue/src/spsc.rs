@@ -55,7 +55,7 @@ impl<T> BlockNode<T> {
     pub fn set(&self, index: usize, v: T) {
         unsafe {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
-            (*data.value.get()).write(v);
+            data.value.get().write(MaybeUninit::new(v));
         }
     }
 

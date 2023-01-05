@@ -61,7 +61,7 @@ impl<T> BlockNode<T> {
     pub fn set(&self, index: usize, v: T) {
         unsafe {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
-            (*data.value.get()).write(v);
+            data.value.get().write(MaybeUninit::new(v));
         }
     }
 
@@ -206,19 +206,22 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                // need to guaranteed that the next block is not null, use **Acquire**
-                let next_block = block.next.load(Ordering::Acquire);
-                BlockPtr::pack(next_block, 0)
+                block.next.load(Ordering::Acquire)
             };
 
             // commit the pop
             match self.head.0.compare_exchange_weak(
                 head,
                 new_head,
-                Ordering::AcqRel,
+                Ordering::SeqCst,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    assert!(
+                        !new_head.is_null(),
+                        "pop_index={}, push_index={push_index}",
+                        block.start + id
+                    );
                     // get the data
                     let v = block.get(id);
 
@@ -254,19 +257,22 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                // we are sure next block is valid
-                let next_block = block.next.load(Ordering::Relaxed);
-                BlockPtr::pack(next_block, 0)
+                block.next.load(Ordering::Acquire)
             };
 
             // commit the pop
             match self.head.0.compare_exchange_weak(
                 head,
                 new_head,
-                Ordering::AcqRel,
+                Ordering::SeqCst,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    assert!(
+                        !new_head.is_null(),
+                        "local_index={}, push_index={push_index}",
+                        block.start + id
+                    );
                     // get the data
                     let v = block.get(id);
 
@@ -300,21 +306,24 @@ impl<T> Queue<T> {
             let end = bulk_end(index, push_index);
             let new_id = end & BLOCK_MASK;
             let new_head = if new_id == 0 {
-                // we are sure next block is valid
-                let next_block = block.next.load(Ordering::Acquire);
-                BlockPtr::pack(next_block, 0)
+                block.next.load(Ordering::Acquire)
             } else {
                 BlockPtr::pack(block, new_id)
             };
 
             // only pop within a block
             // commit the pop
-            match self
-                .head
-                .0
-                .compare_exchange(head, new_head, Ordering::AcqRel, Ordering::Acquire)
-            {
+            match self.head.0.compare_exchange_weak(
+                head,
+                new_head,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => {
+                    assert!(
+                        !new_head.is_null(),
+                        "index={index}, push_index={push_index}"
+                    );
                     // get the data
                     let value = block.copy_to_bulk(index, end);
 
