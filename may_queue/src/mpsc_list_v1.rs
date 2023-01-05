@@ -336,15 +336,15 @@ mod tests {
         q.push(2);
         assert_eq!(q.pop(), Some(1));
         assert_eq!(q.pop(), Some(2));
-        assert_eq!(q.is_empty(), true);
+        assert!(q.is_empty());
         let a = q.push(3);
         let b = q.push(4);
-        assert_eq!(a.1, true);
+        assert!(a.1);
         assert_eq!(a.0.remove(), Some(3));
-        assert_eq!(b.1, false);
+        assert!(!b.1);
         assert_eq!(b.0.remove(), None);
         assert_eq!(q.pop(), Some(4));
-        assert_eq!(q.is_empty(), true);
+        assert!(q.is_empty());
 
         q.push(5);
         q.push(6);

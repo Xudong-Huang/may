@@ -1,11 +1,107 @@
-use std::marker::PhantomData;
-use std::sync::atomic::Ordering;
-
-use crate::atomic::{AtomicPtr, AtomicUsize};
-use crate::block_node::*;
-
 use crossbeam::utils::CachePadded;
 use smallvec::SmallVec;
+
+use crate::atomic::{AtomicPtr, AtomicUsize};
+
+use std::cell::UnsafeCell;
+use std::cmp;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::atomic::Ordering;
+
+// size for block_node
+pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
+// block mask
+pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
+// block shift
+pub const BLOCK_SHIFT: usize = 5;
+
+/// A slot in a block.
+struct Slot<T> {
+    /// The value.
+    value: UnsafeCell<MaybeUninit<T>>,
+}
+
+impl<T> Slot<T> {
+    const UNINIT: Self = Self {
+        value: UnsafeCell::new(MaybeUninit::uninit()),
+    };
+}
+
+/// a block node contains a bunch of items stored in a array
+/// this could make the malloc/free not that frequent, also
+/// the array could speed up list operations
+struct BlockNode<T> {
+    data: [Slot<T>; BLOCK_SIZE],
+    next: AtomicPtr<BlockNode<T>>,
+}
+
+/// we don't implement the block node Drop trait
+/// the queue is responsible to drop all the items
+/// and would call its get() method for the dropping
+impl<T> BlockNode<T> {
+    /// create a new BlockNode with uninitialized data
+    #[inline]
+    pub fn new() -> *mut BlockNode<T> {
+        Box::into_raw(Box::new(BlockNode {
+            next: AtomicPtr::new(ptr::null_mut()),
+            data: [Slot::UNINIT; BLOCK_SIZE],
+        }))
+    }
+
+    /// write index with data
+    #[inline]
+    pub fn set(&self, index: usize, v: T) {
+        unsafe {
+            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            (*data.value.get()).write(v);
+        }
+    }
+
+    /// peek the indexed value
+    /// not safe if pop out a value when hold the data ref
+    #[inline]
+    pub unsafe fn peek(&self, index: usize) -> &T {
+        let data = self.data.get_unchecked(index & BLOCK_MASK);
+        (*data.value.get()).assume_init_ref()
+    }
+
+    /// read out indexed value
+    /// this would make the underlying data dropped when it get out of scope
+    #[inline]
+    pub fn get(&self, index: usize) -> T {
+        unsafe {
+            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            data.value.get().read().assume_init()
+        }
+    }
+}
+
+impl<T> BlockNode<T> {
+    #[inline]
+    pub fn copy_to_bulk(
+        this: *mut BlockNode<T>,
+        mut start: usize,
+        end: usize,
+    ) -> SmallVec<[T; BLOCK_SIZE]> {
+        let mut ret = SmallVec::<[T; BLOCK_SIZE]>::new();
+        while start < end {
+            // Read the value.
+            let value = unsafe { (*this).get(start) };
+            ret.push(value);
+            start += 1;
+        }
+        ret
+    }
+}
+
+/// return the bulk end with in the block
+#[inline]
+pub fn bulk_end(start: usize, end: usize) -> usize {
+    let block_end = (start + BLOCK_SIZE) & !BLOCK_MASK;
+    cmp::min(end, block_end)
+}
 
 /// A position in a queue.
 #[derive(Debug)]
@@ -46,7 +142,7 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 impl<T> Queue<T> {
     /// create a spsc queue
     pub fn new() -> Self {
-        let init_block = BlockNode::<T>::new(0);
+        let init_block = BlockNode::<T>::new();
         Queue {
             head: Position::new(init_block).into(),
             tail: Position::new(init_block).into(),
@@ -64,7 +160,7 @@ impl<T> Queue<T> {
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
-            let new_tail = BlockNode::new(new_index);
+            let new_tail = BlockNode::new();
             tail.next.store(new_tail, Ordering::Release);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
@@ -186,7 +282,6 @@ impl<T> Drop for Queue<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block_node::BLOCK_SIZE;
 
     #[test]
     fn queue_sanity() {
@@ -196,7 +291,7 @@ mod tests {
             q.push(i);
         }
         assert_eq!(q.len(), 100);
-        println!("{:?}", q);
+        println!("{q:?}");
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
@@ -219,7 +314,7 @@ mod tests {
         assert_eq!(v[0], BLOCK_SIZE);
         assert_eq!(v.len(), 17);
         assert_eq!(q.len(), 0);
-        println!("{:?}", q);
+        println!("{q:?}");
 
         for (i, item) in vec.iter().enumerate() {
             assert_eq!(*item, i);
@@ -265,7 +360,7 @@ mod bench {
     fn bulk_pop_1p1c_bench(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1000_000;
+            let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -302,7 +397,7 @@ mod bench {
     fn multi_1p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1000_000;
+            let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100

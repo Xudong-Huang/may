@@ -180,7 +180,7 @@ mod bench {
     #[bench]
     fn bounded_mpmc(b: &mut Bencher) {
         b.iter(|| {
-            let total_work = 1000_000;
+            let total_work = 1_000_000;
             let nthreads = 1;
             let nmsgs = total_work / nthreads;
             let q = Queue::with_capacity(nthreads * nmsgs);

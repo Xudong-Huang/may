@@ -120,7 +120,7 @@ mod tests {
         q.push(2);
         assert_eq!(q.pop(), Some(1));
         assert_eq!(q.pop(), Some(2));
-        assert_eq!(q.is_empty(), true);
+        assert!(q.is_empty());
     }
 
     #[test]

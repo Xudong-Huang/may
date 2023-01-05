@@ -1,12 +1,100 @@
+use crossbeam::utils::CachePadded;
+use smallvec::SmallVec;
+
+use crate::atomic::{AtomicPtr, AtomicUsize};
+
+use std::cell::UnsafeCell;
+use std::cmp;
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ptr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::atomic::{AtomicPtr, AtomicUsize};
-use crate::block_node::*;
+// size for block_node
+pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
+// block mask
+pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
+// block shift
+pub const BLOCK_SHIFT: usize = 5;
 
-use crossbeam::utils::CachePadded;
-use smallvec::SmallVec;
+/// A slot in a block.
+struct Slot<T> {
+    /// The value.
+    value: UnsafeCell<MaybeUninit<T>>,
+}
+
+impl<T> Slot<T> {
+    const UNINIT: Self = Self {
+        value: UnsafeCell::new(MaybeUninit::uninit()),
+    };
+}
+
+/// a block node contains a bunch of items stored in a array
+/// this could make the malloc/free not that frequent, also
+/// the array could speed up list operations
+#[repr(align(32))]
+struct BlockNode<T> {
+    data: [Slot<T>; BLOCK_SIZE],
+    used: AtomicUsize,
+    pub next: AtomicPtr<BlockNode<T>>,
+    pub start: usize, // start index of the block
+}
+
+/// we don't implement the block node Drop trait
+/// the queue is responsible to drop all the items
+/// and would call its get() method for the dropping
+impl<T> BlockNode<T> {
+    /// create a new BlockNode with uninitialized data
+    #[inline]
+    pub fn new(index: usize) -> *mut BlockNode<T> {
+        Box::into_raw(Box::new(BlockNode {
+            next: AtomicPtr::new(ptr::null_mut()),
+            used: AtomicUsize::new(BLOCK_SIZE),
+            data: [Slot::UNINIT; BLOCK_SIZE],
+            start: index,
+        }))
+    }
+
+    /// write index with data
+    #[inline]
+    pub fn set(&self, index: usize, v: T) {
+        unsafe {
+            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            (*data.value.get()).write(v);
+        }
+    }
+
+    /// read out indexed value
+    /// this would make the underlying data dropped when it get out of scope
+    #[inline]
+    pub fn get(&self, id: usize) -> T {
+        unsafe {
+            let data = self.data.get_unchecked(id);
+            data.value.get().read().assume_init()
+        }
+    }
+
+    /// make a range slots read
+    /// if all slots read, then we can safely free the block
+    #[inline]
+    pub fn mark_slots_read(&self, size: usize) -> bool {
+        let old = self.used.fetch_sub(size, Ordering::Relaxed);
+        old == size
+    }
+
+    #[inline]
+    pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
+        SmallVec::from_iter((start..end).map(|i| self.get(i & BLOCK_MASK)))
+    }
+}
+
+/// return the bulk end with in the block
+#[inline]
+pub fn bulk_end(start: usize, end: usize) -> usize {
+    let block_end = (start + BLOCK_SIZE) & !BLOCK_MASK;
+    cmp::min(end, block_end)
+}
 
 /// A position in a queue.
 #[derive(Debug)]
@@ -27,12 +115,36 @@ impl<T> Position<T> {
     }
 }
 
+#[derive(Debug)]
+struct BlockPtr<T>(AtomicPtr<BlockNode<T>>);
+
+impl<T> BlockPtr<T> {
+    #[inline]
+    fn new(block: *mut BlockNode<T>) -> Self {
+        BlockPtr(AtomicPtr::new(block))
+    }
+
+    #[inline]
+    fn unpack(ptr: *mut BlockNode<T>) -> (*mut BlockNode<T>, usize) {
+        let ptr = ptr as usize;
+        let index = ptr & BLOCK_MASK;
+        let ptr = (ptr & !BLOCK_MASK) as *mut BlockNode<T>;
+        (ptr, index)
+    }
+
+    #[inline]
+    fn pack(ptr: *const BlockNode<T>, index: usize) -> *mut BlockNode<T> {
+        ((ptr as usize) | index) as *mut BlockNode<T>
+    }
+}
+
 /// spsc queue
 #[derive(Debug)]
 pub struct Queue<T> {
     // ----------------------------------------
     // use for pop
-    head: CachePadded<Position<T>>,
+    head: CachePadded<BlockPtr<T>>,
+
     // -----------------------------------------
     // use for push
     tail: CachePadded<Position<T>>,
@@ -49,7 +161,7 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let init_block = BlockNode::<T>::new(0);
         Queue {
-            head: Position::new(init_block).into(),
+            head: BlockPtr::new(init_block).into(),
             tail: Position::new(init_block).into(),
             _marker: PhantomData,
         }
@@ -67,7 +179,7 @@ impl<T> Queue<T> {
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new(new_index);
             // when other thread access next, we already Acquire the container node
-            tail.next.store(new_tail, Ordering::Relaxed);
+            tail.next.store(new_tail, Ordering::Release);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
@@ -78,51 +190,48 @@ impl<T> Queue<T> {
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
         let backoff = crossbeam::utils::Backoff::new();
-        let mut index = self.head.index.load(Ordering::Acquire);
+        let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
-            if index >= push_index {
+            let (block, id) = BlockPtr::unpack(head);
+            let block = unsafe { &mut *block };
+            // NOTE: access block is not safe, the block maybe released by other threads
+            // but we are hoping that the memory content is not changed, even the content
+            // of the block changed, the compare_exchange would make sure a correct result
+            if block.start + id >= push_index {
                 return None;
             }
 
+            let new_head = if id != BLOCK_MASK {
+                BlockPtr::pack(block, id + 1)
+            } else {
+                // need to guaranteed that the next block is not null, use **Acquire**
+                let next_block = block.next.load(Ordering::Acquire);
+                BlockPtr::pack(next_block, 0)
+            };
+
             // commit the pop
-            match self.head.index.compare_exchange_weak(
-                index,
-                index.wrapping_add(1),
+            match self.head.0.compare_exchange_weak(
+                head,
+                new_head,
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    let head = loop {
-                        let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
-                        // we have to check the block is the correct one
-                        // this could be an old block which is already freed
-                        // but we hope access that memory would be fine for
-                        // just comparing the id
-                        if head.start == index & !BLOCK_MASK {
-                            break head;
-                        } else {
-                            backoff.snooze();
-                        }
-                    };
                     // get the data
-                    let v = head.get(index);
+                    let v = block.get(id);
 
-                    // free the slot
-                    if head.mark_slot_read(index) {
-                        let new_head = head.next.load(Ordering::Relaxed);
-                        // there may be other thread is using the old head
-                        self.head.block.store(new_head, Ordering::Release);
+                    if block.mark_slots_read(1) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(head) };
+                        let _unused_block = unsafe { Box::from_raw(block) };
                     }
                     return Some(v);
                 }
                 Err(i) => {
-                    index = i;
-                    push_index = self.tail.index.load(Ordering::Acquire);
+                    head = i;
                     backoff.spin();
+                    push_index = self.tail.index.load(Ordering::Acquire);
                 }
             }
         }
@@ -131,102 +240,93 @@ impl<T> Queue<T> {
     /// pop from the queue, if it's empty return None
     fn local_pop(&self) -> Option<T> {
         let backoff = crossbeam::utils::Backoff::new();
-        let mut index = self.head.index.load(Ordering::Acquire);
+        let mut head = self.head.0.load(Ordering::Acquire);
         // this is use for local pop, we can sure that push_index is not changed
         let push_index = unsafe { self.tail.index.unsync_load() };
 
-        while index < push_index {
+        loop {
+            let (block, id) = BlockPtr::unpack(head);
+            let block = unsafe { &mut *block };
+            if block.start + id >= push_index {
+                return None;
+            }
+
+            let new_head = if id != BLOCK_MASK {
+                BlockPtr::pack(block, id + 1)
+            } else {
+                // we are sure next block is valid
+                let next_block = block.next.load(Ordering::Relaxed);
+                BlockPtr::pack(next_block, 0)
+            };
+
             // commit the pop
-            match self.head.index.compare_exchange_weak(
-                index,
-                index.wrapping_add(1),
+            match self.head.0.compare_exchange_weak(
+                head,
+                new_head,
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    let head = loop {
-                        let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
-                        // we have to check the block is the correct one
-                        if head.start == index & !BLOCK_MASK {
-                            break head;
-                        } else {
-                            backoff.snooze();
-                        }
-                    };
-
                     // get the data
-                    let v = head.get(index);
+                    let v = block.get(id);
 
-                    // free the slot
-                    if head.mark_slot_read(index) {
-                        let new_head = head.next.load(Ordering::Relaxed);
-                        // there may be other thread is using the old head
-                        self.head.block.store(new_head, Ordering::Release);
+                    if block.mark_slots_read(1) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(head) };
+                        let _unused_block = unsafe { Box::from_raw(block) };
                     }
-
                     return Some(v);
                 }
                 Err(i) => {
-                    index = i;
+                    head = i;
                     backoff.spin();
                 }
             }
         }
-
-        None
     }
 
     /// pop from the queue, if it's empty return None
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
-        let backoff = crossbeam::utils::Backoff::new();
-        let mut index = self.head.index.load(Ordering::Acquire);
+        let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
+            let (block, id) = BlockPtr::unpack(head);
+            let block = unsafe { &mut *block };
+            let index = block.start + id;
             if index >= push_index {
                 return None;
             }
 
-            // only pop within a block
             let end = bulk_end(index, push_index);
+            let new_id = end & BLOCK_MASK;
+            let new_head = if new_id == 0 {
+                // we are sure next block is valid
+                let next_block = block.next.load(Ordering::Acquire);
+                BlockPtr::pack(next_block, 0)
+            } else {
+                BlockPtr::pack(block, new_id)
+            };
+
+            // only pop within a block
             // commit the pop
-            match self.head.index.compare_exchange_weak(
-                index,
-                end,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
+            match self
+                .head
+                .0
+                .compare_exchange(head, new_head, Ordering::AcqRel, Ordering::Acquire)
+            {
                 Ok(_) => {
-                    let head = loop {
-                        let head = unsafe { &mut *self.head.block.load(Ordering::Acquire) };
-                        // we have to check the block is the correct one
-                        if head.start == index & !BLOCK_MASK {
-                            break head;
-                        } else {
-                            backoff.snooze();
-                        }
-                    };
-
                     // get the data
-                    let value = BlockNode::copy_to_bulk(head, index, end);
+                    let value = block.copy_to_bulk(index, end);
 
-                    // free the slot
-                    if head.mark_slots_read(index, end) {
-                        let new_head = head.next.load(Ordering::Relaxed);
-                        assert!(!new_head.is_null());
-                        // there may be other thread is using the old head
-                        self.head.block.store(new_head, Ordering::Release);
+                    if block.mark_slots_read(end - index) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(head) };
+                        let _unused_block = unsafe { Box::from_raw(block) };
                     }
                     return Some(value);
                 }
                 Err(i) => {
-                    index = i;
+                    head = i;
                     push_index = self.tail.index.load(Ordering::Acquire);
-                    backoff.spin();
                 }
             }
         }
@@ -235,7 +335,13 @@ impl<T> Queue<T> {
     /// get the size of queue
     #[inline]
     pub fn len(&self) -> usize {
-        let pop_index = self.head.index.load(Ordering::Acquire);
+        let head = self.head.0.load(Ordering::Acquire);
+        let (block, id) = BlockPtr::unpack(head);
+        let block = unsafe { &mut *block };
+        // it's unsafe to deref the block, because it could be a destroyed one
+        // we'd better use AtomicUsize index to calc the length
+        // both the tail and head are just shadows of the real tail and head
+        let pop_index = block.start + id;
         let push_index = self.tail.index.load(Ordering::Acquire);
         push_index.wrapping_sub(pop_index)
     }
@@ -257,12 +363,13 @@ impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
         while self.pop().is_some() {}
-        let head = self.head.block.load(Ordering::Relaxed);
+        let head = self.head.0.load(Ordering::Acquire);
+        let (block, _id) = BlockPtr::unpack(head);
         let tail = self.tail.block.load(Ordering::Relaxed);
-        assert_eq!(head, tail);
+        assert_eq!(block, tail);
 
         unsafe {
-            let _unused_block = Box::from_raw(head);
+            let _unused_block = Box::from_raw(block);
         }
     }
 }
@@ -290,6 +397,7 @@ pub struct Steal<T: 'static>(Arc<Queue<T>>);
 
 impl<T> Local<T> {
     /// Returns true if the queue has entries that can be stolen.
+    #[inline]
     pub fn is_stealable(&self) -> bool {
         !self.inner.is_empty()
     }
@@ -298,31 +406,37 @@ impl<T> Local<T> {
     ///
     /// Separate to is_stealable so that refactors of is_stealable to "protect"
     /// some tasks from stealing won't affect this
+    #[inline]
     pub fn has_tasks(&self) -> bool {
         !self.inner.is_empty()
     }
 
-    /// Pushes a task to the back of the local queue, skipping the LIFO slot.
+    /// Pushes a task to the back of the local queue
+    #[inline]
     pub fn push_back(&mut self, task: T) {
         self.inner.push(task)
     }
 
     /// Pops a task from the local queue.
+    #[inline]
     pub fn pop(&mut self) -> Option<T> {
         self.inner.local_pop()
     }
 }
 
 impl<T> Steal<T> {
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
     /// Steals half the tasks from self and place them into `dst`.
+    #[inline]
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
         let mut v = self.0.bulk_pop()?;
         let ret = v.pop();
@@ -347,8 +461,10 @@ impl<T> Drop for Local<T> {
     }
 }
 
-#[cfg(test)]
-mod tests {
+#[cfg(all(nightly, test))]
+mod test {
+    extern crate test;
+    use self::test::Bencher;
     use super::*;
 
     use std::sync::Arc;
@@ -376,7 +492,7 @@ mod tests {
             q.push(i);
         }
         assert_eq!(q.len(), 100);
-        println!("{:?}", q);
+        println!("{q:?}");
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
@@ -384,43 +500,6 @@ mod tests {
         assert_eq!(q.pop(), None);
         assert_eq!(q.len(), 0);
     }
-
-    #[test]
-    fn multi_1p2c_test() {
-        let q = Arc::new(Queue::new());
-        let total_work: usize = 1000;
-        // create worker threads that generate mono increasing index
-        // in other thread the value should be still 100
-        for i in 0..total_work {
-            q.push(i);
-        }
-
-        thread::scope(|s| {
-            let threads = 4;
-            for _ in 0..threads {
-                let q = q.clone();
-                s.spawn(move || {
-                    for _i in 0..total_work / threads {
-                        let _v = q.block_pop();
-                        println!("pop {_v}");
-                    }
-                });
-            }
-        });
-        assert!(q.is_empty());
-    }
-}
-
-#[cfg(all(nightly, test))]
-mod bench {
-    extern crate test;
-    use self::test::Bencher;
-    use super::*;
-
-    use std::sync::Arc;
-    use std::thread;
-
-    use crate::test_queue::ScBlockPop;
 
     #[bench]
     fn single_thread_test(b: &mut Bencher) {
@@ -437,7 +516,7 @@ mod bench {
     fn multi_1p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1000_000;
+            let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -458,7 +537,7 @@ mod bench {
     fn multi_1p2c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1000_000;
+            let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             for i in 0..total_work {
@@ -484,7 +563,7 @@ mod bench {
     fn bulk_1p2c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1000_000;
+            let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             for i in 0..total_work {
