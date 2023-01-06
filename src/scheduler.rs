@@ -115,16 +115,11 @@ impl Scheduler {
         let mut next_id = id;
 
         let mut get_co = || {
+            // Try get a task from the local queue.
             local
-                // Try get a task from the local queue.
                 .pop()
                 // Try stealing a of task from other local queues.
                 .or_else(|| {
-                    // (0..len/2).find_map(|_| {
-                    //     next_id = (next_id + 1).rem_euclid(len);
-                    //     let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                    //     stealer.steal_into(local)
-                    // })
                     next_id = (next_id + 1).rem_euclid(len);
                     let stealer = unsafe { self.stealers.get_unchecked(next_id) };
                     stealer.steal_into(local)

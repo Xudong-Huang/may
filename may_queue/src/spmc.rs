@@ -167,7 +167,7 @@ impl<T> Queue<T> {
         }
     }
 
-    /// push a value to the queue
+    /// push a value to the back of queue
     pub fn push(&self, v: T) {
         let tail = unsafe { &mut *self.tail.block.unsync_load() };
         let push_index = unsafe { self.tail.index.unsync_load() };
@@ -195,10 +195,12 @@ impl<T> Queue<T> {
 
         loop {
             let (block, id) = BlockPtr::unpack(head);
-            let block = unsafe { &mut *block };
+
             // NOTE: access block is not safe, the block maybe released by other threads
             // but we are hoping that the memory content is not changed, even the content
             // of the block changed, the compare_exchange would make sure a correct result
+            let block = unsafe { &mut *block };
+
             if block.start + id >= push_index {
                 return None;
             }
@@ -250,6 +252,7 @@ impl<T> Queue<T> {
         loop {
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
+
             if block.start + id >= push_index {
                 return None;
             }
@@ -298,6 +301,7 @@ impl<T> Queue<T> {
         loop {
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
+
             let index = block.start + id;
             if index >= push_index {
                 return None;
@@ -358,7 +362,13 @@ impl<T> Queue<T> {
     /// if the queue is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        let head = self.head.0.load(Ordering::Acquire);
+        let (block, id) = BlockPtr::unpack(head);
+
+        let tail_block = self.tail.block.load(Ordering::Acquire);
+        let push_index = self.tail.index.load(Ordering::Acquire);
+
+        block == tail_block && id == push_index & BLOCK_MASK
     }
 }
 
