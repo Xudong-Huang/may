@@ -16,7 +16,7 @@ fn yield_bench(b: &mut Bencher) {
     b.iter(|| {
         scope(|s| {
             for _ in 0..1000 {
-                go!(s, || for _i in 0..1000 {
+                go!(s, || for _i in 0..10000 {
                     yield_now();
                 });
             }

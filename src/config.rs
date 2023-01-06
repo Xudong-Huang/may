@@ -40,7 +40,7 @@ impl Config {
         if workers != 0 {
             workers
         } else {
-            let num = num_cpus::get().min(64);
+            let num = num_cpus::get();
             WORKERS.store(num, Ordering::Relaxed);
             num
         }
