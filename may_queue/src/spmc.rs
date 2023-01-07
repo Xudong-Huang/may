@@ -436,15 +436,13 @@ impl<T> Default for Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
-        while self.pop().is_some() {}
+        while self.bulk_pop().is_some() {}
         let head = self.head.0.load(Ordering::Acquire);
         let (block, _id) = BlockPtr::unpack(head);
         let tail = self.tail.block.load(Ordering::Relaxed);
         assert_eq!(block, tail);
 
-        unsafe {
-            let _unused_block = Box::from_raw(block);
-        }
+        let _unused_block = unsafe { Box::from_raw(block) };
     }
 }
 
