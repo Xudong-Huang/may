@@ -38,7 +38,7 @@ struct BlockNode<T> {
     data: [Slot<T>; BLOCK_SIZE],
     used: AtomicUsize,
     pub next: AtomicPtr<BlockNode<T>>,
-    pub start: usize, // start index of the block
+    pub start: AtomicUsize, // start index of the block
 }
 
 /// we don't implement the block node Drop trait
@@ -52,7 +52,7 @@ impl<T> BlockNode<T> {
             next: AtomicPtr::new(ptr::null_mut()),
             used: AtomicUsize::new(BLOCK_SIZE),
             data: [Slot::UNINIT; BLOCK_SIZE],
-            start: index,
+            start: AtomicUsize::new(index),
         }))
     }
 
@@ -201,8 +201,8 @@ impl<T> Queue<T> {
             // but we are hoping that the memory content is not changed, even the content
             // of the block changed, the compare_exchange would make sure a correct result
             let block = unsafe { &mut *block };
-
-            if block.start + id >= push_index {
+            let block_start = block.start.load(Ordering::Relaxed);
+            if block_start + id >= push_index {
                 return None;
             }
 
@@ -253,8 +253,8 @@ impl<T> Queue<T> {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
-
-            if block.start + id >= push_index {
+            let block_start = block.start.load(Ordering::Relaxed);
+            if block_start + id >= push_index {
                 return None;
             }
 
@@ -302,7 +302,7 @@ impl<T> Queue<T> {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
-            let block_start = block.start;
+            let block_start = block.start.load(Ordering::Relaxed);
             let mut index = block_start + id;
             if index >= push_index {
                 return None;
@@ -327,7 +327,7 @@ impl<T> Queue<T> {
                 Ok(_) => {
                     if new_id == 0 {
                         // we need to recal the push_index due to ABA issue
-                        let new_block_start = unsafe { std::ptr::read_volatile(&block.start) };
+                        let new_block_start = block.start.load(Ordering::Relaxed);
                         if new_block_start == block_start {
                             // ABA not happen
                             let next = block.next.load(Ordering::Relaxed);
@@ -373,7 +373,8 @@ impl<T> Queue<T> {
         // it's unsafe to deref the block, because it could be a destroyed one
         // we'd better use AtomicUsize index to calc the length
         // both the tail and head are just shadows of the real tail and head
-        let pop_index = block.start + id;
+        let block_start = block.start.load(Ordering::Relaxed);
+        let pop_index = block_start + id;
         let push_index = self.tail.index.load(Ordering::Acquire);
         push_index.wrapping_sub(pop_index)
     }
