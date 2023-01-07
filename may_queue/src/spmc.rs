@@ -1,4 +1,4 @@
-use crossbeam::utils::CachePadded;
+use crossbeam::utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};
@@ -189,7 +189,7 @@ impl<T> Queue<T> {
 
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let backoff = crossbeam::utils::Backoff::new();
+        let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
 
@@ -244,7 +244,7 @@ impl<T> Queue<T> {
 
     /// pop from the queue, if it's empty return None
     fn local_pop(&self) -> Option<T> {
-        let backoff = crossbeam::utils::Backoff::new();
+        let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
         // this is use for local pop, we can sure that push_index is not changed
         let push_index = unsafe { self.tail.index.unsync_load() };
@@ -326,8 +326,17 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if new_id == 0 {
-                        let next = block.next.load(Ordering::Relaxed);
-                        self.head.0.store(next, Ordering::Release);
+                        // we need to recal the push_index due to ABA issue
+                        push_index = self.tail.index.load(Ordering::Acquire);
+                        let end = bulk_end(index, push_index);
+                        let new_id = end & BLOCK_MASK;
+                        if new_id == 0 {
+                            let next = block.next.load(Ordering::Relaxed);
+                            self.head.0.store(next, Ordering::Release);
+                        } else {
+                            let new_head = BlockPtr::pack(block, new_id);
+                            self.head.0.store(new_head, Ordering::Release);
+                        }
                     }
                     // get the data
                     let value = block.copy_to_bulk(index, end);
@@ -494,7 +503,7 @@ mod test {
 
     impl<T> ScBlockPop<T> for super::Queue<T> {
         fn block_pop(&self) -> T {
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 match self.pop() {
                     Some(v) => return v,
