@@ -179,7 +179,7 @@ impl<T> Queue<T> {
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new(new_index);
             // when other thread access next, we already Acquire the container node
-            tail.next.store(new_tail, Ordering::Release);
+            tail.next.store(new_tail, Ordering::Relaxed);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
@@ -194,6 +194,7 @@ impl<T> Queue<T> {
         let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
+            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
 
             // NOTE: access block is not safe, the block maybe released by other threads
@@ -208,7 +209,7 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                block.next.load(Ordering::Acquire)
+                (head as usize | (1 << 63)) as *mut BlockNode<T>
             };
 
             // commit the pop
@@ -219,11 +220,10 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    assert!(
-                        !new_head.is_null(),
-                        "pop_index={}, push_index={push_index}",
-                        block.start + id
-                    );
+                    if id == BLOCK_MASK {
+                        let next = block.next.load(Ordering::Relaxed);
+                        self.head.0.store(next, Ordering::Release);
+                    }
                     // get the data
                     let v = block.get(id);
 
@@ -250,6 +250,7 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
 
         loop {
+            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
 
@@ -260,7 +261,7 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                block.next.load(Ordering::Acquire)
+                (head as usize | (1 << 63)) as *mut BlockNode<T>
             };
 
             // commit the pop
@@ -271,11 +272,10 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    assert!(
-                        !new_head.is_null(),
-                        "local_index={}, push_index={push_index}",
-                        block.start + id
-                    );
+                    if id == BLOCK_MASK {
+                        let next = block.next.load(Ordering::Relaxed);
+                        self.head.0.store(next, Ordering::Release);
+                    }
                     // get the data
                     let v = block.get(id);
 
@@ -299,6 +299,7 @@ impl<T> Queue<T> {
         let mut push_index = self.tail.index.load(Ordering::Acquire);
 
         loop {
+            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
 
@@ -310,7 +311,7 @@ impl<T> Queue<T> {
             let end = bulk_end(index, push_index);
             let new_id = end & BLOCK_MASK;
             let new_head = if new_id == 0 {
-                block.next.load(Ordering::Acquire)
+                (head as usize | (1 << 63)) as *mut BlockNode<T>
             } else {
                 BlockPtr::pack(block, new_id)
             };
@@ -324,10 +325,10 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    assert!(
-                        !new_head.is_null(),
-                        "index={index}, push_index={push_index}"
-                    );
+                    if new_id == 0 {
+                        let next = block.next.load(Ordering::Relaxed);
+                        self.head.0.store(next, Ordering::Release);
+                    }
                     // get the data
                     let value = block.copy_to_bulk(index, end);
 
