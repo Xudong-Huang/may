@@ -302,13 +302,13 @@ impl<T> Queue<T> {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
             let block = unsafe { &mut *block };
-
-            let index = block.start + id;
+            let block_start = block.start;
+            let mut index = block_start + id;
             if index >= push_index {
                 return None;
             }
 
-            let end = bulk_end(index, push_index);
+            let mut end = bulk_end(index, push_index);
             let new_id = end & BLOCK_MASK;
             let new_head = if new_id == 0 {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
@@ -327,15 +327,24 @@ impl<T> Queue<T> {
                 Ok(_) => {
                     if new_id == 0 {
                         // we need to recal the push_index due to ABA issue
-                        push_index = self.tail.index.load(Ordering::Acquire);
-                        let end = bulk_end(index, push_index);
-                        let new_id = end & BLOCK_MASK;
-                        if new_id == 0 {
+                        let new_block_start = unsafe { std::ptr::read_volatile(&block.start) };
+                        if new_block_start == block_start {
+                            // ABA not happen
                             let next = block.next.load(Ordering::Relaxed);
                             self.head.0.store(next, Ordering::Release);
                         } else {
-                            let new_head = BlockPtr::pack(block, new_id);
-                            self.head.0.store(new_head, Ordering::Release);
+                            // ABA detected, we need to retry
+                            let new_push_index = self.tail.index.load(Ordering::Acquire);
+                            index = new_block_start + id;
+                            end = bulk_end(index, new_push_index);
+                            let new_id = end & BLOCK_MASK;
+                            if new_id == 0 {
+                                let next = block.next.load(Ordering::Relaxed);
+                                self.head.0.store(next, Ordering::Release);
+                            } else {
+                                let new_head = BlockPtr::pack(block, new_id);
+                                self.head.0.store(new_head, Ordering::Release);
+                            }
                         }
                     }
                     // get the data
