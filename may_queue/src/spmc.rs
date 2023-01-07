@@ -336,6 +336,11 @@ impl<T> Queue<T> {
                             // ABA detected, we need to retry
                             let new_push_index = self.tail.index.load(Ordering::Acquire);
                             index = new_block_start + id;
+                            if index >= new_push_index {
+                                // recover the old head, and return None
+                                self.head.0.store(head, Ordering::Release);
+                                return None;
+                            }
                             end = bulk_end(index, new_push_index);
                             let new_id = end & BLOCK_MASK;
                             if new_id == 0 {
