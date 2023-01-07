@@ -221,8 +221,23 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        let next = block.next.load(Ordering::Relaxed);
-                        self.head.0.store(next, Ordering::Release);
+                        // we need to recal the push_index due to ABA issue
+                        let new_block_start = block.start.load(Ordering::Relaxed);
+                        if new_block_start == block_start {
+                            // ABA not happen
+                            let next = block.next.load(Ordering::Relaxed);
+                            self.head.0.store(next, Ordering::Release);
+                        } else {
+                            // ABA detected, we need to retry
+                            let new_push_index = self.tail.index.load(Ordering::Acquire);
+                            if new_block_start + id >= new_push_index {
+                                // recover the old head, and return None
+                                self.head.0.store(head, Ordering::Release);
+                                return None;
+                            }
+                            let next = block.next.load(Ordering::Relaxed);
+                            self.head.0.store(next, Ordering::Release);
+                        }
                     }
                     // get the data
                     let v = block.get(id);
@@ -273,8 +288,23 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        let next = block.next.load(Ordering::Relaxed);
-                        self.head.0.store(next, Ordering::Release);
+                        // we need to recal the push_index due to ABA issue
+                        let new_block_start = block.start.load(Ordering::Relaxed);
+                        if new_block_start == block_start {
+                            // ABA not happen
+                            let next = block.next.load(Ordering::Relaxed);
+                            self.head.0.store(next, Ordering::Release);
+                        } else {
+                            // ABA detected, we need to retry
+                            let new_push_index = self.tail.index.load(Ordering::Acquire);
+                            if new_block_start + id >= new_push_index {
+                                // recover the old head, and return None
+                                self.head.0.store(head, Ordering::Release);
+                                return None;
+                            }
+                            let next = block.next.load(Ordering::Relaxed);
+                            self.head.0.store(next, Ordering::Release);
+                        }
                     }
                     // get the data
                     let v = block.get(id);
