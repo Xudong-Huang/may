@@ -635,3 +635,140 @@ impl<T> Iterator for IntoIter<T> {
         }
     }
 }
+
+#[cfg(all(nightly, test))]
+mod test {
+    extern crate test;
+    use self::test::Bencher;
+    use super::*;
+
+    use std::sync::Arc;
+    use std::thread;
+
+    use crate::test_queue::ScBlockPop;
+
+    impl<T> ScBlockPop<T> for super::SegQueue<T> {
+        fn block_pop(&self) -> T {
+            let backoff = crossbeam::utils::Backoff::new();
+            loop {
+                match self.pop() {
+                    Some(v) => return v,
+                    None => backoff.snooze(),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn queue_sanity() {
+        let q = SegQueue::<usize>::new();
+        assert_eq!(q.len(), 0);
+        for i in 0..100 {
+            q.push(i);
+        }
+        assert_eq!(q.len(), 100);
+        println!("{q:?}");
+
+        for i in 0..100 {
+            assert_eq!(q.pop(), Some(i));
+        }
+        assert_eq!(q.pop(), None);
+        assert_eq!(q.len(), 0);
+    }
+
+    #[bench]
+    fn single_thread_test(b: &mut Bencher) {
+        let q = SegQueue::new();
+        let mut i = 0;
+        b.iter(|| {
+            q.push(i);
+            assert_eq!(q.pop(), Some(i));
+            i += 1;
+        });
+    }
+
+    #[bench]
+    fn multi_1p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
+
+            for i in 0..total_work {
+                let v = q.block_pop();
+                assert_eq!(i, v);
+            }
+        });
+    }
+
+    #[bench]
+    fn multi_2p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            let mut total = 0;
+
+            thread::scope(|s| {
+                let threads = 20;
+                for i in 0..threads {
+                    let q = q.clone();
+                    s.spawn(move || {
+                        let len = total_work / threads;
+                        let start = i * len;
+                        for v in start..start + len {
+                            let _v = q.push(v);
+                        }
+                    });
+                }
+                s.spawn(|| {
+                    for _ in 0..total_work {
+                        total += q.block_pop();
+                    }
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(total, (0..total_work).sum::<usize>());
+        });
+    }
+
+    // #[bench]
+    // fn bulk_1p2c_test(b: &mut Bencher) {
+    //     b.iter(|| {
+    //         let q = Arc::new(Queue::new());
+    //         let total_work: usize = 1_000_000;
+    //         // create worker threads that generate mono increasing index
+    //         // in other thread the value should be still 100
+    //         for i in 0..total_work {
+    //             q.push(i);
+    //         }
+
+    //         let total = Arc::new(AtomicUsize::new(0));
+
+    //         thread::scope(|s| {
+    //             let threads = 20;
+    //             for _ in 0..threads {
+    //                 let q = q.clone();
+    //                 let total = total.clone();
+    //                 s.spawn(move || {
+    //                     while !q.is_empty() {
+    //                         if let Some(v) = q.bulk_pop() {
+    //                             total.fetch_add(v.len(), Ordering::AcqRel);
+    //                         }
+    //                     }
+    //                 });
+    //             }
+    //         });
+    //         assert!(q.is_empty());
+    //         assert_eq!(total.load(Ordering::Acquire), total_work);
+    //     });
+    // }
+}
