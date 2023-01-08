@@ -7,6 +7,7 @@ pub mod seg_queue;
 pub mod tokio_queue;
 
 pub mod mpmc_bounded;
+pub mod mpsc;
 pub mod mpsc_list;
 pub mod mpsc_list_v1;
 pub mod spmc;
