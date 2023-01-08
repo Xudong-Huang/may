@@ -85,7 +85,9 @@ impl<T> BlockNode<T> {
 
     #[inline]
     pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
-        SmallVec::from_iter((start..end).map(|i| self.get(i & BLOCK_MASK)))
+        let len = end - start;
+        let start = start & BLOCK_MASK;
+        SmallVec::from_iter((start..start + len).map(|id| self.get(id)))
     }
 }
 
@@ -221,23 +223,18 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        // we need to recal the push_index due to ABA issue
                         let new_block_start = block.start.load(Ordering::Relaxed);
-                        if new_block_start == block_start {
-                            // ABA not happen
-                            let next = block.next.load(Ordering::Relaxed);
-                            self.head.0.store(next, Ordering::Release);
-                        } else {
-                            // ABA detected, we need to retry
+                        if new_block_start != block_start {
+                            // ABA detected, we need to check if there is enough data
                             let new_push_index = self.tail.index.load(Ordering::Acquire);
                             if new_block_start + id >= new_push_index {
                                 // recover the old head, and return None
                                 self.head.0.store(head, Ordering::Release);
                                 return None;
                             }
-                            let next = block.next.load(Ordering::Relaxed);
-                            self.head.0.store(next, Ordering::Release);
                         }
+                        let next = block.next.load(Ordering::Relaxed);
+                        self.head.0.store(next, Ordering::Release);
                     }
                     // get the data
                     let v = block.get(id);
@@ -288,23 +285,18 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        // we need to recal the push_index due to ABA issue
                         let new_block_start = block.start.load(Ordering::Relaxed);
-                        if new_block_start == block_start {
-                            // ABA not happen
-                            let next = block.next.load(Ordering::Relaxed);
-                            self.head.0.store(next, Ordering::Release);
-                        } else {
-                            // ABA detected, we need to retry
+                        if new_block_start != block_start {
+                            // ABA detected, we need to check if there is enough data
                             let new_push_index = self.tail.index.load(Ordering::Acquire);
                             if new_block_start + id >= new_push_index {
                                 // recover the old head, and return None
                                 self.head.0.store(head, Ordering::Release);
                                 return None;
                             }
-                            let next = block.next.load(Ordering::Relaxed);
-                            self.head.0.store(next, Ordering::Release);
                         }
+                        let next = block.next.load(Ordering::Relaxed);
+                        self.head.0.store(next, Ordering::Release);
                     }
                     // get the data
                     let v = block.get(id);
@@ -356,7 +348,7 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if new_id == 0 {
-                        // we need to recal the push_index due to ABA issue
+                        // we need to check if block.start is changed
                         let new_block_start = block.start.load(Ordering::Relaxed);
                         if new_block_start == block_start {
                             // ABA not happen
@@ -403,6 +395,7 @@ impl<T> Queue<T> {
     #[inline]
     pub fn len(&self) -> usize {
         let head = self.head.0.load(Ordering::Acquire);
+        let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
         let (block, id) = BlockPtr::unpack(head);
         let block = unsafe { &mut *block };
         // it's unsafe to deref the block, because it could be a destroyed one
@@ -418,6 +411,7 @@ impl<T> Queue<T> {
     #[inline]
     pub fn is_empty(&self) -> bool {
         let head = self.head.0.load(Ordering::Acquire);
+        let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
         let (block, id) = BlockPtr::unpack(head);
 
         let tail_block = self.tail.block.load(Ordering::Acquire);
