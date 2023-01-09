@@ -222,8 +222,8 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    let new_block_start = block.start.load(Ordering::Relaxed);
                     if id == BLOCK_MASK {
-                        let new_block_start = block.start.load(Ordering::Relaxed);
                         if new_block_start != block_start {
                             // ABA detected, we need to check if there is enough data
                             let new_push_index = self.tail.index.load(Ordering::Acquire);
@@ -235,6 +235,13 @@ impl<T> Queue<T> {
                         }
                         let next = block.next.load(Ordering::Relaxed);
                         self.head.0.store(next, Ordering::Release);
+                    } else if new_block_start != block_start {
+                        // println!("pop ABA detected");
+                        // ABA detected, we have to wait there is enough data
+                        // if no any more produce, this will be a dead loop
+                        while new_block_start + id >= self.tail.index.load(Ordering::Acquire) {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
                     }
                     // get the data
                     let v = block.get(id);
@@ -284,8 +291,8 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    let new_block_start = block.start.load(Ordering::Relaxed);
                     if id == BLOCK_MASK {
-                        let new_block_start = block.start.load(Ordering::Relaxed);
                         if new_block_start != block_start {
                             // ABA detected, we need to check if there is enough data
                             let new_push_index = self.tail.index.load(Ordering::Acquire);
@@ -297,7 +304,21 @@ impl<T> Queue<T> {
                         }
                         let next = block.next.load(Ordering::Relaxed);
                         self.head.0.store(next, Ordering::Release);
+                    } else if new_block_start != block_start {
+                        // println!("local pop ABA detected");
+                        // ABA detected, we need to check if there is enough data
+                        let new_push_index = self.tail.index.load(Ordering::Acquire);
+                        if new_block_start + id >= new_push_index {
+                            // advance the push index and this slot is ignored
+                            self.tail.index.fetch_add(1, Ordering::Relaxed);
+                            if block.mark_slots_read(1) {
+                                // we need to free the old block
+                                let _unused_block = unsafe { Box::from_raw(block) };
+                            }
+                            return None;
+                        }
                     }
+
                     // get the data
                     let v = block.get(id);
 
@@ -347,9 +368,9 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    // we need to check if block.start is changed
+                    let new_block_start = block.start.load(Ordering::Relaxed);
                     if new_id == 0 {
-                        // we need to check if block.start is changed
-                        let new_block_start = block.start.load(Ordering::Relaxed);
                         if new_block_start == block_start {
                             // ABA not happen
                             let next = block.next.load(Ordering::Relaxed);
@@ -373,7 +394,15 @@ impl<T> Queue<T> {
                                 self.head.0.store(new_head, Ordering::Release);
                             }
                         }
+                    } else if new_block_start != block_start {
+                        // println!("bulk pop ABA detected");
+                        // ABA detected, we have to wait there is enough data
+                        // if no any more data pushed, this will be a dead loop
+                        while new_block_start + id >= self.tail.index.load(Ordering::Acquire) {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
                     }
+
                     // get the data
                     let value = block.copy_to_bulk(index, end);
 
