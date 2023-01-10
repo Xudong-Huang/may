@@ -175,7 +175,6 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
-
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
@@ -185,6 +184,8 @@ impl<T> Queue<T> {
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
+        // need this to make sure the data is stored before the index is updated
+        std::sync::atomic::compiler_fence(Ordering::Release);
         // commit the push
         self.tail.index.store(new_index, Ordering::Release);
     }
@@ -218,7 +219,7 @@ impl<T> Queue<T> {
             match self.head.0.compare_exchange_weak(
                 head,
                 new_head,
-                Ordering::SeqCst,
+                Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
@@ -287,7 +288,7 @@ impl<T> Queue<T> {
             match self.head.0.compare_exchange_weak(
                 head,
                 new_head,
-                Ordering::SeqCst,
+                Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
@@ -364,7 +365,7 @@ impl<T> Queue<T> {
             match self.head.0.compare_exchange_weak(
                 head,
                 new_head,
-                Ordering::SeqCst,
+                Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
@@ -639,18 +640,21 @@ mod test {
                 q.push(i);
             }
 
+            let sum = AtomicUsize::new(0);
+            let threads = 20;
             thread::scope(|s| {
-                let threads = 20;
-                for _ in 0..threads {
-                    let q = q.clone();
-                    s.spawn(move || {
+                (0..threads).for_each(|_| {
+                    s.spawn(|| {
+                        let mut total = 0;
                         for _i in 0..total_work / threads {
-                            let _v = q.block_pop();
+                            total += q.block_pop();
                         }
+                        sum.fetch_add(total, Ordering::Relaxed);
                     });
-                }
+                });
             });
             assert!(q.is_empty());
+            assert_eq!(sum.load(Ordering::Relaxed), (0..total_work).sum());
         });
     }
 
