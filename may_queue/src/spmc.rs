@@ -185,7 +185,7 @@ impl<T> Queue<T> {
         }
 
         // need this to make sure the data is stored before the index is updated
-        std::sync::atomic::compiler_fence(Ordering::Release);
+        std::sync::atomic::fence(Ordering::Release);
         // commit the push
         self.tail.index.store(new_index, Ordering::Release);
     }

@@ -118,7 +118,7 @@ impl Scheduler {
             // Try get a task from the local queue.
             local
                 .pop()
-                // Try stealing a of task from other local queues.
+                // Try stealing tasks from other local queues.
                 .or_else(|| {
                     next_id = (next_id + 1).rem_euclid(len);
                     let stealer = unsafe { self.stealers.get_unchecked(next_id) };
@@ -126,23 +126,11 @@ impl Scheduler {
                 })
         };
 
-        // Pop a task from the local queue
+        // Pop first task
         let mut cur_co = get_co();
 
-        if let Some(co) = &cur_co {
-            co.prefetch();
-        } else {
-            cur_co = match get_co() {
-                Some(co) => {
-                    co.prefetch();
-                    Some(co)
-                }
-                None => return,
-            };
-        }
-
         loop {
-            // Pop a task from the local queue
+            // Pop another task for prefetching
             let next_co = get_co();
 
             if let Some(co) = cur_co {
@@ -185,10 +173,9 @@ impl Scheduler {
     /// put the coroutine to global queue so that next time it can be scheduled
     #[inline]
     pub fn schedule_global(&self, co: CoroutineImpl) {
-        // let thread_id = self.workers.get_idle_thread();
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
         let thread_id = NEXT_THREAD_ID
-            .fetch_add(1, Ordering::AcqRel)
+            .fetch_add(1, Ordering::Relaxed)
             .rem_euclid(self.global_queues.len());
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
@@ -200,8 +187,10 @@ impl Scheduler {
     pub fn collect_global(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
         let global = unsafe { self.global_queues.get_unchecked(id) };
-        while let Some(co) = global.pop() {
-            local.push_back(co);
+        while let Some(v) = global.pop_bulk() {
+            for co in v {
+                local.push_back(co);
+            }
         }
     }
 
