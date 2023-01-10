@@ -34,26 +34,32 @@ impl<T> Slot<T> {
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
 #[repr(align(32))]
-struct BlockNode<T> {
+pub(crate) struct BlockNode<T> {
     data: [Slot<T>; BLOCK_SIZE],
     used: AtomicUsize,
-    pub next: AtomicPtr<BlockNode<T>>,
-    pub start: AtomicUsize, // start index of the block
+    next: AtomicPtr<BlockNode<T>>,
+    start: AtomicUsize, // start index of the block
 }
 
 /// we don't implement the block node Drop trait
 /// the queue is responsible to drop all the items
 /// and would call its get() method for the dropping
 impl<T> BlockNode<T> {
+    /// create a new boxed BlockNode with uninitialized data
+    #[inline]
+    pub fn new_box(index: usize) -> *mut BlockNode<T> {
+        Box::into_raw(Box::new(BlockNode::new(index)))
+    }
+
     /// create a new BlockNode with uninitialized data
     #[inline]
-    pub fn new(index: usize) -> *mut BlockNode<T> {
-        Box::into_raw(Box::new(BlockNode {
+    pub fn new(index: usize) -> BlockNode<T> {
+        BlockNode {
             next: AtomicPtr::new(ptr::null_mut()),
             used: AtomicUsize::new(BLOCK_SIZE),
             data: [Slot::UNINIT; BLOCK_SIZE],
             start: AtomicUsize::new(index),
-        }))
+        }
     }
 
     /// write index with data
@@ -140,8 +146,101 @@ impl<T> BlockPtr<T> {
     }
 }
 
+// this is a mpsc list for resource cache
+mod cache {
+    use super::*;
+    const CACHE_BLOCK_NUM: usize = 128;
+    pub(crate) struct Cache<T> {
+        head: CachePadded<AtomicPtr<BlockNode<T>>>,
+        tail: UnsafeCell<*mut BlockNode<T>>,
+    }
+
+    unsafe impl<T: Send> Send for Cache<T> {}
+    unsafe impl<T: Send> Sync for Cache<T> {}
+
+    impl<T> Cache<T> {
+        /// Creates a new queue that is safe to share among multiple producers and
+        /// one consumer.
+        pub fn new() -> Cache<T> {
+            let stub = BlockNode::new_box(0);
+            let cache = Cache {
+                head: AtomicPtr::new(stub).into(),
+                tail: UnsafeCell::new(stub),
+            };
+            for i in 0..CACHE_BLOCK_NUM {
+                cache.push(Box::new(BlockNode::new(i * BLOCK_SIZE)));
+            }
+            cache
+        }
+
+        #[inline]
+        pub(crate) fn push(&self, node: Box<BlockNode<T>>) {
+            // node.next.store(ptr::null_mut(), Ordering::Relaxed);
+            let node = Box::into_raw(node);
+            unsafe {
+                let prev = self.head.swap(node, Ordering::AcqRel);
+                (*prev).next.store(node, Ordering::Release);
+            }
+        }
+
+        /// Pops some data from this queue.
+        #[inline]
+        fn pop(&self) -> Option<Box<BlockNode<T>>> {
+            unsafe {
+                let tail = *self.tail.get();
+
+                // the list is empty
+                if self.head.load(Ordering::Acquire) == tail {
+                    return None;
+                }
+
+                // spin until tail next become non-null
+                let backoff = Backoff::new();
+                let mut next;
+                loop {
+                    next = (*tail).next.load(Ordering::Acquire);
+                    if !next.is_null() {
+                        break;
+                    }
+                    backoff.spin();
+                }
+                // move the tail to next
+                *self.tail.get() = next;
+
+                Some(Box::from_raw(tail))
+            }
+        }
+
+        #[inline]
+        pub(crate) fn get(&self, index: usize) -> Box<BlockNode<T>> {
+            const MAX_DISTANCE: usize = BLOCK_SIZE * CACHE_BLOCK_NUM;
+            loop {
+                match self.pop() {
+                    Some(b) => {
+                        if b.start.load(Ordering::Relaxed) + MAX_DISTANCE >= index {
+                            // b.next.store(ptr::null_mut(), Ordering::Relaxed);
+                            b.used.store(BLOCK_SIZE, Ordering::Relaxed);
+                            b.start.store(index, Ordering::Relaxed);
+                            return b;
+                        }
+                    }
+                    // if we can't get a node from cache, we create a new one
+                    None => return Box::new(BlockNode::new(index)),
+                }
+            }
+        }
+    }
+
+    impl<T> Drop for Cache<T> {
+        fn drop(&mut self) {
+            while self.pop().is_some() {}
+            // release the stub
+            let _ = unsafe { Box::from_raw(*self.tail.get()) };
+        }
+    }
+}
+
 /// spsc queue
-#[derive(Debug)]
 pub struct Queue<T> {
     // ----------------------------------------
     // use for pop
@@ -150,6 +249,10 @@ pub struct Queue<T> {
     // -----------------------------------------
     // use for push
     tail: CachePadded<Position<T>>,
+
+    // -----------------------------------------
+    // use for block cache
+    cache: cache::Cache<T>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -161,10 +264,12 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 impl<T> Queue<T> {
     /// create a spsc queue
     pub fn new() -> Self {
-        let init_block = BlockNode::<T>::new(0);
+        let cache = cache::Cache::new();
+        let init_block = Box::into_raw(cache.get(0));
         Queue {
             head: BlockPtr::new(init_block).into(),
             tail: Position::new(init_block).into(),
+            cache,
             _marker: PhantomData,
         }
     }
@@ -179,7 +284,7 @@ impl<T> Queue<T> {
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
-            let new_tail = BlockNode::new(new_index);
+            let new_tail = Box::into_raw(self.cache.get(new_index));
             // when other thread access next, we already Acquire the container node
             tail.next.store(new_tail, Ordering::Relaxed);
             self.tail.block.store(new_tail, Ordering::Relaxed);
@@ -248,7 +353,7 @@ impl<T> Queue<T> {
 
                     if block.mark_slots_read(1) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(block) };
+                        self.cache.push(unsafe { Box::from_raw(block) });
                     }
                     return Some(v);
                 }
@@ -313,7 +418,7 @@ impl<T> Queue<T> {
                             self.tail.index.fetch_add(1, Ordering::Relaxed);
                             if block.mark_slots_read(1) {
                                 // we need to free the old block
-                                let _unused_block = unsafe { Box::from_raw(block) };
+                                self.cache.push(unsafe { Box::from_raw(block) });
                             }
                             return None;
                         }
@@ -324,7 +429,7 @@ impl<T> Queue<T> {
 
                     if block.mark_slots_read(1) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(block) };
+                        self.cache.push(unsafe { Box::from_raw(block) });
                     }
                     return Some(v);
                 }
@@ -408,7 +513,7 @@ impl<T> Queue<T> {
 
                     if block.mark_slots_read(end - index) {
                         // we need to free the old block
-                        let _unused_block = unsafe { Box::from_raw(block) };
+                        self.cache.push(unsafe { Box::from_raw(block) });
                     }
                     return Some(value);
                 }
@@ -587,7 +692,6 @@ mod test {
             q.push(i);
         }
         assert_eq!(q.len(), 100);
-        println!("{q:?}");
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
