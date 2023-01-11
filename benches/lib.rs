@@ -10,9 +10,6 @@ use test::Bencher;
 
 #[bench]
 fn yield_bench(b: &mut Bencher) {
-    // don't print any panic info
-    // when cancel the generator
-    // panic::set_hook(Box::new(|_| {}));
     b.iter(|| {
         scope(|s| {
             for _ in 0..1000 {
@@ -112,7 +109,7 @@ fn smoke_bench_2(b: &mut Bencher) {
     may::config().set_pool_capacity(10000);
     b.iter(|| {
         scope(|s| {
-            // create a main coroutine, let it spawn 10 sub coroutine
+            // create a main coroutine, let it spawn 100 sub coroutine
             for _ in 0..100 {
                 go!(s, || {
                     scope(|ss| {

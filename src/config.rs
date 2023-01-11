@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
 const DEFAULT_STACK_SIZE: usize = 0x1000;
-const DEFAULT_POOL_CAPACITY: usize = 100;
+const DEFAULT_POOL_CAPACITY: usize = 1000;
 
 static WORKERS: AtomicUsize = AtomicUsize::new(0);
 static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
