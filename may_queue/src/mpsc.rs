@@ -1,7 +1,26 @@
-use crate::atomic::AtomicUsize;
+use crossbeam::utils::Backoff;
+use smallvec::SmallVec;
+
 use crate::spsc::Queue as Ch;
 
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Read Processor ID
+///
+/// Reads the value of the IA32_TSC_AUX MSR (address C0000103H)
+/// into the destination register.
+///
+/// # Unsafe
+/// May fail with #UD if rdpid is not supported (check CPUID).
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+pub unsafe fn rdpid() -> usize {
+    use std::arch::asm;
+    let mut pid: usize;
+    asm!("rdpid {}", out(reg) pid);
+    pid
+}
 
 struct Channel<T> {
     ch: Ch<T>,
@@ -11,37 +30,24 @@ struct Channel<T> {
 impl<T> Channel<T> {
     fn try_lock(&self) -> bool {
         self.lock
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
     }
 
     fn unlock(&self) {
-        self.lock.store(false, Ordering::Release);
+        self.lock.store(false, Ordering::Relaxed);
     }
 }
 
-const MAX_DEPTH: usize = 32;
 pub struct Queue<T> {
     channels: Vec<Channel<T>>,
-    cur_ch: AtomicUsize,
-    cur_depth: AtomicUsize,
-    // lock: AtomicBool,
-    // global_ch: Ch<T>,
-    push_index: AtomicUsize,
-    pop_index: AtomicUsize,
+    cur_ch: UnsafeCell<usize>,
 }
 
+unsafe impl<T: Send> Send for Queue<T> {}
+unsafe impl<T: Sync> Sync for Queue<T> {}
+
 impl<T> Queue<T> {
-    // fn try_lock(&self) -> bool {
-    //     self.lock
-    //         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-    //         .is_ok()
-    // }
-
-    // fn unlock(&self) {
-    //     self.lock.store(false, Ordering::Release);
-    // }
-
     pub fn new() -> Self {
         let channels = (0..num_cpus::get())
             .map(|_| Channel {
@@ -51,77 +57,80 @@ impl<T> Queue<T> {
             .collect();
         Queue {
             channels,
-            cur_ch: AtomicUsize::new(0),
-            cur_depth: AtomicUsize::new(0),
-            push_index: AtomicUsize::new(0),
-            pop_index: AtomicUsize::new(0),
-            // lock: AtomicBool::new(false),
-            // global_ch: Ch::new(),
+            cur_ch: UnsafeCell::new(0),
         }
     }
 
     pub fn push(&self, v: T) {
+        let backoff = Backoff::new();
         loop {
-            // if self.try_lock() {
-            //     self.global_ch.push(v);
-            //     self.unlock();
-            //     break;
-            // } else {
-            let id = unsafe { libc::sched_getcpu() } as usize;
+            let id = unsafe { rdpid() };
             let ch = unsafe { self.channels.get_unchecked(id) };
             if ch.try_lock() {
                 ch.ch.push(v);
                 ch.unlock();
                 break;
-            } else {
-                std::thread::yield_now();
             }
-            // }
+
+            backoff.snooze();
         }
-        self.push_index.fetch_add(1, Ordering::Release);
     }
 
     pub fn pop(&self) -> Option<T> {
-        let mut id = self.cur_ch.load(Ordering::Acquire);
+        let mut id = unsafe { *self.cur_ch.get() };
         let mut ch = unsafe { self.channels.get_unchecked(id) };
-        // let mut ch_switch = 0;
-        while self.len() > 0 {
-            // if ch_switch % self.channels.len() == 0 {
-            //     if let Some(v) = self.global_ch.pop() {
-            //         let pop_index = self.pop_index.load(Ordering::Relaxed);
-            //         self.pop_index.store(pop_index + 1, Ordering::Relaxed);
-            //         return Some(v);
-            //     }
-            // }
-
-            let cur_depth = unsafe { self.cur_depth.unsync_load() };
-            if cur_depth < MAX_DEPTH {
-                let v = ch.ch.pop();
-                if v.is_some() {
-                    let pop_index = self.pop_index.load(Ordering::Relaxed);
-                    self.pop_index.store(pop_index + 1, Ordering::Relaxed);
-                    self.cur_depth.store(cur_depth + 1, Ordering::Relaxed);
-                    return v;
-                }
+        let mut ch_switch = 0;
+        while ch_switch < self.channels.len() {
+            let v = ch.ch.pop();
+            if v.is_some() {
+                unsafe { *self.cur_ch.get() = id };
+                return v;
             }
 
-            // ch_switch += 1;
+            ch_switch += 1;
             id = (id + 1) % self.channels.len();
             ch = unsafe { self.channels.get_unchecked(id) };
-
-            self.cur_ch.store(id, Ordering::Relaxed);
-            self.cur_depth.store(0, Ordering::Relaxed);
         }
 
+        unsafe { *self.cur_ch.get() = id };
+        None
+    }
+
+    pub fn bulk_pop(&self) -> Option<SmallVec<[T; crate::spsc::BLOCK_SIZE]>> {
+        let mut id = unsafe { *self.cur_ch.get() };
+        let mut ch = unsafe { self.channels.get_unchecked(id) };
+        let mut ch_switch = 0;
+        while ch_switch < self.channels.len() {
+            let v = ch.ch.bulk_pop();
+            if v.is_some() {
+                unsafe { *self.cur_ch.get() = id };
+                return v;
+            }
+
+            ch_switch += 1;
+            id = (id + 1) % self.channels.len();
+            ch = unsafe { self.channels.get_unchecked(id) };
+        }
+
+        unsafe { *self.cur_ch.get() = id };
         None
     }
 
     pub fn len(&self) -> usize {
-        self.push_index.load(Ordering::Acquire) - self.pop_index.load(Ordering::Acquire)
+        let mut len = 0;
+        for ch in &self.channels {
+            len += ch.ch.len();
+        }
+        len
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        for ch in &self.channels {
+            if ch.ch.len() > 0 {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -207,12 +216,15 @@ mod test {
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             let mut total = 0;
+            let threads = 20;
+            let barrier = Arc::new(std::sync::Barrier::new(threads + 1));
 
             thread::scope(|s| {
-                let threads = 20;
                 for i in 0..threads {
                     let q = q.clone();
+                    let c = barrier.clone();
                     s.spawn(move || {
+                        c.wait();
                         let len = total_work / threads;
                         let start = i * len;
                         for v in start..start + len {
@@ -221,6 +233,7 @@ mod test {
                     });
                 }
                 s.spawn(|| {
+                    barrier.wait();
                     for _ in 0..total_work {
                         total += q.block_pop();
                     }
@@ -231,35 +244,45 @@ mod test {
         });
     }
 
-    // #[bench]
-    // fn bulk_1p2c_test(b: &mut Bencher) {
-    //     b.iter(|| {
-    //         let q = Arc::new(Queue::new());
-    //         let total_work: usize = 1_000_000;
-    //         // create worker threads that generate mono increasing index
-    //         // in other thread the value should be still 100
-    //         for i in 0..total_work {
-    //             q.push(i);
-    //         }
+    #[bench]
+    fn bulk_2p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(Queue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            let mut sum = 0;
+            let threads = 20;
+            let barrier = Arc::new(std::sync::Barrier::new(threads + 1));
 
-    //         let total = Arc::new(AtomicUsize::new(0));
-
-    //         thread::scope(|s| {
-    //             let threads = 20;
-    //             for _ in 0..threads {
-    //                 let q = q.clone();
-    //                 let total = total.clone();
-    //                 s.spawn(move || {
-    //                     while !q.is_empty() {
-    //                         if let Some(v) = q.bulk_pop() {
-    //                             total.fetch_add(v.len(), Ordering::AcqRel);
-    //                         }
-    //                     }
-    //                 });
-    //             }
-    //         });
-    //         assert!(q.is_empty());
-    //         assert_eq!(total.load(Ordering::Acquire), total_work);
-    //     });
-    // }
+            thread::scope(|s| {
+                for i in 0..threads {
+                    let q = q.clone();
+                    let c = barrier.clone();
+                    s.spawn(move || {
+                        c.wait();
+                        let len = total_work / threads;
+                        let start = i * len;
+                        for v in start..start + len {
+                            let _v = q.push(v);
+                        }
+                    });
+                }
+                s.spawn(|| {
+                    barrier.wait();
+                    let mut total = 0;
+                    while total < total_work {
+                        if let Some(v) = q.bulk_pop() {
+                            total += v.len();
+                            for i in v {
+                                sum += i;
+                            }
+                        }
+                    }
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(sum, (0..total_work).sum::<usize>());
+        });
+    }
 }
