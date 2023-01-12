@@ -90,17 +90,15 @@ impl<T> Block<T> {
 }
 
 impl<T> Block<T> {
-    fn copy_to_bulk(this: *mut Block<T>, mut start: usize, end: usize) -> SmallVec<[T; BLOCK_CAP]> {
-        let mut ret = SmallVec::<[T; BLOCK_CAP]>::new();
-        while start < end {
-            // Read the value.
-            let slot = unsafe { (*this).slots.get_unchecked(start) };
-            slot.wait_write();
-            let value = unsafe { slot.value.get().read().assume_init() };
-            ret.push(value);
-            start += 1;
-        }
-        ret
+    fn copy_to_bulk(this: *mut Block<T>, start: usize, end: usize) -> SmallVec<[T; BLOCK_CAP]> {
+        let block = unsafe { &*this };
+        block.slots[start..end]
+            .iter()
+            .map(|slot| {
+                slot.wait_write();
+                unsafe { slot.value.get().read().assume_init() }
+            })
+            .collect()
     }
 }
 
