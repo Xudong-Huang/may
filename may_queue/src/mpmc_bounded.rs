@@ -171,63 +171,55 @@ impl<T: Send> Clone for Queue<T> {
 #[cfg(all(nightly, test))]
 mod bench {
     extern crate test;
+
     use self::test::Bencher;
 
     use super::Queue;
-    use std::sync::mpsc::channel;
     use std::thread;
 
     #[bench]
     fn bounded_mpmc(b: &mut Bencher) {
+        let total_work = 1_000_000;
+        let nthreads = 2;
+        let nmsgs = total_work / nthreads;
         b.iter(|| {
-            let total_work = 1_000_000;
-            let nthreads = 1;
-            let nmsgs = total_work / nthreads;
             let q = Queue::with_capacity(nthreads * nmsgs);
-            assert_eq!(None, q.pop());
-            let (tx, rx) = channel();
 
-            for _ in 0..nthreads {
+            for i in 0..nthreads {
                 let q = q.clone();
-                let tx = tx.clone();
+                let start = i * nmsgs;
                 thread::spawn(move || {
                     let q = q;
-                    for i in 0..nmsgs {
+                    for i in start..start + nmsgs {
                         assert!(q.push(i).is_ok());
                     }
-                    tx.send(()).unwrap();
                 });
             }
 
-            let mut completion_rxs = vec![];
+            let mut vec = Vec::with_capacity(nthreads);
             for _ in 0..nthreads {
-                let (tx, rx) = channel();
-                completion_rxs.push(rx);
                 let q = q.clone();
-                thread::spawn(move || {
-                    let q = q;
+                let r = thread::spawn(move || {
                     let mut i = 0;
+                    let mut sum = 0;
                     loop {
                         match q.pop() {
-                            None => {}
-                            Some(_) => {
+                            None => std::hint::spin_loop(),
+                            Some(v) => {
+                                sum += v;
                                 i += 1;
                                 if i == nmsgs {
-                                    break;
+                                    return sum;
                                 }
                             }
                         }
                     }
-                    tx.send(i).unwrap();
                 });
+                vec.push(r);
             }
 
-            for rx in completion_rxs.iter_mut() {
-                assert_eq!(nmsgs, rx.recv().unwrap());
-            }
-            for _ in 0..nthreads {
-                rx.recv().unwrap();
-            }
+            let total: usize = vec.into_iter().map(|r| r.join().unwrap()).sum();
+            assert_eq!(total, (0..total_work).sum())
         });
     }
 }

@@ -114,12 +114,13 @@ impl<T> Position<T> {
 /// spsc queue
 #[derive(Debug)]
 pub struct Queue<T> {
-    // ----------------------------------------
-    // use for pop
-    head: CachePadded<Position<T>>,
     // -----------------------------------------
     // use for push
     tail: CachePadded<Position<T>>,
+
+    // ----------------------------------------
+    // use for pop
+    head: Position<T>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -133,7 +134,7 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let init_block = BlockNode::<T>::new();
         Queue {
-            head: Position::new(init_block).into(),
+            head: Position::new(init_block),
             tail: Position::new(init_block).into(),
             _marker: PhantomData,
         }
