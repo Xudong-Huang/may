@@ -87,7 +87,7 @@ impl<T> BlockNode<T> {
     pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
         let len = end - start;
         let start = start & BLOCK_MASK;
-        SmallVec::from_iter((start..start + len).map(|id| self.get(id)))
+        (start..start + len).map(|id| self.get(id)).collect()
     }
 }
 

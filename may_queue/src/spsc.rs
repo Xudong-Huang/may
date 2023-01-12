@@ -70,29 +70,18 @@ impl<T> BlockNode<T> {
     /// read out indexed value
     /// this would make the underlying data dropped when it get out of scope
     #[inline]
-    pub fn get(&self, index: usize) -> T {
+    pub fn get(&self, id: usize) -> T {
         unsafe {
-            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            let data = self.data.get_unchecked(id);
             data.value.get().read().assume_init()
         }
     }
-}
 
-impl<T> BlockNode<T> {
     #[inline]
-    pub fn copy_to_bulk(
-        this: *mut BlockNode<T>,
-        mut start: usize,
-        end: usize,
-    ) -> SmallVec<[T; BLOCK_SIZE]> {
-        let mut ret = SmallVec::<[T; BLOCK_SIZE]>::new();
-        while start < end {
-            // Read the value.
-            let value = unsafe { (*this).get(start) };
-            ret.push(value);
-            start += 1;
-        }
-        ret
+    pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
+        let len = end - start;
+        let start = start & BLOCK_MASK;
+        (start..start + len).map(|id| self.get(id)).collect()
     }
 }
 
@@ -161,11 +150,12 @@ impl<T> Queue<T> {
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new();
-            tail.next.store(new_tail, Ordering::Release);
+            tail.next.store(new_tail, Ordering::Relaxed);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
         // commit the push
+        std::sync::atomic::fence(Ordering::Release);
         self.tail.index.store(new_index, Ordering::Release);
     }
 
@@ -195,12 +185,12 @@ impl<T> Queue<T> {
 
         let head = unsafe { &mut *self.head.block.unsync_load() };
         // get the data
-        let v = head.get(index);
+        let v = head.get(index & BLOCK_MASK);
 
         let new_index = index.wrapping_add(1);
         // we need to free the old head if it's get empty
         if new_index & BLOCK_MASK == 0 {
-            let new_head = head.next.load(Ordering::Acquire);
+            let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.block.store(new_head, Ordering::Relaxed);
@@ -235,19 +225,18 @@ impl<T> Queue<T> {
             return None;
         }
 
-        let head = unsafe { self.head.block.unsync_load() };
+        let head = unsafe { &mut *self.head.block.unsync_load() };
 
         // only pop within a block
         let end = bulk_end(index, push_index);
-        // let size = unsafe { head.bulk_get(index, end, vec) };
-        let value = BlockNode::copy_to_bulk(head, index, end);
+        let value = head.copy_to_bulk(index, end);
 
         let new_index = end;
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let new_head = unsafe { &*head }.next.load(Ordering::Acquire);
-            assert!(!new_head.is_null());
+            let new_head = head.next.load(Ordering::Relaxed);
+            // assert!(!new_head.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.block.store(new_head, Ordering::Relaxed);
         }
