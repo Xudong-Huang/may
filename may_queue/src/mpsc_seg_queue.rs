@@ -155,11 +155,11 @@ impl<T> Position<T> {
 /// assert!(q.pop().is_none());
 /// ```
 pub struct SegQueue<T> {
-    /// The head of the queue.
-    head: CachePadded<Position<T>>,
-
     /// The tail of the queue.
     tail: CachePadded<Position<T>>,
+
+    /// The head of the queue.
+    head: Position<T>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -180,10 +180,10 @@ impl<T> SegQueue<T> {
     /// ```
     pub const fn new() -> SegQueue<T> {
         SegQueue {
-            head: CachePadded::new(Position {
+            head: Position {
                 block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
-            }),
+            },
             tail: CachePadded::new(Position {
                 block: AtomicPtr::new(ptr::null_mut()),
                 index: AtomicUsize::new(0),
