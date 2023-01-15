@@ -7,9 +7,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam::atomic::AtomicCell;
+use may_queue::mpsc::Queue;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
-use may_queue::mpsc::Queue;
 use parking_lot::{Mutex, RwLock};
 
 const NANOS_PER_MILLI: u64 = 1_000_000;

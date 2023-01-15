@@ -13,7 +13,7 @@ use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_ms};
 
 use libc::{eventfd, EFD_NONBLOCK};
-use may_queue::mpsc::Queue as SegQueue;
+use may_queue::mpsc::Queue;
 use nix::sys::epoll::*;
 use nix::unistd::{close, read, write};
 use smallvec::SmallVec;
@@ -33,7 +33,7 @@ struct SingleSelector {
     evfd: RawFd,
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
-    free_ev: SegQueue<Arc<EventData>>,
+    free_ev: Queue<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -60,7 +60,7 @@ impl SingleSelector {
         Ok(SingleSelector {
             epfd,
             evfd,
-            free_ev: SegQueue::new(),
+            free_ev: Queue::new(),
             #[cfg(feature = "io_timeout")]
             timer_list: TimerList::new(),
         })

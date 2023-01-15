@@ -14,8 +14,7 @@ use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
-use may_queue::mpsc::Queue as SegQueue;
-// use may_queue::tokio_queue::{self, Local, Steal};
+use may_queue::mpsc::Queue;
 use may_queue::spmc::{self, Local, Steal};
 
 // thread id, only workers are normal ones
@@ -84,7 +83,7 @@ pub fn get_scheduler() -> &'static Scheduler {
 pub struct Scheduler {
     local_queues: Vec<UnsafeCell<Local<CoroutineImpl>>>,
     stealers: Vec<Steal<CoroutineImpl>>,
-    global_queues: Vec<SegQueue<CoroutineImpl>>,
+    global_queues: Vec<Queue<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
@@ -95,7 +94,7 @@ impl Scheduler {
         let queues = Vec::from_iter((0..workers).map(|_| spmc::local()));
         let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
         let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
-        let global_queues = Vec::from_iter((0..workers).map(|_| SegQueue::new()));
+        let global_queues = Vec::from_iter((0..workers).map(|_| Queue::new()));
 
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
