@@ -1,5 +1,5 @@
 use crossbeam::utils::{Backoff, CachePadded};
-// use smallvec::SmallVec;
+use smallvec::SmallVec;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};
 
@@ -98,10 +98,12 @@ impl<T> BlockNode<T> {
         }
     }
 
-    // #[inline]
-    // pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
-    //     SmallVec::from_iter((start..end).map(|i| self.get(i & BLOCK_MASK)))
-    // }
+    #[inline]
+    pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
+        let len = end - start;
+        let start = start & BLOCK_MASK;
+        SmallVec::from_iter((start..start + len).map(|i| self.get(i)))
+    }
 }
 
 /// return the bulk end with in the block
@@ -261,10 +263,39 @@ impl<T> Queue<T> {
         Some(data)
     }
 
-    // /// pop from the queue, if it's empty return None
-    // pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
-    //     None
-    // }
+    /// pop from the queue, if it's empty return None
+    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+        let tail = self.tail.0.load(Ordering::Acquire);
+        let (tail_block, id) = BlockPtr::unpack(tail);
+        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
+        let push_index = tail_block.start + id;
+
+        let index = unsafe { self.head.index.unsync_load() };
+        if index >= push_index {
+            return None;
+        }
+
+        let head = unsafe { &mut *self.head.block.unsync_load() };
+
+        // only pop within a block
+        let end = bulk_end(index, push_index);
+        let value = head.copy_to_bulk(index, end);
+
+        let new_index = end;
+
+        // free the old block node
+        if new_index & BLOCK_MASK == 0 {
+            let new_head = head.next.load(Ordering::Relaxed);
+            // assert!(!new_head.is_null());
+            let _unused_head = unsafe { Box::from_raw(head) };
+            self.head.block.store(new_head, Ordering::Relaxed);
+        }
+
+        // commit the pop
+        self.head.index.store(new_index, Ordering::Relaxed);
+
+        Some(value)
+    }
 
     /// get the size of queue
     #[inline]
@@ -410,35 +441,67 @@ mod test {
         });
     }
 
-    // #[bench]
-    // fn bulk_1p2c_test(b: &mut Bencher) {
-    //     b.iter(|| {
-    //         let q = Arc::new(Queue::new());
-    //         let total_work: usize = 1_000_000;
-    //         // create worker threads that generate mono increasing index
-    //         // in other thread the value should be still 100
-    //         for i in 0..total_work {
-    //             q.push(i);
-    //         }
+    #[bench]
+    fn bulk_pop_1p1c_bench(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(Queue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
 
-    //         let total = Arc::new(AtomicUsize::new(0));
+            let mut size = 0;
+            while size < total_work {
+                if let Some(v) = q.bulk_pop() {
+                    for (start, i) in v.iter().enumerate() {
+                        assert_eq!(*i, start + size);
+                    }
+                    size += v.len();
+                }
+            }
+        });
+    }
 
-    //         thread::scope(|s| {
-    //             let threads = 20;
-    //             for _ in 0..threads {
-    //                 let q = q.clone();
-    //                 let total = total.clone();
-    //                 s.spawn(move || {
-    //                     while !q.is_empty() {
-    //                         if let Some(v) = q.bulk_pop() {
-    //                             total.fetch_add(v.len(), Ordering::AcqRel);
-    //                         }
-    //                     }
-    //                 });
-    //             }
-    //         });
-    //         assert!(q.is_empty());
-    //         assert_eq!(total.load(Ordering::Acquire), total_work);
-    //     });
-    // }
+    #[bench]
+    fn bulk_2p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(Queue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            let mut total = 0;
+
+            thread::scope(|s| {
+                let threads = 20;
+                for i in 0..threads {
+                    let q = q.clone();
+                    s.spawn(move || {
+                        let len = total_work / threads;
+                        let start = i * len;
+                        for v in start..start + len {
+                            let _v = q.push(v);
+                        }
+                    });
+                }
+                s.spawn(|| {
+                    let mut size = 0;
+                    while size < total_work {
+                        if let Some(v) = q.bulk_pop() {
+                            size += v.len();
+                            for data in v {
+                                total += data;
+                            }
+                        }
+                    }
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(total, (0..total_work).sum::<usize>());
+        });
+    }
 }

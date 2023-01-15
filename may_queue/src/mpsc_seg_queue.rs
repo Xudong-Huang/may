@@ -740,35 +740,67 @@ mod test {
         });
     }
 
-    // #[bench]
-    // fn bulk_1p2c_test(b: &mut Bencher) {
-    //     b.iter(|| {
-    //         let q = Arc::new(Queue::new());
-    //         let total_work: usize = 1_000_000;
-    //         // create worker threads that generate mono increasing index
-    //         // in other thread the value should be still 100
-    //         for i in 0..total_work {
-    //             q.push(i);
-    //         }
+    #[bench]
+    fn bulk_pop_1p1c_bench(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
 
-    //         let total = Arc::new(AtomicUsize::new(0));
+            let mut size = 0;
+            while size < total_work {
+                if let Some(v) = q.pop_bulk() {
+                    for (start, i) in v.iter().enumerate() {
+                        assert_eq!(*i, start + size);
+                    }
+                    size += v.len();
+                }
+            }
+        });
+    }
 
-    //         thread::scope(|s| {
-    //             let threads = 20;
-    //             for _ in 0..threads {
-    //                 let q = q.clone();
-    //                 let total = total.clone();
-    //                 s.spawn(move || {
-    //                     while !q.is_empty() {
-    //                         if let Some(v) = q.bulk_pop() {
-    //                             total.fetch_add(v.len(), Ordering::AcqRel);
-    //                         }
-    //                     }
-    //                 });
-    //             }
-    //         });
-    //         assert!(q.is_empty());
-    //         assert_eq!(total.load(Ordering::Acquire), total_work);
-    //     });
-    // }
+    #[bench]
+    fn bulk_2p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            let mut total = 0;
+
+            thread::scope(|s| {
+                let threads = 20;
+                for i in 0..threads {
+                    let q = q.clone();
+                    s.spawn(move || {
+                        let len = total_work / threads;
+                        let start = i * len;
+                        for v in start..start + len {
+                            let _v = q.push(v);
+                        }
+                    });
+                }
+                s.spawn(|| {
+                    let mut size = 0;
+                    while size < total_work {
+                        if let Some(v) = q.pop_bulk() {
+                            size += v.len();
+                            for data in v {
+                                total += data;
+                            }
+                        }
+                    }
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(total, (0..total_work).sum::<usize>());
+        });
+    }
 }
