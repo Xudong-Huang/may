@@ -67,6 +67,8 @@ impl<T> BlockNode<T> {
         unsafe {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
             data.value.get().write(MaybeUninit::new(v));
+
+            std::sync::atomic::fence(Ordering::Release);
             // mark the data ready
             data.ready.store(true, Ordering::Release);
         }
@@ -80,7 +82,7 @@ impl<T> BlockNode<T> {
             if data.ready.load(Ordering::Acquire) {
                 return unsafe { data.value.get().read().assume_init() };
             }
-            backoff.snooze();
+            backoff.spin();
         }
     }
 
@@ -154,13 +156,13 @@ impl<T> BlockPtr<T> {
 /// spsc queue
 #[derive(Debug)]
 pub struct Queue<T> {
-    // ----------------------------------------
-    // use for pop
-    head: CachePadded<Position<T>>,
-
     // -----------------------------------------
     // use for push
     tail: CachePadded<BlockPtr<T>>,
+
+    // ----------------------------------------
+    // use for pop
+    head: Position<T>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -172,9 +174,13 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 impl<T> Queue<T> {
     /// create a spsc queue
     pub fn new() -> Self {
-        let init_block = BlockNode::<T>::new_box(0);
+        let init_block = BlockNode::new_box(0);
+        let next_block = BlockNode::new_box(BLOCK_SIZE);
+        unsafe { &*init_block }
+            .next
+            .store(next_block, Ordering::Relaxed);
         Queue {
-            head: Position::new(init_block).into(),
+            head: Position::new(init_block),
             tail: BlockPtr::new(init_block).into(),
             _marker: PhantomData,
         }
@@ -185,19 +191,16 @@ impl<T> Queue<T> {
         let backoff = Backoff::new();
         let mut tail = self.tail.0.load(Ordering::Acquire);
 
-        let mut new_block: Option<Box<BlockNode<T>>> = None;
-
         loop {
+            tail = (tail as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(tail);
             let block = unsafe { &*block };
 
             let new_tail = if id < BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                match new_block.take() {
-                    Some(b) => Box::into_raw(b),
-                    None => BlockNode::new_box(block.start + BLOCK_SIZE),
-                }
+                // this is not correct, the block may be dropped
+                (tail as usize | (1 << 63)) as *mut BlockNode<T>
             };
 
             match self.tail.0.compare_exchange_weak(
@@ -208,14 +211,13 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        // TODO: this is not correct, we may lost data
-                        // use locking to fix it
-                        unsafe {
-                            let start = std::ptr::read_volatile(&block.start);
-                            (*new_tail).start = start + BLOCK_SIZE
-                        };
-                        // we have a new block, link it
-                        block.next.store(new_tail, Ordering::Release);
+                        let new_block = block.wait_next_block();
+                        self.tail.0.store(new_block, Ordering::Release);
+                        // install the next-next block
+                        let next_block = BlockNode::new_box(block.start + BLOCK_SIZE * 2);
+                        unsafe { &*new_block }
+                            .next
+                            .store(next_block, Ordering::Release);
                     }
                     // set the data
                     block.set(id, v);
@@ -223,10 +225,6 @@ impl<T> Queue<T> {
                 }
                 Err(old) => {
                     tail = old;
-                    if id == BLOCK_MASK {
-                        // we have a new block, but we failed to link it
-                        new_block.replace(unsafe { Box::from_raw(new_tail) });
-                    }
                     backoff.spin();
                 }
             }
@@ -237,7 +235,7 @@ impl<T> Queue<T> {
     fn pop(&self) -> Option<T> {
         let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*tail_block };
+        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
         let push_index = tail_block.start + id;
 
         // this is use for local pop, we can sure that pop_index is not changed
@@ -246,14 +244,14 @@ impl<T> Queue<T> {
             return None;
         }
 
-        let index = pop_index & BLOCK_MASK;
+        let id = pop_index & BLOCK_MASK;
         let head = unsafe { &mut *self.head.block.unsync_load() };
 
         // get the data
-        let data = head.get(index);
+        let data = head.get(id);
 
-        if index == BLOCK_MASK {
-            let next_block = head.wait_next_block();
+        if id == BLOCK_MASK {
+            let next_block = unsafe { head.next.unsync_load() };
             let _unused_block = unsafe { Box::from_raw(head) };
             self.head.block.store(next_block, Ordering::Relaxed);
         }
@@ -274,7 +272,7 @@ impl<T> Queue<T> {
         let pop_index = self.head.index.load(Ordering::Acquire);
         let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*tail_block };
+        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
         let push_index = tail_block.start + id;
         push_index - pop_index
     }
@@ -301,7 +299,10 @@ impl<T> Drop for Queue<T> {
         let (block, _id) = BlockPtr::unpack(tail);
         assert_eq!(block, head);
 
+        let next_block = unsafe { &*block }.next.load(Ordering::Acquire);
+        assert!(!next_block.is_null());
         let _unused_block = unsafe { Box::from_raw(block) };
+        let _unused_block = unsafe { Box::from_raw(next_block) };
     }
 }
 
