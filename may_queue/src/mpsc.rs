@@ -86,6 +86,20 @@ impl<T> BlockNode<T> {
         }
     }
 
+    /// peek the indexed value
+    /// not safe if pop out a value when hold the data ref
+    #[inline]
+    pub unsafe fn peek(&self, id: usize) -> &T {
+        let backoff = Backoff::new();
+        let data = unsafe { self.data.get_unchecked(id) };
+        loop {
+            if data.ready.load(Ordering::Acquire) {
+                return (*data.value.get()).assume_init_ref();
+            }
+            backoff.spin();
+        }
+    }
+
     #[inline]
     pub fn wait_next_block(&self) -> *mut BlockNode<T> {
         let backoff = Backoff::new();
@@ -234,7 +248,7 @@ impl<T> Queue<T> {
     }
 
     /// pop from the queue, if it's empty return None
-    fn pop(&self) -> Option<T> {
+    pub fn pop(&self) -> Option<T> {
         let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
         let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
@@ -263,7 +277,7 @@ impl<T> Queue<T> {
         Some(data)
     }
 
-    /// pop from the queue, if it's empty return None
+    /// pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
         let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
@@ -295,6 +309,26 @@ impl<T> Queue<T> {
         self.head.index.store(new_index, Ordering::Relaxed);
 
         Some(value)
+    }
+
+    /// peek the head
+    ///
+    /// # Safety
+    ///
+    /// not safe if you pop out the head value when hold the data ref
+    pub unsafe fn peek(&self) -> Option<&T> {
+        let tail = self.tail.0.load(Ordering::Acquire);
+        let (tail_block, id) = BlockPtr::unpack(tail);
+        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
+        let push_index = tail_block.start + id;
+
+        let index = self.head.index.unsync_load();
+        if index >= push_index {
+            return None;
+        }
+
+        let head = &mut *self.head.block.unsync_load();
+        Some(head.peek(index & BLOCK_MASK))
     }
 
     /// get the size of queue
