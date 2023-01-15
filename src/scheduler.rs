@@ -187,7 +187,7 @@ impl Scheduler {
     pub fn collect_global(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
         let global = unsafe { self.global_queues.get_unchecked(id) };
-        while let Some(v) = global.pop_bulk() {
+        while let Some(v) = global.bulk_pop() {
             for co in v {
                 local.push_back(co);
             }

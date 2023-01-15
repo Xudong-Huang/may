@@ -378,19 +378,19 @@ impl<T> SegQueue<T> {
     ///
     /// q.push(10);
     /// q.push(11);
-    /// let mut bulk = q.pop_bulk().unwrap();
+    /// let mut bulk = q.bulk_pop().unwrap();
     /// assert_eq!(bulk.pop(), Some(11));
     /// assert_eq!(bulk.pop(), Some(10));
     /// assert_eq!(bulk.pop(), None);
-    /// assert_eq!(q.pop_bulk(), None);
+    /// assert_eq!(q.bulk_pop(), None);
     /// q.push(12);
     /// q.push(13);
-    /// let mut bulk = q.pop_bulk().unwrap();
+    /// let mut bulk = q.bulk_pop().unwrap();
     /// assert_eq!(bulk.pop(), Some(13));
     /// assert_eq!(bulk.pop(), Some(12));
     /// assert_eq!(bulk.pop(), None);
     /// ```
-    pub fn pop_bulk(&self) -> Option<SmallVec<[T; BLOCK_CAP]>> {
+    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_CAP]>> {
         let backoff = Backoff::new();
         let mut head = self.head.load_index();
         let mut block = self.head.block.load(Ordering::Acquire);
@@ -756,7 +756,7 @@ mod test {
 
             let mut size = 0;
             while size < total_work {
-                if let Some(v) = q.pop_bulk() {
+                if let Some(v) = q.bulk_pop() {
                     for (start, i) in v.iter().enumerate() {
                         assert_eq!(*i, start + size);
                     }
@@ -790,7 +790,7 @@ mod test {
                 s.spawn(|| {
                     let mut size = 0;
                     while size < total_work {
-                        if let Some(v) = q.pop_bulk() {
+                        if let Some(v) = q.bulk_pop() {
                             size += v.len();
                             for data in v {
                                 total += data;
