@@ -15,7 +15,7 @@ pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 // block mask
 const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 // block shift
-const BLOCK_SHIFT: usize = 5;
+const BLOCK_SHIFT: usize = 6;
 
 /// A slot in a block.
 struct Slot<T> {
@@ -34,7 +34,7 @@ impl<T> Slot<T> {
 /// a block node contains a bunch of items stored in a array
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
-#[repr(align(32))]
+#[repr(align(64))]
 struct BlockNode<T> {
     data: [Slot<T>; BLOCK_SIZE],
     next: AtomicPtr<BlockNode<T>>,
@@ -88,12 +88,10 @@ impl<T> BlockNode<T> {
     pub fn get(&self, id: usize) -> T {
         let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
-        loop {
-            if data.ready.load(Ordering::Acquire) != 0 {
-                return unsafe { data.value.get().read().assume_init() };
-            }
+        while data.ready.load(Ordering::Acquire) == 0 {
             backoff.spin();
         }
+        unsafe { data.value.get().read().assume_init() }
     }
 
     /// peek the indexed value
@@ -255,9 +253,9 @@ impl<T> Queue<T> {
 
     #[inline]
     fn push_index(&self) -> usize {
-        let mut tail = self.tail.0.load(Ordering::Relaxed);
-        tail = (tail as usize & !(1 << 63)) as *mut BlockNode<T>;
+        let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
+        let tail_block = (tail_block as usize & !(1 << 63)) as *mut BlockNode<T>;
         unsafe { &*tail_block }.start + id
     }
 
@@ -280,7 +278,7 @@ impl<T> Queue<T> {
         };
 
         if id == BLOCK_MASK {
-            let next_block = unsafe { head.next.unsync_load() };
+            let next_block = head.next.load(Ordering::Acquire);
             let _unused_block = unsafe { Box::from_raw(head) };
             self.head.block.store(next_block, Ordering::Relaxed);
         }
@@ -308,10 +306,10 @@ impl<T> Queue<T> {
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let new_head = head.next.load(Ordering::Relaxed);
-            // assert!(!new_head.is_null());
+            let next_block = head.next.load(Ordering::Acquire);
+            // assert!(!next_block.is_null());
             let _unused_head = unsafe { Box::from_raw(head) };
-            self.head.block.store(new_head, Ordering::Relaxed);
+            self.head.block.store(next_block, Ordering::Relaxed);
         }
 
         // commit the pop
