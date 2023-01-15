@@ -8,26 +8,26 @@ use std::cmp;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 // size for block_node
 pub const BLOCK_SIZE: usize = 1 << BLOCK_SHIFT;
 // block mask
-pub const BLOCK_MASK: usize = BLOCK_SIZE - 1;
+const BLOCK_MASK: usize = BLOCK_SIZE - 1;
 // block shift
-pub const BLOCK_SHIFT: usize = 5;
+const BLOCK_SHIFT: usize = 5;
 
 /// A slot in a block.
 struct Slot<T> {
     /// The value.
     value: UnsafeCell<MaybeUninit<T>>,
-    ready: AtomicBool,
+    ready: AtomicUsize,
 }
 
 impl<T> Slot<T> {
     const UNINIT: Self = Self {
         value: UnsafeCell::new(MaybeUninit::uninit()),
-        ready: AtomicBool::new(false),
+        ready: AtomicUsize::new(0),
     };
 }
 
@@ -70,14 +70,14 @@ impl<T> BlockNode<T> {
 
             std::sync::atomic::fence(Ordering::Release);
             // mark the data ready
-            data.ready.store(true, Ordering::Release);
+            data.ready.store(1, Ordering::Release);
         }
     }
 
     #[inline]
     pub fn try_get(&self, id: usize) -> Option<T> {
         let data = unsafe { self.data.get_unchecked(id) };
-        if data.ready.load(Ordering::Acquire) {
+        if data.ready.load(Ordering::Acquire) != 0 {
             Some(unsafe { data.value.get().read().assume_init() })
         } else {
             None
@@ -89,7 +89,7 @@ impl<T> BlockNode<T> {
         let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
         loop {
-            if data.ready.load(Ordering::Acquire) {
+            if data.ready.load(Ordering::Acquire) != 0 {
                 return unsafe { data.value.get().read().assume_init() };
             }
             backoff.spin();
@@ -103,7 +103,7 @@ impl<T> BlockNode<T> {
         let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
         loop {
-            if data.ready.load(Ordering::Acquire) {
+            if data.ready.load(Ordering::Acquire) != 0 {
                 return (*data.value.get()).assume_init_ref();
             }
             backoff.spin();
@@ -255,7 +255,7 @@ impl<T> Queue<T> {
 
     #[inline]
     fn push_index(&self) -> usize {
-        let mut tail = self.tail.0.load(Ordering::Acquire);
+        let mut tail = self.tail.0.load(Ordering::Relaxed);
         tail = (tail as usize & !(1 << 63)) as *mut BlockNode<T>;
         let (tail_block, id) = BlockPtr::unpack(tail);
         unsafe { &*tail_block }.start + id
