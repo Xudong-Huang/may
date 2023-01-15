@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use crossbeam::atomic::AtomicCell;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
-use may_queue::mpsc_seg_queue::SegQueue;
+use may_queue::mpsc::Queue;
 use parking_lot::{Mutex, RwLock};
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
@@ -270,7 +270,7 @@ impl<T> TimeOutList<T> {
 pub struct TimerThread<T> {
     timer_list: TimeOutList<T>,
     // collect the remove request
-    remove_list: SegQueue<TimeoutHandle<T>>,
+    remove_list: Queue<TimeoutHandle<T>>,
     // the timer thread wakeup handler
     wakeup: AtomicCell<Option<thread::Thread>>,
 }
@@ -279,7 +279,7 @@ impl<T> TimerThread<T> {
     pub fn new() -> Self {
         TimerThread {
             timer_list: TimeOutList::new(),
-            remove_list: SegQueue::new(),
+            remove_list: Queue::new(),
             wakeup: AtomicCell::new(None),
         }
     }

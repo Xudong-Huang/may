@@ -8,7 +8,7 @@ use super::{timeout_handler, EventData, IoData, TimerList};
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur};
 
-use may_queue::mpsc_seg_queue::SegQueue;
+use may_queue::mpsc::Queue;
 use smallvec::SmallVec;
 
 pub type SysEvent = libc::kevent;
@@ -32,7 +32,7 @@ macro_rules! kevent {
 struct SingleSelector {
     kqfd: RawFd,
     timer_list: TimerList,
-    free_ev: SegQueue<Arc<EventData>>,
+    free_ev: Queue<Arc<EventData>>,
 }
 
 impl SingleSelector {
@@ -59,7 +59,7 @@ impl SingleSelector {
 
         Ok(SingleSelector {
             kqfd,
-            free_ev: SegQueue::new(),
+            free_ev: Queue::new(),
             timer_list: TimerList::new(),
         })
     }

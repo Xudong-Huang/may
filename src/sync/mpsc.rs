@@ -10,14 +10,14 @@ use std::time::{Duration, Instant};
 use super::{AtomicOption, Blocker};
 use crate::likely::{likely, unlikely};
 
-use may_queue::mpsc_seg_queue::SegQueue;
+use may_queue::mpsc::Queue;
 
 // TODO: SyncSender
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
 /// /////////////////////////////////////////////////////////////////////////////
 struct InnerQueue<T> {
-    queue: SegQueue<T>,
+    queue: Queue<T>,
     // thread/coroutine for wake up
     to_wake: AtomicOption<Arc<Blocker>>,
     // The number of tx channels which are currently using this queue.
@@ -29,7 +29,7 @@ struct InnerQueue<T> {
 impl<T> InnerQueue<T> {
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
-            queue: SegQueue::new(),
+            queue: Queue::new(),
             to_wake: AtomicOption::none(),
             channels: AtomicUsize::new(1),
             port_dropped: AtomicBool::new(false),

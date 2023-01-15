@@ -63,14 +63,24 @@ impl<T> BlockNode<T> {
 
     /// write index with data
     #[inline]
-    pub fn set(&self, index: usize, v: T) {
+    pub fn set(&self, id: usize, v: T) {
         unsafe {
-            let data = self.data.get_unchecked(index & BLOCK_MASK);
+            let data = self.data.get_unchecked(id);
             data.value.get().write(MaybeUninit::new(v));
 
             std::sync::atomic::fence(Ordering::Release);
             // mark the data ready
             data.ready.store(true, Ordering::Release);
+        }
+    }
+
+    #[inline]
+    pub fn try_get(&self, id: usize) -> Option<T> {
+        let data = unsafe { self.data.get_unchecked(id) };
+        if data.ready.load(Ordering::Acquire) {
+            Some(unsafe { data.value.get().read().assume_init() })
+        } else {
+            None
         }
     }
 
@@ -215,7 +225,6 @@ impl<T> Queue<T> {
             let new_tail = if id < BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                // this is not correct, the block may be dropped
                 (tail as usize | (1 << 63)) as *mut BlockNode<T>
             };
 
@@ -227,17 +236,14 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     if id == BLOCK_MASK {
-                        let new_block = block.wait_next_block();
-                        self.tail.0.store(new_block, Ordering::Release);
+                        let next_block = unsafe { &mut *block.wait_next_block() };
+                        self.tail.0.store(next_block, Ordering::Release);
                         // install the next-next block
-                        let next_block = BlockNode::new_box(block.start + BLOCK_SIZE * 2);
-                        unsafe { &*new_block }
-                            .next
-                            .store(next_block, Ordering::Release);
+                        let new_block = BlockNode::new_box(next_block.start + BLOCK_SIZE);
+                        next_block.next.store(new_block, Ordering::Release);
                     }
                     // set the data
-                    block.set(id, v);
-                    return;
+                    return block.set(id, v);
                 }
                 Err(old) => {
                     tail = old;
@@ -247,24 +253,31 @@ impl<T> Queue<T> {
         }
     }
 
+    #[inline]
+    fn push_index(&self) -> usize {
+        let mut tail = self.tail.0.load(Ordering::Acquire);
+        tail = (tail as usize & !(1 << 63)) as *mut BlockNode<T>;
+        let (tail_block, id) = BlockPtr::unpack(tail);
+        unsafe { &*tail_block }.start + id
+    }
+
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let tail = self.tail.0.load(Ordering::Acquire);
-        let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
-        let push_index = tail_block.start + id;
-
-        // this is use for local pop, we can sure that pop_index is not changed
-        let pop_index = unsafe { self.head.index.unsync_load() };
-        if pop_index >= push_index {
-            return None;
-        }
-
-        let id = pop_index & BLOCK_MASK;
         let head = unsafe { &mut *self.head.block.unsync_load() };
+        let pop_index = unsafe { self.head.index.unsync_load() };
+        let id = pop_index & BLOCK_MASK;
 
         // get the data
-        let data = head.get(id);
+        let data = match head.try_get(id) {
+            Some(v) => v,
+            None => {
+                if pop_index >= self.push_index() {
+                    return None;
+                } else {
+                    head.get(id)
+                }
+            }
+        };
 
         if id == BLOCK_MASK {
             let next_block = unsafe { head.next.unsync_load() };
@@ -279,21 +292,17 @@ impl<T> Queue<T> {
 
     /// pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
-        let tail = self.tail.0.load(Ordering::Acquire);
-        let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
-        let push_index = tail_block.start + id;
-
-        let index = unsafe { self.head.index.unsync_load() };
-        if index >= push_index {
+        let pop_index = unsafe { self.head.index.unsync_load() };
+        let push_index = self.push_index();
+        if pop_index >= push_index {
             return None;
         }
 
         let head = unsafe { &mut *self.head.block.unsync_load() };
 
         // only pop within a block
-        let end = bulk_end(index, push_index);
-        let value = head.copy_to_bulk(index, end);
+        let end = bulk_end(pop_index, push_index);
+        let value = head.copy_to_bulk(pop_index, end);
 
         let new_index = end;
 
@@ -317,28 +326,21 @@ impl<T> Queue<T> {
     ///
     /// not safe if you pop out the head value when hold the data ref
     pub unsafe fn peek(&self) -> Option<&T> {
-        let tail = self.tail.0.load(Ordering::Acquire);
-        let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
-        let push_index = tail_block.start + id;
-
-        let index = self.head.index.unsync_load();
-        if index >= push_index {
+        let pop_index = unsafe { self.head.index.unsync_load() };
+        let push_index = self.push_index();
+        if pop_index >= push_index {
             return None;
         }
 
         let head = &mut *self.head.block.unsync_load();
-        Some(head.peek(index & BLOCK_MASK))
+        Some(head.peek(pop_index & BLOCK_MASK))
     }
 
     /// get the size of queue
     #[inline]
     pub fn len(&self) -> usize {
         let pop_index = self.head.index.load(Ordering::Acquire);
-        let tail = self.tail.0.load(Ordering::Acquire);
-        let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = unsafe { &*((tail_block as usize & !(1 << 63)) as *mut BlockNode<T>) };
-        let push_index = tail_block.start + id;
+        let push_index = self.push_index();
         push_index - pop_index
     }
 

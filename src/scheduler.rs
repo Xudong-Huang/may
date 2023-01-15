@@ -14,7 +14,7 @@ use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
-use may_queue::mpsc_seg_queue::SegQueue;
+use may_queue::mpsc::Queue as SegQueue;
 // use may_queue::tokio_queue::{self, Local, Steal};
 use may_queue::spmc::{self, Local, Steal};
 

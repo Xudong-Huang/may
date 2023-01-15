@@ -13,7 +13,7 @@ use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_ms};
 
 use libc::{eventfd, EFD_NONBLOCK};
-use may_queue::mpsc_seg_queue::SegQueue;
+use may_queue::mpsc::Queue as SegQueue;
 use nix::sys::epoll::*;
 use nix::unistd::{close, read, write};
 use smallvec::SmallVec;
