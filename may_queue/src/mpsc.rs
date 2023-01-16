@@ -282,7 +282,7 @@ impl<T> Queue<T> {
         if id == BLOCK_MASK {
             let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
-            // we need to delay the drop the block to let the push could wait_next_block
+            // we need to delay the drop of the block to let the push's `wait_next_block` return
             let old_block = unsafe { &mut *(self.old_block.get()) };
             old_block.replace(unsafe { Box::from_raw(head) });
         }
