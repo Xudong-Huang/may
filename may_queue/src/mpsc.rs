@@ -100,24 +100,21 @@ impl<T> BlockNode<T> {
     pub unsafe fn peek(&self, id: usize) -> &T {
         let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
-        loop {
-            if data.ready.load(Ordering::Acquire) != 0 {
-                return (*data.value.get()).assume_init_ref();
-            }
+        while data.ready.load(Ordering::Acquire) == 0 {
             backoff.spin();
         }
+        (*data.value.get()).assume_init_ref()
     }
 
     #[inline]
     pub fn wait_next_block(&self) -> *mut BlockNode<T> {
         let backoff = Backoff::new();
-        loop {
-            let next = self.next.load(Ordering::Acquire);
-            if !next.is_null() {
-                return next;
-            }
+        let mut next = self.next.load(Ordering::Acquire);
+        while next.is_null() {
             backoff.spin();
+            next = self.next.load(Ordering::Acquire);
         }
+        next
     }
 
     #[inline]
@@ -178,7 +175,6 @@ impl<T> BlockPtr<T> {
 }
 
 /// spsc queue
-#[derive(Debug)]
 pub struct Queue<T> {
     // -----------------------------------------
     // use for push
@@ -187,6 +183,8 @@ pub struct Queue<T> {
     // ----------------------------------------
     // use for pop
     head: Position<T>,
+    // used to delay the drop of the old block
+    old_block: UnsafeCell<Option<Box<BlockNode<T>>>>,
 
     /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -206,6 +204,7 @@ impl<T> Queue<T> {
         Queue {
             head: Position::new(init_block),
             tail: BlockPtr::new(init_block).into(),
+            old_block: UnsafeCell::new(None),
             _marker: PhantomData,
         }
     }
@@ -233,6 +232,10 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    // set the data
+                    block.set(id, v);
+                    // the block may be released here by the consumer,
+                    // so we need to use old_block to delay the drop
                     if id == BLOCK_MASK {
                         let next_block = unsafe { &mut *block.wait_next_block() };
                         self.tail.0.store(next_block, Ordering::Release);
@@ -240,8 +243,7 @@ impl<T> Queue<T> {
                         let new_block = BlockNode::new_box(next_block.start + BLOCK_SIZE);
                         next_block.next.store(new_block, Ordering::Release);
                     }
-                    // set the data
-                    return block.set(id, v);
+                    return;
                 }
                 Err(old) => {
                     tail = old;
@@ -278,9 +280,11 @@ impl<T> Queue<T> {
         };
 
         if id == BLOCK_MASK {
-            let next_block = head.next.load(Ordering::Acquire);
-            let _unused_block = unsafe { Box::from_raw(head) };
+            let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
+            // we need to delay the drop the block to let the push could wait_next_block
+            let old_block = unsafe { &mut *(self.old_block.get()) };
+            old_block.replace(unsafe { Box::from_raw(head) });
         }
 
         self.head.index.store(pop_index + 1, Ordering::Relaxed);
@@ -306,10 +310,10 @@ impl<T> Queue<T> {
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let next_block = head.next.load(Ordering::Acquire);
-            // assert!(!next_block.is_null());
-            let _unused_head = unsafe { Box::from_raw(head) };
+            let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
+            let old_block = unsafe { &mut *(self.old_block.get()) };
+            old_block.replace(unsafe { Box::from_raw(head) });
         }
 
         // commit the pop
@@ -402,7 +406,7 @@ mod test {
             q.push(i);
         }
         assert_eq!(q.len(), 100);
-        println!("{q:?}");
+        // println!("{q:?}");
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
