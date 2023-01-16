@@ -175,6 +175,7 @@ impl<T> BlockPtr<T> {
 }
 
 /// spsc queue
+#[derive(Debug)]
 pub struct Queue<T> {
     // -----------------------------------------
     // use for push
@@ -186,7 +187,7 @@ pub struct Queue<T> {
     // used to delay the drop of the old block
     old_block: UnsafeCell<Option<Box<BlockNode<T>>>>,
 
-    /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
+    /// Indicates that dropping a `Queue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
 
