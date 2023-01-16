@@ -293,15 +293,59 @@ impl<T> Queue<T> {
         Some(data)
     }
 
+    /// fast pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
+    /// don't check the push index, but only the ready flag
+    #[inline]
+    fn fast_bulk_pop(
+        &self,
+        index: usize,
+        head: &mut BlockNode<T>,
+    ) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+        // only pop within a block
+        let block_end = (index + BLOCK_SIZE) & !BLOCK_MASK;
+        let len = block_end - index;
+
+        let mut value = SmallVec::new();
+        let start = index & BLOCK_MASK;
+        for i in start..start + len {
+            match head.try_get(i) {
+                Some(v) => value.push(v),
+                None => break,
+            }
+        }
+
+        if value.is_empty() {
+            return None;
+        }
+
+        let new_index = index + value.len();
+
+        // free the old block node
+        if new_index & BLOCK_MASK == 0 {
+            let next_block = head.wait_next_block();
+            self.head.block.store(next_block, Ordering::Relaxed);
+            let old_block = unsafe { &mut *(self.old_block.get()) };
+            old_block.replace(unsafe { Box::from_raw(head) });
+        }
+
+        // commit the pop
+        self.head.index.store(new_index, Ordering::Relaxed);
+
+        Some(value)
+    }
+
     /// pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
         let pop_index = unsafe { self.head.index.unsync_load() };
+        let head = unsafe { &mut *self.head.block.unsync_load() };
+        if let Some(v) = self.fast_bulk_pop(pop_index, head) {
+            return Some(v);
+        }
+
         let push_index = self.push_index();
         if pop_index >= push_index {
             return None;
         }
-
-        let head = unsafe { &mut *self.head.block.unsync_load() };
 
         // only pop within a block
         let end = bulk_end(pop_index, push_index);
