@@ -151,7 +151,7 @@ pub struct Queue<T> {
     // use for push
     tail: CachePadded<Position<T>>,
 
-    /// Indicates that dropping a `SegQueue<T>` may drop values of type `T`.
+    /// Indicates that dropping a `Queue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
 
