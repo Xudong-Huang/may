@@ -174,14 +174,11 @@ impl Park {
         }
 
         // before a new yield wait the kernel done
-        if self.wait_kernel.swap(false, Ordering::AcqRel) {
-            while self.state.load(Ordering::Acquire) & 0x02 == 0x02 {
-                yield_now();
-            }
-        } else {
-            // should clear the generation
-            self.state.fetch_and(!0x02, Ordering::Release);
+        while self.wait_kernel.load(Ordering::Acquire) {
+            yield_now();
         }
+        // should clear the generation
+        self.state.fetch_and(!0x02, Ordering::Release);
 
         // what if the state is set before yield?
         // the subscribe would re-check it
@@ -215,19 +212,17 @@ impl<'a> Drop for DropGuard<'a> {
     fn drop(&mut self) {
         // we would inc the state by 2 in kernel if all is done
         self.0.state.fetch_add(0x02, Ordering::Release);
+        self.0.wait_kernel.store(false, Ordering::Release);
     }
 }
 
 impl Drop for Park {
     fn drop(&mut self) {
         // wait the kernel finish
-        if !self.wait_kernel.load(Ordering::Acquire) {
-            return;
-        }
-
-        while self.state.load(Ordering::Acquire) & 0x02 == 0x02 {
+        while self.wait_kernel.load(Ordering::Acquire) {
             yield_now();
         }
+
         self.set_timeout_handle(None);
     }
 }

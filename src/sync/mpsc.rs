@@ -48,10 +48,10 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn recv(&self, dur: Option<Duration>) -> Result<T, TryRecvError> {
-        match self.try_recv() {
-            Err(TryRecvError::Empty) => {}
-            data => return data,
-        }
+        // match self.try_recv() {
+        //     Err(TryRecvError::Empty) => {}
+        //     data => return data,
+        // }
 
         let cur = Blocker::current();
         // register the waiter

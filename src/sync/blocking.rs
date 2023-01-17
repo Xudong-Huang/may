@@ -8,25 +8,24 @@ use crate::coroutine_impl::is_coroutine;
 use crate::park::{Park, ParkError};
 
 #[derive(Debug)]
-#[allow(clippy::mutex_atomic)]
 pub struct ThreadPark {
-    lock: Mutex<bool>,
+    lock: Mutex<usize>,
     cvar: Condvar,
 }
 
 #[allow(clippy::mutex_atomic)]
 impl ThreadPark {
-    fn new() -> Self {
+    pub fn new() -> Self {
         ThreadPark {
-            lock: Mutex::new(false),
+            lock: Mutex::new(0),
             cvar: Condvar::new(),
         }
     }
 
-    fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
+    pub fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
         let mut result = Ok(());
         let mut guard = self.lock.lock();
-        while !*guard && result.is_ok() {
+        while *guard == 0 && result.is_ok() {
             match dur {
                 None => self.cvar.wait(&mut guard),
                 Some(t) => {
@@ -38,14 +37,14 @@ impl ThreadPark {
             };
         }
         // must clear the status
-        *guard = false;
+        *guard = 0;
         result
     }
 
-    fn unpark(&self) {
+    pub fn unpark(&self) {
         let mut guard = self.lock.lock();
-        if !*guard {
-            *guard = true;
+        if *guard == 0 {
+            *guard = 1;
             self.cvar.notify_one();
         }
     }
