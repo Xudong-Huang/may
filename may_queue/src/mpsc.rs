@@ -108,10 +108,8 @@ impl<T> BlockNode<T> {
 
     #[inline]
     pub fn wait_next_block(&self) -> *mut BlockNode<T> {
-        let backoff = Backoff::new();
-        let mut next = self.next.load(Ordering::Acquire);
+        let mut next: *mut BlockNode<T> = ptr::null_mut();
         while next.is_null() {
-            backoff.spin();
             next = self.next.load(Ordering::Acquire);
         }
         next
@@ -238,11 +236,11 @@ impl<T> Queue<T> {
                     // the block may be released here by the consumer,
                     // so we need to use old_block to delay the drop
                     if id == BLOCK_MASK {
+                        let new_block = BlockNode::new_box(block.start + BLOCK_SIZE * 2);
                         let next_block = unsafe { &mut *block.wait_next_block() };
-                        self.tail.0.store(next_block, Ordering::Release);
                         // install the next-next block
-                        let new_block = BlockNode::new_box(next_block.start + BLOCK_SIZE);
                         next_block.next.store(new_block, Ordering::Release);
+                        self.tail.0.store(next_block, Ordering::Release);
                     }
                     return;
                 }
@@ -280,15 +278,16 @@ impl<T> Queue<T> {
             }
         };
 
+        self.head.index.store(pop_index + 1, Ordering::Relaxed);
+
         if id == BLOCK_MASK {
-            let next_block = head.wait_next_block();
-            self.head.block.store(next_block, Ordering::Relaxed);
             // we need to delay the drop of the block to let the push's `wait_next_block` return
             let old_block = unsafe { &mut *(self.old_block.get()) };
             old_block.replace(unsafe { Box::from_raw(head) });
-        }
 
-        self.head.index.store(pop_index + 1, Ordering::Relaxed);
+            let next_block = head.wait_next_block();
+            self.head.block.store(next_block, Ordering::Relaxed);
+        }
 
         Some(data)
     }
@@ -319,17 +318,16 @@ impl<T> Queue<T> {
         }
 
         let new_index = index + value.len();
+        self.head.index.store(new_index, Ordering::Relaxed);
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let next_block = head.wait_next_block();
-            self.head.block.store(next_block, Ordering::Relaxed);
             let old_block = unsafe { &mut *(self.old_block.get()) };
             old_block.replace(unsafe { Box::from_raw(head) });
-        }
 
-        // commit the pop
-        self.head.index.store(new_index, Ordering::Relaxed);
+            let next_block = head.wait_next_block();
+            self.head.block.store(next_block, Ordering::Relaxed);
+        }
 
         Some(value)
     }
@@ -352,17 +350,16 @@ impl<T> Queue<T> {
         let value = head.copy_to_bulk(pop_index, end);
 
         let new_index = end;
+        self.head.index.store(new_index, Ordering::Relaxed);
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let next_block = head.wait_next_block();
-            self.head.block.store(next_block, Ordering::Relaxed);
             let old_block = unsafe { &mut *(self.old_block.get()) };
             old_block.replace(unsafe { Box::from_raw(head) });
-        }
 
-        // commit the pop
-        self.head.index.store(new_index, Ordering::Relaxed);
+            let next_block = head.wait_next_block();
+            self.head.block.store(next_block, Ordering::Relaxed);
+        }
 
         Some(value)
     }
