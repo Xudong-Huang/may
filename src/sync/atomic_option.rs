@@ -31,6 +31,11 @@ impl<T> AtomicOption<T> {
     }
 
     #[inline]
+    pub fn store(&self, t: T) {
+        self.inner.store(Some(t))
+    }
+
+    #[inline]
     pub fn take(&self) -> Option<T> {
         self.inner.take()
     }
