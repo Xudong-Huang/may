@@ -45,6 +45,17 @@ impl<T> InnerQueue<T> {
         Ok(())
     }
 
+    pub fn bulk_send<V: IntoIterator<Item = T>>(&self, values: V) -> Result<(), V> {
+        if unlikely(self.port_dropped.load(Ordering::Relaxed)) {
+            return Err(values);
+        }
+        self.queue.bulk_push(values);
+        if let Some(w) = self.to_wake.take() {
+            w.unpark();
+        }
+        Ok(())
+    }
+
     pub fn recv(self: &Arc<Self>) -> Result<T, TryRecvError> {
         let cur = Blocker::new();
         // register the waiter
@@ -149,6 +160,10 @@ impl<T> Sender<T> {
 
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t).map_err(SendError)
+    }
+
+    pub fn bulk_send<V: IntoIterator<Item = T>>(&self, values: V) -> Result<(), SendError<V>> {
+        self.inner.bulk_send(values).map_err(SendError)
     }
 }
 

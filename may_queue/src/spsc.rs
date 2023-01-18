@@ -160,6 +160,30 @@ impl<T> Queue<T> {
         self.tail.index.store(new_index, Ordering::Release);
     }
 
+    /// push a block of values to the queue
+    pub fn bulk_push<V: IntoIterator<Item = T>>(&self, v: V) {
+        let mut tail = unsafe { &mut *self.tail.block.unsync_load() };
+        let mut push_index = unsafe { self.tail.index.unsync_load() };
+
+        for data in v.into_iter() {
+            // store the data
+            tail.set(push_index, data);
+
+            // alloc new block node if the tail is full
+            push_index = push_index.wrapping_add(1);
+            if push_index & BLOCK_MASK == 0 {
+                let new_tail = BlockNode::new();
+                tail.next.store(new_tail, Ordering::Relaxed);
+                self.tail.block.store(new_tail, Ordering::Relaxed);
+                tail = unsafe { &mut *new_tail };
+            }
+        }
+
+        // commit the push
+        std::sync::atomic::fence(Ordering::Release);
+        self.tail.index.store(push_index, Ordering::Release);
+    }
+
     /// peek the head
     ///
     /// # Safety
