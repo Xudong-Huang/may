@@ -25,6 +25,16 @@ impl AtomicDuration {
     }
 
     #[inline]
+    pub fn store(&self, dur: Option<Duration>) {
+        let timeout = match dur {
+            None => 0,
+            Some(d) => dur_to_ms(d) as usize,
+        };
+
+        self.0.store(timeout, Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn swap(&self, dur: Option<Duration>) -> Option<Duration> {
         let timeout = match dur {
             None => 0,

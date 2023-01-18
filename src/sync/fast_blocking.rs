@@ -60,6 +60,7 @@ impl Park {
         if let Some(err) = get_co_para() {
             match err.kind() {
                 std::io::ErrorKind::Other => return Err(ParkError::Canceled),
+                std::io::ErrorKind::TimedOut => return Err(ParkError::Timeout),
                 _ => unreachable!("unexpected return error kind"),
             }
         }

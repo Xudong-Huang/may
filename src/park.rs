@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io::ErrorKind;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,9 +23,8 @@ pub struct DropGuard<'a>(&'a Park);
 pub struct Park {
     // the coroutine that waiting for this park instance
     wait_co: Arc<AtomicOption<CoroutineImpl>>,
-    // when odd means the Park no need to block
-    // the low bit used as flag, and higher bits used as flag to check the kernel delay drop
-    state: AtomicUsize,
+    // when true means the Park no need to block
+    state: AtomicBool,
     // control how to deal with the cancellation, usually init one time
     check_cancel: AtomicBool,
     // timeout settings in ms, 0 is none (park forever)
@@ -47,7 +46,7 @@ impl Park {
     pub fn new() -> Self {
         Park {
             wait_co: Arc::new(AtomicOption::none()),
-            state: AtomicUsize::new(0),
+            state: AtomicBool::new(false),
             check_cancel: AtomicBool::new(true),
             timeout: AtomicDuration::new(None),
             timeout_handle: AtomicPtr::new(ptr::null_mut()),
@@ -83,53 +82,14 @@ impl Park {
     // when the state is false, means we need real park
     #[inline]
     fn check_park(&self) -> bool {
-        let mut state = self.state.load(Ordering::Acquire);
-        if state & 1 == 0 {
-            return true;
-        }
-
-        loop {
-            match self.state.compare_exchange_weak(
-                state,
-                state - 1,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return false, // successfully consume the state, no need to block
-                Err(x) => {
-                    if x & 1 == 0 {
-                        return true;
-                    }
-                    state = x;
-                }
-            }
-        }
+        !self.state.swap(false, Ordering::AcqRel)
     }
 
     // unpark the underlying coroutine if any
     #[inline]
     pub(crate) fn unpark_impl(&self, b_sync: bool) {
-        let mut state = self.state.load(Ordering::Acquire);
-        if state & 1 == 1 {
-            // the state is already set do nothing here
-            return;
-        }
-
-        loop {
-            match self.state.compare_exchange_weak(
-                state,
-                state + 1,
-                Ordering::AcqRel,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return self.wake_up(b_sync),
-                Err(x) => {
-                    if x & 1 == 1 {
-                        break; // already set, do nothing
-                    }
-                    state = x;
-                }
-            }
+        if !self.state.swap(true, Ordering::AcqRel) {
+            self.wake_up(b_sync);
         }
     }
 
@@ -166,22 +126,17 @@ impl Park {
     /// if timeout happens, return Err(ParkError::Timeout)
     /// if cancellation detected, return Err(ParkError::Canceled)
     pub fn park_timeout(&self, dur: Option<Duration>) -> Result<(), ParkError> {
-        self.timeout.swap(dur);
-
         // if the state is not set, need to wait
         if !self.check_park() {
             return Ok(());
         }
 
         // before a new yield wait the kernel done
-        if self.wait_kernel.swap(false, Ordering::AcqRel) {
-            while self.state.load(Ordering::Acquire) & 0x02 == 0x02 {
-                yield_now();
-            }
-        } else {
-            // should clear the generation
-            self.state.fetch_and(!0x02, Ordering::Release);
+        while self.wait_kernel.load(Ordering::Acquire) {
+            yield_now();
         }
+
+        self.timeout.store(dur);
 
         // what if the state is set before yield?
         // the subscribe would re-check it
@@ -213,22 +168,17 @@ impl Park {
 
 impl<'a> Drop for DropGuard<'a> {
     fn drop(&mut self) {
-        // we would inc the state by 2 in kernel if all is done
-        self.0.state.fetch_add(0x02, Ordering::Release);
+        self.0.wait_kernel.store(false, Ordering::Release);
     }
 }
 
 impl Drop for Park {
     fn drop(&mut self) {
         // wait the kernel finish
-        if !self.wait_kernel.load(Ordering::Acquire) {
-            self.set_timeout_handle(None);
-            return;
-        }
-
-        while self.state.load(Ordering::Acquire) & 0x02 == 0x02 {
+        while self.wait_kernel.load(Ordering::Acquire) {
             yield_now();
         }
+
         self.set_timeout_handle(None);
     }
 }
@@ -251,7 +201,7 @@ impl EventSource for Park {
         self.wait_co.swap(co);
 
         // re-check the state, only clear once after resume
-        if self.state.load(Ordering::Acquire) & 1 == 1 {
+        if self.state.load(Ordering::Acquire) {
             // here may have recursive call for subscribe
             // normally the recursion depth is not too deep
             return self.wake_up(true);
@@ -267,9 +217,6 @@ impl EventSource for Park {
 
     // when the cancel is true we check the panic or do nothing
     fn yield_back(&self, cancel: &'static Cancel) {
-        // we would inc the generation by 2 to another generation
-        self.state.fetch_add(0x02, Ordering::Release);
-
         if self.check_cancel.load(Ordering::Relaxed) {
             cancel.check_cancel();
         }
