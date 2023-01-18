@@ -5,142 +5,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, SendError, TryRecvError};
 use std::sync::Arc;
 
-use super::{blocking::ThreadPark, AtomicOption};
-use crate::coroutine_impl::{
-    co_cancel_data, is_coroutine, run_coroutine, CoroutineImpl, EventSource,
-};
+use super::AtomicOption;
 use crate::likely::{likely, unlikely};
-use crate::park::ParkError;
-use crate::scheduler::get_scheduler;
-use crate::yield_now::{get_co_para, yield_now, yield_with};
+use crate::sync::fast_blocking::Blocker;
 
 use may_queue::spsc::Queue;
-
-struct Park {
-    // the coroutine that waiting for this park instance
-    wait_co: Arc<AtomicOption<CoroutineImpl>>,
-    // flag if parked
-    state: AtomicBool,
-    // a flag if kernel is entered
-    wait_kernel: AtomicBool,
-}
-
-impl Drop for Park {
-    fn drop(&mut self) {
-        // wait the kernel finish
-        while self.wait_kernel.load(Ordering::Acquire) {
-            yield_now();
-        }
-    }
-}
-
-pub struct DropGuard<'a>(&'a Park);
-
-impl<'a> Drop for DropGuard<'a> {
-    fn drop(&mut self) {
-        self.0.wait_kernel.store(false, Ordering::Release);
-    }
-}
-
-// this is the park resource type (spmc style)
-impl Park {
-    pub fn new() -> Self {
-        Park {
-            wait_co: Arc::new(AtomicOption::none()),
-            state: AtomicBool::new(false),
-            wait_kernel: AtomicBool::new(false),
-        }
-    }
-
-    /// park current coroutine
-    /// if cancellation detected, return Err(ParkError::Canceled)
-    pub fn park(&self) -> Result<(), ParkError> {
-        if self.state.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        yield_with(self);
-
-        if let Some(err) = get_co_para() {
-            match err.kind() {
-                std::io::ErrorKind::Other => return Err(ParkError::Canceled),
-                _ => unreachable!("unexpected return error kind"),
-            }
-        }
-
-        Ok(())
-    }
-
-    // unpark the underlying coroutine if any, push to the ready task queue
-    #[inline]
-    pub fn unpark(&self) {
-        self.state.store(true, Ordering::Release);
-        if let Some(co) = self.wait_co.take() {
-            get_scheduler().schedule(co);
-        }
-    }
-
-    fn delay_drop(&self) -> DropGuard {
-        self.wait_kernel.store(true, Ordering::Release);
-        DropGuard(self)
-    }
-}
-
-impl EventSource for Park {
-    // register the coroutine to the park
-    fn subscribe(&mut self, co: CoroutineImpl) {
-        let cancel = co_cancel_data(&co);
-        let _g = self.delay_drop();
-        // register the coroutine
-        self.wait_co.swap(co);
-        // re-check the state, only clear once after resume
-        if self.state.load(Ordering::Acquire) {
-            if let Some(co) = self.wait_co.take() {
-                run_coroutine(co);
-            }
-            return;
-        }
-
-        // register the cancel data
-        cancel.set_co(self.wait_co.clone());
-        // re-check the cancel status
-        if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
-        }
-    }
-}
-
-enum Blocker {
-    Coroutine(Park),
-    Thread(ThreadPark),
-}
-
-impl Blocker {
-    /// create a new fast blocker
-    pub fn new() -> Arc<Self> {
-        let blocker = if is_coroutine() {
-            Blocker::Coroutine(Park::new())
-        } else {
-            Blocker::Thread(ThreadPark::new())
-        };
-        Arc::new(blocker)
-    }
-
-    #[inline]
-    pub fn park(&self) -> Result<(), ParkError> {
-        match self {
-            Blocker::Coroutine(ref co) => co.park(),
-            Blocker::Thread(ref t) => t.park_timeout(None),
-        }
-    }
-
-    #[inline]
-    pub fn unpark(&self) {
-        match self {
-            Blocker::Coroutine(ref co) => co.unpark(),
-            Blocker::Thread(ref t) => t.unpark(),
-        }
-    }
-}
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -215,7 +84,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn drop_chan(&self) {
-        match self.channels.fetch_sub(1, Ordering::AcqRel) {
+        match self.channels.fetch_sub(1, Ordering::Relaxed) {
             1 => self.to_wake.take().map(|w| w.unpark()).unwrap_or(()),
             n if n > 1 => {}
             n => panic!("bad number of channels left {n}"),
@@ -223,7 +92,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn drop_port(&self) {
-        self.port_dropped.store(true, Ordering::Release);
+        self.port_dropped.store(true, Ordering::Relaxed);
         // clear all the data
         while self.queue.pop().is_some() {}
     }
@@ -231,7 +100,7 @@ impl<T> InnerQueue<T> {
 
 impl<T> Drop for InnerQueue<T> {
     fn drop(&mut self) {
-        assert_eq!(self.channels.load(Ordering::Acquire), 0);
+        assert_eq!(self.channels.load(Ordering::Relaxed), 0);
         assert!(self.to_wake.is_none());
     }
 }
