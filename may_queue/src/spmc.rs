@@ -196,17 +196,12 @@ impl<T> Queue<T> {
         let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
+        let mut tail_block = self.tail.block.load(Ordering::Acquire);
 
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-
-            // NOTE: access block is not safe, the block maybe released by other threads
-            // but we are hoping that the memory content is not changed, even the content
-            // of the block changed, the compare_exchange would make sure a correct result
-            let block = unsafe { &mut *block };
-            let block_start = block.start.load(Ordering::Relaxed);
-            if block_start + id >= push_index {
+            if block == tail_block && id >= (push_index & BLOCK_MASK) {
                 return None;
             }
 
@@ -215,6 +210,8 @@ impl<T> Queue<T> {
             } else {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
             };
+
+            let block = unsafe { &mut *block };
 
             // commit the pop
             match self.head.0.compare_exchange_weak(
@@ -225,24 +222,23 @@ impl<T> Queue<T> {
             ) {
                 Ok(_) => {
                     std::sync::atomic::fence(Ordering::Acquire);
-                    let new_block_start = block.start.load(Ordering::Relaxed);
+                    let block_start = block.start.load(Ordering::Relaxed);
+                    let pop_index = block_start + id;
                     if id == BLOCK_MASK {
-                        if new_block_start != block_start {
-                            // ABA detected, we need to check if there is enough data
-                            let new_push_index = self.tail.index.load(Ordering::Acquire);
-                            if new_block_start + id >= new_push_index {
-                                // recover the old head, and return None
-                                self.head.0.store(head, Ordering::Release);
-                                return None;
-                            }
+                        push_index = self.tail.index.load(Ordering::Acquire);
+                        // we need to check if there is enough data
+                        if pop_index >= push_index {
+                            // recover the old head, and return None
+                            self.head.0.store(head, Ordering::Release);
+                            return None;
                         }
+
                         let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
-                    } else if new_block_start != block_start {
-                        // println!("pop ABA detected");
-                        // ABA detected, we have to wait there is enough data
+                    } else {
+                        // we have to wait if there is enough data
                         // if no any more produce, this will be a dead loop
-                        while new_block_start + id >= self.tail.index.load(Ordering::Acquire) {
+                        while pop_index >= self.tail.index.load(Ordering::Acquire) {
                             std::thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
@@ -259,6 +255,7 @@ impl<T> Queue<T> {
                     head = i;
                     backoff.spin();
                     push_index = self.tail.index.load(Ordering::Acquire);
+                    tail_block = self.tail.block.load(Ordering::Acquire);
                 }
             }
         }
@@ -269,14 +266,13 @@ impl<T> Queue<T> {
         let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
         // this is use for local pop, we can sure that push_index is not changed
+        let tail_block = unsafe { self.tail.block.unsync_load() };
         let push_index = unsafe { self.tail.index.unsync_load() };
 
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-            let block = unsafe { &mut *block };
-            let block_start = block.start.load(Ordering::Relaxed);
-            if block_start + id >= push_index {
+            if block == tail_block && id >= (push_index & BLOCK_MASK) {
                 return None;
             }
 
@@ -286,6 +282,8 @@ impl<T> Queue<T> {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
             };
 
+            let block = unsafe { &mut *block };
+
             // commit the pop
             match self.head.0.compare_exchange_weak(
                 head,
@@ -294,26 +292,21 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    let new_block_start = block.start.load(Ordering::Relaxed);
+                    let block_start = block.start.load(Ordering::Relaxed);
+                    let pop_index = block_start + id;
                     if id == BLOCK_MASK {
-                        if new_block_start != block_start {
-                            // ABA detected, we need to check if there is enough data
-                            let new_push_index = self.tail.index.load(Ordering::Acquire);
-                            if new_block_start + id >= new_push_index {
-                                // recover the old head, and return None
-                                self.head.0.store(head, Ordering::Release);
-                                return None;
-                            }
+                        // we need to check if there is enough data
+                        if pop_index >= push_index {
+                            // recover the old head, and return None
+                            self.head.0.store(head, Ordering::Release);
+                            return None;
                         }
                         let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
-                    } else if new_block_start != block_start {
-                        // println!("local pop ABA detected");
-                        // ABA detected, we need to check if there is enough data
-                        let new_push_index = self.tail.index.load(Ordering::Acquire);
-                        if new_block_start + id >= new_push_index {
+                    } else {
+                        if pop_index >= push_index {
                             // advance the push index and this slot is ignored
-                            self.tail.index.fetch_add(1, Ordering::Relaxed);
+                            self.tail.index.store(push_index + 1, Ordering::Relaxed);
                             if block.mark_slots_read(1) {
                                 // we need to free the old block
                                 let _unused_block = unsafe { Box::from_raw(block) };
@@ -343,27 +336,28 @@ impl<T> Queue<T> {
     pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
         let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
+        let mut tail_block = self.tail.block.load(Ordering::Acquire);
 
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-            let block = unsafe { &mut *block };
-            let block_start = block.start.load(Ordering::Relaxed);
-            let mut index = block_start + id;
-            if index >= push_index {
+            if block == tail_block && id >= (push_index & BLOCK_MASK) {
                 return None;
             }
 
-            let mut end = bulk_end(index, push_index);
-            let new_id = end & BLOCK_MASK;
+            let new_id = if block != tail_block {
+                0
+            } else {
+                push_index & BLOCK_MASK
+            };
             let new_head = if new_id == 0 {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
             } else {
                 BlockPtr::pack(block, new_id)
             };
 
+            let block = unsafe { &mut *block };
             // only pop within a block
-            // commit the pop
             match self
                 .head
                 .0
@@ -371,45 +365,40 @@ impl<T> Queue<T> {
             {
                 Ok(_) => {
                     std::sync::atomic::fence(Ordering::Acquire);
-                    // we need to check if block.start is changed
-                    let new_block_start = block.start.load(Ordering::Relaxed);
+                    let block_start = block.start.load(Ordering::Relaxed);
+                    let pop_index = block_start + id;
+
+                    let end;
                     if new_id == 0 {
-                        if new_block_start == block_start {
-                            // ABA not happen
+                        push_index = self.tail.index.load(Ordering::Acquire);
+                        if pop_index >= push_index {
+                            // recover the old head, and return None
+                            self.head.0.store(head, Ordering::Release);
+                            return None;
+                        }
+                        end = bulk_end(pop_index, push_index);
+                        let new_id = end & BLOCK_MASK;
+                        if new_id == 0 {
                             let next = block.next.load(Ordering::Acquire);
                             self.head.0.store(next, Ordering::Release);
                         } else {
-                            // ABA detected, we need to retry
-                            let new_push_index = self.tail.index.load(Ordering::Acquire);
-                            index = new_block_start + id;
-                            if index >= new_push_index {
-                                // recover the old head, and return None
-                                self.head.0.store(head, Ordering::Release);
-                                return None;
-                            }
-                            end = bulk_end(index, new_push_index);
-                            let new_id = end & BLOCK_MASK;
-                            if new_id == 0 {
-                                let next = block.next.load(Ordering::Acquire);
-                                self.head.0.store(next, Ordering::Release);
-                            } else {
-                                let new_head = BlockPtr::pack(block, new_id);
-                                self.head.0.store(new_head, Ordering::Release);
-                            }
+                            let new_head = BlockPtr::pack(block, new_id);
+                            self.head.0.store(new_head, Ordering::Release);
                         }
-                    } else if new_block_start != block_start {
-                        // println!("bulk pop ABA detected");
-                        // ABA detected, we have to wait there is enough data
+                    } else {
+                        end = block_start + new_id;
+                        // we have to wait there is enough data, normally this would not happen
+                        // except for the ABA situation
                         // if no any more data pushed, this will be a dead loop
-                        while new_block_start + id >= self.tail.index.load(Ordering::Acquire) {
+                        while end > self.tail.index.load(Ordering::Acquire) {
                             std::thread::sleep(std::time::Duration::from_millis(10));
                         }
                     }
 
                     // get the data
-                    let value = block.copy_to_bulk(index, end);
+                    let value = block.copy_to_bulk(pop_index, end);
 
-                    if block.mark_slots_read(end - index) {
+                    if block.mark_slots_read(end - pop_index) {
                         // we need to free the old block
                         let _unused_block = unsafe { Box::from_raw(block) };
                     }
@@ -418,6 +407,7 @@ impl<T> Queue<T> {
                 Err(i) => {
                     head = i;
                     push_index = self.tail.index.load(Ordering::Acquire);
+                    tail_block = self.tail.block.load(Ordering::Acquire);
                 }
             }
         }
@@ -449,7 +439,7 @@ impl<T> Queue<T> {
         let tail_block = self.tail.block.load(Ordering::Acquire);
         let push_index = self.tail.index.load(Ordering::Acquire);
 
-        block == tail_block && id == push_index & BLOCK_MASK
+        block == tail_block && id == (push_index & BLOCK_MASK)
     }
 }
 
