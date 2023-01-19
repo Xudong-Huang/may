@@ -86,10 +86,9 @@ impl<T> BlockNode<T> {
 
     #[inline]
     pub fn get(&self, id: usize) -> T {
-        let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
         while data.ready.load(Ordering::Acquire) == 0 {
-            backoff.spin();
+            std::hint::spin_loop();
         }
         unsafe { data.value.get().read().assume_init() }
     }
@@ -108,7 +107,7 @@ impl<T> BlockNode<T> {
 
     #[inline]
     pub fn wait_next_block(&self) -> *mut BlockNode<T> {
-        let mut next: *mut BlockNode<T> = ptr::null_mut();
+        let mut next: *mut BlockNode<T> = self.next.load(Ordering::Acquire);
         while next.is_null() {
             next = self.next.load(Ordering::Acquire);
         }

@@ -146,6 +146,8 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
+        // make sure the data is stored before the index is updated
+        std::sync::atomic::fence(Ordering::Release);
 
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
@@ -155,8 +157,6 @@ impl<T> Queue<T> {
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
-        // commit the push
-        std::sync::atomic::fence(Ordering::Release);
         self.tail.index.store(new_index, Ordering::Release);
     }
 

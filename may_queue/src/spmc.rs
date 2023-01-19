@@ -175,17 +175,18 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
+        // need this to make sure the data is stored before the index is updated
+        std::sync::atomic::fence(Ordering::Release);
+
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
             let new_tail = BlockNode::new(new_index);
             // when other thread access next, we already Acquire the container node
-            tail.next.store(new_tail, Ordering::Relaxed);
+            tail.next.store(new_tail, Ordering::Release);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
 
-        // need this to make sure the data is stored before the index is updated
-        std::sync::atomic::fence(Ordering::Release);
         // commit the push
         self.tail.index.store(new_index, Ordering::Release);
     }
@@ -223,6 +224,7 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    std::sync::atomic::fence(Ordering::Acquire);
                     let new_block_start = block.start.load(Ordering::Relaxed);
                     if id == BLOCK_MASK {
                         if new_block_start != block_start {
@@ -234,7 +236,7 @@ impl<T> Queue<T> {
                                 return None;
                             }
                         }
-                        let next = block.next.load(Ordering::Relaxed);
+                        let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
                     } else if new_block_start != block_start {
                         // println!("pop ABA detected");
@@ -303,7 +305,7 @@ impl<T> Queue<T> {
                                 return None;
                             }
                         }
-                        let next = block.next.load(Ordering::Relaxed);
+                        let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
                     } else if new_block_start != block_start {
                         // println!("local pop ABA detected");
@@ -362,19 +364,19 @@ impl<T> Queue<T> {
 
             // only pop within a block
             // commit the pop
-            match self.head.0.compare_exchange_weak(
-                head,
-                new_head,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
+            match self
+                .head
+                .0
+                .compare_exchange(head, new_head, Ordering::AcqRel, Ordering::Acquire)
+            {
                 Ok(_) => {
+                    std::sync::atomic::fence(Ordering::Acquire);
                     // we need to check if block.start is changed
                     let new_block_start = block.start.load(Ordering::Relaxed);
                     if new_id == 0 {
                         if new_block_start == block_start {
                             // ABA not happen
-                            let next = block.next.load(Ordering::Relaxed);
+                            let next = block.next.load(Ordering::Acquire);
                             self.head.0.store(next, Ordering::Release);
                         } else {
                             // ABA detected, we need to retry
@@ -388,7 +390,7 @@ impl<T> Queue<T> {
                             end = bulk_end(index, new_push_index);
                             let new_id = end & BLOCK_MASK;
                             if new_id == 0 {
-                                let next = block.next.load(Ordering::Relaxed);
+                                let next = block.next.load(Ordering::Acquire);
                                 self.head.0.store(next, Ordering::Release);
                             } else {
                                 let new_head = BlockPtr::pack(block, new_id);
@@ -463,7 +465,7 @@ impl<T> Drop for Queue<T> {
         while self.bulk_pop().is_some() {}
         let head = self.head.0.load(Ordering::Acquire);
         let (block, _id) = BlockPtr::unpack(head);
-        let tail = self.tail.block.load(Ordering::Relaxed);
+        let tail = self.tail.block.load(Ordering::Acquire);
         assert_eq!(block, tail);
 
         let _unused_block = unsafe { Box::from_raw(block) };
