@@ -303,16 +303,14 @@ impl<T> Queue<T> {
                         }
                         let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
-                    } else {
-                        if pop_index >= push_index {
-                            // advance the push index and this slot is ignored
-                            self.tail.index.store(push_index + 1, Ordering::Relaxed);
-                            if block.mark_slots_read(1) {
-                                // we need to free the old block
-                                let _unused_block = unsafe { Box::from_raw(block) };
-                            }
-                            return None;
+                    } else if pop_index >= push_index {
+                        // advance the push index and this slot is ignored
+                        self.tail.index.store(push_index + 1, Ordering::Relaxed);
+                        if block.mark_slots_read(1) {
+                            // we need to free the old block
+                            let _unused_block = unsafe { Box::from_raw(block) };
                         }
+                        return None;
                     }
 
                     // get the data
@@ -414,8 +412,13 @@ impl<T> Queue<T> {
     }
 
     /// get the size of queue
-    #[inline]
-    pub fn len(&self) -> usize {
+    ///
+    /// # Safety
+    ///
+    /// this function is unsafe because it's possible that the block is destroyed
+    /// and the rare cases that the pop index is bigger than the push index may cause
+    /// return a wrong length
+    pub unsafe fn len(&self) -> usize {
         let head = self.head.0.load(Ordering::Acquire);
         let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
         let (block, id) = BlockPtr::unpack(head);
@@ -430,7 +433,6 @@ impl<T> Queue<T> {
     }
 
     /// if the queue is empty
-    #[inline]
     pub fn is_empty(&self) -> bool {
         let head = self.head.0.load(Ordering::Acquire);
         let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
@@ -518,10 +520,10 @@ impl<T> Steal<T> {
         self.0.is_empty()
     }
 
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
+    // #[inline]
+    // pub fn len(&self) -> usize {
+    //     self.0.len()
+    // }
 
     /// Steals half the tasks from self and place them into `dst`.
     #[inline]
@@ -575,18 +577,18 @@ mod test {
     #[test]
     fn queue_sanity() {
         let q = Queue::<usize>::new();
-        assert_eq!(q.len(), 0);
+        assert!(q.is_empty());
         for i in 0..100 {
             q.push(i);
         }
-        assert_eq!(q.len(), 100);
+        assert_eq!(unsafe { q.len() }, 100);
         println!("{q:?}");
 
         for i in 0..100 {
             assert_eq!(q.pop(), Some(i));
         }
         assert_eq!(q.pop(), None);
-        assert_eq!(q.len(), 0);
+        assert!(q.is_empty());
     }
 
     #[bench]
