@@ -265,7 +265,7 @@ impl<T> Queue<T> {
     fn local_pop(&self) -> Option<T> {
         let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
-        // this is use for local pop, we can sure that push_index is not changed
+        // this is used for local pop, we can sure that push_index is not changed
         let tail_block = unsafe { self.tail.block.unsync_load() };
         let push_index = unsafe { self.tail.index.unsync_load() };
 
@@ -304,6 +304,8 @@ impl<T> Queue<T> {
                         let next = block.next.load(Ordering::Acquire);
                         self.head.0.store(next, Ordering::Release);
                     } else if pop_index >= push_index {
+                        // pop_index never exceed push_index
+                        assert_eq!(pop_index, push_index);
                         // advance the push index and this slot is ignored
                         self.tail.index.store(push_index + 1, Ordering::Relaxed);
                         if block.mark_slots_read(1) {
@@ -348,6 +350,7 @@ impl<T> Queue<T> {
             } else {
                 push_index & BLOCK_MASK
             };
+
             let new_head = if new_id == 0 {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
             } else {
