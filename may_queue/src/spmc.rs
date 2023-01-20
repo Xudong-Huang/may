@@ -4,7 +4,6 @@ use smallvec::SmallVec;
 use crate::atomic::{AtomicPtr, AtomicUsize};
 
 use std::cell::UnsafeCell;
-use std::cmp;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -89,13 +88,6 @@ impl<T> BlockNode<T> {
         let start = start & BLOCK_MASK;
         (start..start + len).map(|id| self.get(id)).collect()
     }
-}
-
-/// return the bulk end with in the block
-#[inline]
-pub fn bulk_end(start: usize, end: usize) -> usize {
-    let block_end = (start + BLOCK_SIZE) & !BLOCK_MASK;
-    cmp::min(end, block_end)
 }
 
 /// A position in a queue.
@@ -221,7 +213,6 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    std::sync::atomic::fence(Ordering::Acquire);
                     let block_start = block.start.load(Ordering::Relaxed);
                     let pop_index = block_start + id;
                     if id == BLOCK_MASK {
@@ -266,8 +257,8 @@ impl<T> Queue<T> {
         let backoff = Backoff::new();
         let mut head = self.head.0.load(Ordering::Acquire);
         // this is used for local pop, we can sure that push_index is not changed
-        let tail_block = unsafe { self.tail.block.unsync_load() };
         let push_index = unsafe { self.tail.index.unsync_load() };
+        let tail_block = unsafe { self.tail.block.unsync_load() };
 
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
@@ -365,7 +356,6 @@ impl<T> Queue<T> {
                 .compare_exchange(head, new_head, Ordering::AcqRel, Ordering::Acquire)
             {
                 Ok(_) => {
-                    std::sync::atomic::fence(Ordering::Acquire);
                     let block_start = block.start.load(Ordering::Relaxed);
                     let pop_index = block_start + id;
 
@@ -377,7 +367,7 @@ impl<T> Queue<T> {
                             self.head.0.store(head, Ordering::Release);
                             return None;
                         }
-                        end = bulk_end(pop_index, push_index);
+                        end = std::cmp::min(block_start + BLOCK_SIZE, push_index);
                         let new_id = end & BLOCK_MASK;
                         if new_id == 0 {
                             let next = block.next.load(Ordering::Acquire);
@@ -441,8 +431,8 @@ impl<T> Queue<T> {
         let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
         let (block, id) = BlockPtr::unpack(head);
 
-        let tail_block = self.tail.block.load(Ordering::Acquire);
         let push_index = self.tail.index.load(Ordering::Acquire);
+        let tail_block = self.tail.block.load(Ordering::Acquire);
 
         block == tail_block && id == (push_index & BLOCK_MASK)
     }
