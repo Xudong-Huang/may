@@ -137,14 +137,14 @@ impl TcpStream {
     #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_read_timeout(dur)?;
-        self.read_timeout.swap(dur);
+        self.read_timeout.store(dur);
         Ok(())
     }
 
     #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.sys.set_write_timeout(dur)?;
-        self.write_timeout.swap(dur);
+        self.write_timeout.store(dur);
         Ok(())
     }
 

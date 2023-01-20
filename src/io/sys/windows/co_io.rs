@@ -94,13 +94,13 @@ impl<T: AsRawHandle> CoIo<T> {
 
     /// set read timeout
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.read_timeout.swap(dur);
+        self.read_timeout.store(dur);
         Ok(())
     }
 
     /// set write timeout
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.write_timeout.swap(dur);
+        self.write_timeout.store(dur);
         Ok(())
     }
 }

@@ -10,7 +10,7 @@ use crate::local::get_co_local_data;
 use crate::local::CoroutineLocal;
 use crate::park::Park;
 use crate::scheduler::get_scheduler;
-use crossbeam::atomic::AtomicCell;
+use crate::sync::AtomicOption;
 use generator::{Generator, Gn};
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -256,9 +256,9 @@ impl Builder {
         let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
 
         // create a join resource, shared by waited coroutine and *this* coroutine
-        let panic = Arc::new(AtomicCell::new(None));
+        let panic = Arc::new(AtomicOption::none());
         let join = Arc::new(Join::new(panic.clone()));
-        let packet = Arc::new(AtomicCell::new(None));
+        let packet = Arc::new(AtomicOption::none());
         let their_join = join.clone();
         let their_packet = packet.clone();
 
@@ -273,7 +273,7 @@ impl Builder {
             // coroutine local data so that can return from the packet variable
 
             // set the return packet
-            their_packet.swap(Some(f()));
+            their_packet.store(f());
 
             their_join.trigger();
             subscriber

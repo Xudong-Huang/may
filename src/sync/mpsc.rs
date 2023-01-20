@@ -55,7 +55,7 @@ impl<T> InnerQueue<T> {
 
         let cur = Blocker::current();
         // register the waiter
-        self.to_wake.swap(cur.clone());
+        self.to_wake.store(cur.clone());
         // re-check the queue
         match self.try_recv() {
             Err(TryRecvError::Empty) => {

@@ -6,11 +6,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam::atomic::AtomicCell;
 use may_queue::mpsc::Queue;
 use may_queue::mpsc_list_v1::Entry;
 use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
 use parking_lot::{Mutex, RwLock};
+
+use crate::sync::AtomicOption;
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_SEC: u64 = 1_000_000_000;
@@ -272,7 +273,7 @@ pub struct TimerThread<T> {
     // collect the remove request
     remove_list: Queue<TimeoutHandle<T>>,
     // the timer thread wakeup handler
-    wakeup: AtomicCell<Option<thread::Thread>>,
+    wakeup: AtomicOption<thread::Thread>,
 }
 
 impl<T> TimerThread<T> {
@@ -280,7 +281,7 @@ impl<T> TimerThread<T> {
         TimerThread {
             timer_list: TimeOutList::new(),
             remove_list: Queue::new(),
-            wakeup: AtomicCell::new(None),
+            wakeup: AtomicOption::none(),
         }
     }
 
@@ -311,7 +312,7 @@ impl<T> TimerThread<T> {
             }
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
-            self.wakeup.swap(Some(current_thread.clone()));
+            self.wakeup.store(current_thread.clone());
 
             if !self.remove_list.is_empty() {
                 if let Some(t) = self.wakeup.take() {

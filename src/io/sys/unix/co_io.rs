@@ -138,7 +138,7 @@ impl<T: AsRawFd> CoIo<T> {
     /// set read timeout
     #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.read_timeout.swap(dur);
+        self.read_timeout.store(dur);
         Ok(())
     }
 

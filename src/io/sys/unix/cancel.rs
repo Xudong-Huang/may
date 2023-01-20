@@ -15,7 +15,7 @@ impl CancelIo for CancelIoImpl {
     }
 
     fn set(&self, data: Arc<EventData>) {
-        self.0.swap(data);
+        self.0.store(data);
     }
 
     fn clear(&self) {

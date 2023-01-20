@@ -23,7 +23,7 @@ thread_local! {
             while let Ok(es) = rx.recv() {
                 co_yield_with(es);
                 if let Some(r) = co_get_yield::<EventResult>() {
-                    io_ret.swap(Box::new(r));
+                    io_ret.store(Box::new(r));
                 }
                 // wake up the master thread
                 parker.unpark();

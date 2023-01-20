@@ -149,7 +149,7 @@ impl<T: CancelIo> CancelImpl<T> {
     // set the cancel co data
     // can't both set_io and set_co
     pub fn set_co(&self, co: Arc<AtomicOption<CoroutineImpl>>) {
-        self.co.swap(co);
+        self.co.store(co);
     }
 
     // clear the cancel io data

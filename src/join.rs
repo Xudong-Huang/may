@@ -6,7 +6,6 @@ use std::thread::Result;
 
 use crate::coroutine_impl::Coroutine;
 use crate::sync::{AtomicOption, Blocker};
-use crossbeam::atomic::AtomicCell;
 use generator::Error;
 
 pub struct Join {
@@ -20,12 +19,12 @@ pub struct Join {
     // this is the only place that could set the panic Error
     // we use to communicate with JoinHandle so that can return the panic info
     // this must be ready before the trigger
-    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
+    panic: Arc<AtomicOption<Box<dyn Any + Send>>>,
 }
 
 // this is the join resource type
 impl Join {
-    pub fn new(panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>) -> Self {
+    pub fn new(panic: Arc<AtomicOption<Box<dyn Any + Send>>>) -> Self {
         Join {
             to_wake: AtomicOption::none(),
             state: AtomicBool::new(true),
@@ -35,7 +34,7 @@ impl Join {
 
     // the the panic for the coroutine
     pub fn set_panic_data(&self, panic: Box<dyn Any + Send>) {
-        self.panic.swap(Some(panic));
+        self.panic.store(panic);
     }
 
     pub fn trigger(&self) {
@@ -49,7 +48,7 @@ impl Join {
         if self.state.load(Ordering::Acquire) {
             let cur = Blocker::current();
             // register the blocker first
-            self.to_wake.swap(cur.clone());
+            self.to_wake.store(cur.clone());
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
@@ -65,8 +64,8 @@ impl Join {
 pub struct JoinHandle<T> {
     co: Coroutine,
     join: Arc<Join>,
-    packet: Arc<AtomicCell<Option<T>>>,
-    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
+    packet: Arc<AtomicOption<T>>,
+    panic: Arc<AtomicOption<Box<dyn Any + Send>>>,
 }
 
 unsafe impl<T: Send> Send for JoinHandle<T> {}
@@ -76,8 +75,8 @@ unsafe impl<T: Sync> Sync for JoinHandle<T> {}
 pub fn make_join_handle<T>(
     co: Coroutine,
     join: Arc<Join>,
-    packet: Arc<AtomicCell<Option<T>>>,
-    panic: Arc<AtomicCell<Option<Box<dyn Any + Send>>>>,
+    packet: Arc<AtomicOption<T>>,
+    panic: Arc<AtomicOption<Box<dyn Any + Send>>>,
 ) -> JoinHandle<T> {
     JoinHandle {
         co,

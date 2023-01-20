@@ -10,7 +10,7 @@ use std::thread;
 
 use crate::coroutine_impl::{spawn, Coroutine};
 use crate::join::JoinHandle;
-use crossbeam::atomic::AtomicCell;
+use crate::sync::AtomicOption;
 
 /// Like `coroutine::spawn`, but without the closure bounds.
 pub unsafe fn spawn_unsafe<'a, F>(f: F) -> JoinHandle<()>
@@ -54,7 +54,7 @@ impl JoinState {
 /// A handle to a scoped coroutine
 pub struct ScopedJoinHandle<T> {
     inner: Rc<RefCell<JoinState>>,
-    packet: Arc<AtomicCell<Option<T>>>,
+    packet: Arc<AtomicOption<T>>,
     co: Coroutine,
 }
 
@@ -136,12 +136,12 @@ impl<'a> Scope<'a> {
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        let their_packet = Arc::new(AtomicCell::new(None));
+        let their_packet = Arc::new(AtomicOption::none());
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
             spawn_unsafe(move || {
-                their_packet.swap(Some(f()));
+                their_packet.store(f());
             })
         };
 

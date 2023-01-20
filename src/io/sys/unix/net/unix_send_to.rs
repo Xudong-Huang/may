@@ -73,7 +73,7 @@ impl<'a> EventSource for UnixSendTo<'a> {
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }
-        io_data.co.swap(co);
+        io_data.co.store(co);
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {

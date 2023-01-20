@@ -198,7 +198,7 @@ impl EventSource for Park {
         let _g = self.delay_drop();
 
         // register the coroutine
-        self.wait_co.swap(co);
+        self.wait_co.store(co);
 
         // re-check the state, only clear once after resume
         if self.state.load(Ordering::Acquire) {
