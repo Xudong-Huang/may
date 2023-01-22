@@ -2,6 +2,10 @@
 //!
 
 use std::io::{self, Read, Write};
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, RawFd};
+
+use super::AsIoData;
 
 pub struct SplitReader<T> {
     inner: T,
@@ -14,6 +18,10 @@ impl<T> SplitReader<T> {
 
     pub fn inner(&self) -> &T {
         &self.inner
+    }
+
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.inner
     }
 }
 
@@ -29,20 +37,62 @@ impl<T> SplitWriter<T> {
     pub fn inner(&self) -> &T {
         &self.inner
     }
+
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+}
+
+impl<T> AsIoData for SplitWriter<T>
+where
+    T: AsIoData,
+{
+    fn as_io_data(&self) -> &super::IoData {
+        self.inner.as_io_data()
+    }
+}
+
+impl<T> AsIoData for SplitReader<T>
+where
+    T: AsIoData,
+{
+    fn as_io_data(&self) -> &super::IoData {
+        self.inner.as_io_data()
+    }
+}
+
+#[cfg(unix)]
+impl<T> AsRawFd for SplitReader<T>
+where
+    T: AsRawFd,
+{
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+#[cfg(unix)]
+impl<T> AsRawFd for SplitWriter<T>
+where
+    T: AsRawFd,
+{
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.as_raw_fd()
+    }
 }
 
 impl<T: Read> Read for SplitReader<T> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }
 }
 
 impl<T: Write> Write for SplitWriter<T> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.write(buf)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
     }
 }
