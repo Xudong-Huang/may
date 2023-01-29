@@ -103,7 +103,7 @@ impl<T: AsRawFd> CoIo<T> {
 
     /// reset internal io data
     pub(crate) fn io_reset(&self) {
-        self.io.reset()
+        self.io.reset();
     }
 
     /// get inner ref

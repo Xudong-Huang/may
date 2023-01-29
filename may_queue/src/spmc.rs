@@ -36,8 +36,8 @@ impl<T> Slot<T> {
 struct BlockNode<T> {
     data: [Slot<T>; BLOCK_SIZE],
     used: AtomicUsize,
-    pub next: AtomicPtr<BlockNode<T>>,
-    pub start: AtomicUsize, // start index of the block
+    next: AtomicPtr<BlockNode<T>>,
+    start: AtomicUsize, // start index of the block
 }
 
 /// we don't implement the block node Drop trait
@@ -324,7 +324,14 @@ impl<T> Queue<T> {
     }
 
     /// pop from the queue, if it's empty return None
-    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+    pub fn bulk_pop(&self) -> SmallVec<[T; BLOCK_SIZE]> {
+        self.bulk_pop_impl(0)
+    }
+
+    /// steal pop from the queue, if not enough data return None
+    /// min_left is the minimum number of elements left to owner
+    #[inline]
+    fn bulk_pop_impl(&self, min_left: usize) -> SmallVec<[T; BLOCK_SIZE]> {
         let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
         let mut tail_block = self.tail.block.load(Ordering::Acquire);
@@ -332,14 +339,16 @@ impl<T> Queue<T> {
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-            if block == tail_block && id >= (push_index & BLOCK_MASK) {
-                return None;
+            let push_id = push_index & BLOCK_MASK;
+            // at least leave one element to the owner
+            if block == tail_block && id + min_left >= push_id {
+                return SmallVec::new();
             }
 
             let new_id = if block != tail_block {
                 0
             } else {
-                push_index & BLOCK_MASK
+                push_id - min_left
             };
 
             let new_head = if new_id == 0 {
@@ -365,7 +374,7 @@ impl<T> Queue<T> {
                         if pop_index >= push_index {
                             // recover the old head, and return None
                             self.head.0.store(head, Ordering::Release);
-                            return None;
+                            return SmallVec::new();
                         }
                         end = std::cmp::min(block_start + BLOCK_SIZE, push_index);
                         let new_id = end & BLOCK_MASK;
@@ -393,7 +402,7 @@ impl<T> Queue<T> {
                         // we need to free the old block
                         let _unused_block = unsafe { Box::from_raw(block) };
                     }
-                    return Some(value);
+                    return value;
                 }
                 Err(i) => {
                     head = i;
@@ -447,7 +456,7 @@ impl<T> Default for Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
-        while self.bulk_pop().is_some() {}
+        while !self.bulk_pop().is_empty() {}
         let head = self.head.0.load(Ordering::Acquire);
         let (block, _id) = BlockPtr::unpack(head);
         let tail = self.tail.block.load(Ordering::Acquire);
@@ -518,10 +527,11 @@ impl<T> Steal<T> {
     //     self.0.len()
     // }
 
-    /// Steals half the tasks from self and place them into `dst`.
+    /// Steals block of tasks from self and place them into `dst`.
     #[inline]
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
-        let mut v = self.0.bulk_pop()?;
+        const MIN_LEFT: usize = 2;
+        let mut v = self.0.bulk_pop_impl(MIN_LEFT);
         let ret = v.pop();
         for t in v {
             dst.push_back(t);
@@ -665,7 +675,8 @@ mod test {
                     let total = total.clone();
                     s.spawn(move || {
                         while !q.is_empty() {
-                            if let Some(v) = q.bulk_pop() {
+                            let v = q.bulk_pop();
+                            if !v.is_empty() {
                                 total.fetch_add(v.len(), Ordering::AcqRel);
                             }
                         }
