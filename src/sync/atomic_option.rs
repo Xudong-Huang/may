@@ -3,6 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use super::Blocker;
 use crate::coroutine_impl::CoroutineImpl;
 
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::Arc;
 
 pub struct AtomicOption<T> {
@@ -26,11 +27,6 @@ impl<T> AtomicOption<T> {
     }
 
     #[inline]
-    pub fn swap(&self, t: T) -> Option<T> {
-        self.inner.swap(Some(t))
-    }
-
-    #[inline]
     pub fn store(&self, t: T) {
         self.inner.store(Some(t))
     }
@@ -42,6 +38,8 @@ impl<T> AtomicOption<T> {
 
     #[inline]
     pub fn is_none(&self) -> bool {
-        unsafe { (*self.inner.as_ptr()).is_none() }
+        let this = self.inner.as_ptr();
+        let a = unsafe { &*(this as *const _ as *const AtomicPtr<T>) };
+        a.load(Ordering::Acquire).is_null()
     }
 }

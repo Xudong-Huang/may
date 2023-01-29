@@ -55,7 +55,7 @@ impl<'a> SocketWriteVectored<'a> {
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) {
                 continue;
             }
 
@@ -79,7 +79,7 @@ impl<'a> EventSource for SocketWriteVectored<'a> {
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
-            io_data.schedule();
+            io_data.fast_schedule();
         }
     }
 }

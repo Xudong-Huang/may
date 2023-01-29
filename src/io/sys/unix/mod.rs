@@ -166,6 +166,35 @@ impl EventData {
         // run_coroutine(co);
         get_scheduler().schedule(co);
     }
+
+    /// used by local re-schedule that in `subscribe`
+    #[inline]
+    pub fn fast_schedule(&self) {
+        info!("event fast_schedule");
+        // fast check first
+        if self.co.is_none() {
+            return;
+        }
+
+        let co = match self.co.take() {
+            None => return, // it's already take by selector
+            Some(co) => co,
+        };
+
+        // it's safe to remove the timer since we are running the timer_list in the same thread
+        #[cfg(feature = "io_timeout")]
+        self.timer.borrow_mut().take().map(|h| {
+            unsafe {
+                // tell the timer function not to cancel the io
+                // it's not always true that you can really remove the timer entry
+                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
+            }
+            h.remove()
+        });
+
+        // run the coroutine
+        run_coroutine(co);
+    }
 }
 
 // each file associated data

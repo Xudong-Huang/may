@@ -145,7 +145,7 @@ impl<T: AsRawFd> CoIo<T> {
     /// set write timeout
     #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.write_timeout.swap(dur);
+        self.write_timeout.store(dur);
         Ok(())
     }
 }

@@ -53,7 +53,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) {
                 continue;
             }
 
@@ -77,7 +77,7 @@ impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {
-            io_data.schedule();
+            io_data.fast_schedule();
         }
     }
 }

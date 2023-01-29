@@ -35,13 +35,8 @@ impl AtomicDuration {
     }
 
     #[inline]
-    pub fn swap(&self, dur: Option<Duration>) -> Option<Duration> {
-        let timeout = match dur {
-            None => 0,
-            Some(d) => dur_to_ms(d) as usize,
-        };
-
-        match self.0.swap(timeout, Ordering::Relaxed) {
+    pub fn take(&self) -> Option<Duration> {
+        match self.0.swap(0, Ordering::Relaxed) {
             0 => None,
             d => Some(Duration::from_millis(d as u64)),
         }

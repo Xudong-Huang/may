@@ -92,8 +92,11 @@ impl EventSource for Park {
         self.wait_co.store(co);
         // re-check the state, only clear once after resume
         if self.state.load(Ordering::Acquire) {
-            if let Some(co) = self.wait_co.take() {
-                run_coroutine(co);
+            // fast check first
+            if !self.wait_co.is_none() {
+                if let Some(co) = self.wait_co.take() {
+                    run_coroutine(co);
+                }
             }
             return;
         }

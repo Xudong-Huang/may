@@ -48,7 +48,7 @@ impl<'a> UnixListenerAccept<'a> {
                 }
             }
 
-            if self.io_data.io_flag.swap(false, Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) {
                 continue;
             }
 
@@ -70,7 +70,7 @@ impl<'a> EventSource for UnixListenerAccept<'a> {
         // there is event happened
         if io_data.io_flag.load(Ordering::Acquire) {
             #[allow(clippy::needless_return)]
-            return io_data.schedule();
+            return io_data.fast_schedule();
         }
 
         #[cfg(feature = "io_cancel")]

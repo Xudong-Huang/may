@@ -82,6 +82,11 @@ impl Park {
     // when the state is false, means we need real park
     #[inline]
     fn check_park(&self) -> bool {
+        // fast check, since only one consumer to park
+        if self.state.load(Ordering::Acquire) {
+            self.state.store(false, Ordering::Release);
+            return false;
+        }
         !self.state.swap(false, Ordering::AcqRel)
     }
 
@@ -118,6 +123,15 @@ impl Park {
                 run_coroutine(co);
             } else {
                 get_scheduler().schedule(co);
+            }
+        }
+    }
+
+    #[inline]
+    fn fast_wake_up(&self) {
+        if !self.wait_co.is_none() {
+            if let Some(co) = self.wait_co.take() {
+                run_coroutine(co);
             }
         }
     }
@@ -191,7 +205,7 @@ impl EventSource for Park {
         // if we not deleted the timer in time
         let timeout_handle = self
             .timeout
-            .swap(None)
+            .take()
             .map(|dur| get_scheduler().add_timer(dur, self.wait_co.clone()));
         self.set_timeout_handle(timeout_handle);
 
@@ -204,7 +218,7 @@ impl EventSource for Park {
         if self.state.load(Ordering::Acquire) {
             // here may have recursive call for subscribe
             // normally the recursion depth is not too deep
-            return self.wake_up(true);
+            return self.fast_wake_up();
         }
 
         // register the cancel data
