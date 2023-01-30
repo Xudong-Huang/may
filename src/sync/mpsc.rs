@@ -63,7 +63,7 @@ impl<T> InnerQueue<T> {
             }
             data => {
                 // no need to park, contention with send
-                self.to_wake.take();
+                self.to_wake.clear();
                 return data;
             }
         }

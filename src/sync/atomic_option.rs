@@ -37,6 +37,11 @@ impl<T> AtomicOption<T> {
     }
 
     #[inline]
+    pub fn clear(&self) {
+        self.inner.store(None)
+    }
+
+    #[inline]
     pub fn is_none(&self) -> bool {
         let this = self.inner.as_ptr();
         let a = unsafe { &*(this as *const _ as *const AtomicPtr<T>) };
