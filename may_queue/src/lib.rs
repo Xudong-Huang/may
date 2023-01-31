@@ -12,6 +12,7 @@ pub mod mpsc_list;
 pub mod mpsc_list_v1;
 pub mod spmc;
 pub mod spsc;
+pub mod unordered_mpsc;
 
 #[cfg(test)]
 mod test_queue {
