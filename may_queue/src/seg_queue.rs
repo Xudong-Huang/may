@@ -7,7 +7,7 @@ use core::mem::MaybeUninit;
 use core::ptr;
 use core::sync::atomic::{self, AtomicPtr, AtomicUsize, Ordering};
 
-use crossbeam::utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
 
 // Bits indicating the state of a slot:

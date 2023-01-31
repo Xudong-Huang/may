@@ -2,7 +2,7 @@ use std::cell::UnsafeCell;
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crossbeam::utils::CachePadded;
+use crossbeam_utils::{Backoff, CachePadded};
 
 struct Node<T> {
     prev: *mut Node<T>,
@@ -197,7 +197,7 @@ impl<T> Queue<T> {
         }
         // spin until tail next become non-null
         let mut next;
-        let backoff = crossbeam::utils::Backoff::new();
+        let backoff = Backoff::new();
         loop {
             next = (*tail).next.load(Ordering::Acquire);
             if !next.is_null() {
@@ -225,7 +225,7 @@ impl<T> Queue<T> {
 
             // spin until tail next become non-null
             let mut next;
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 next = (*tail).next.load(Ordering::Acquire);
                 if !next.is_null() {
@@ -280,7 +280,7 @@ impl<T> Queue<T> {
 
             // spin until tail next become non-null
             let mut next;
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 next = (*tail).next.load(Ordering::Acquire);
                 if !next.is_null() {

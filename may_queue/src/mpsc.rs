@@ -1,4 +1,4 @@
-use crossbeam::utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};
@@ -294,11 +294,7 @@ impl<T> Queue<T> {
     /// fast pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     /// don't check the push index, but only the ready flag
     #[inline]
-    fn fast_bulk_pop(
-        &self,
-        index: usize,
-        head: &mut BlockNode<T>,
-    ) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+    fn fast_bulk_pop(&self, index: usize, head: &mut BlockNode<T>) -> SmallVec<[T; BLOCK_SIZE]> {
         // only pop within a block
         let block_end = (index + BLOCK_SIZE) & !BLOCK_MASK;
         let len = block_end - index;
@@ -313,7 +309,7 @@ impl<T> Queue<T> {
         }
 
         if value.is_empty() {
-            return None;
+            return value;
         }
 
         let new_index = index + value.len();
@@ -328,20 +324,21 @@ impl<T> Queue<T> {
             self.head.block.store(next_block, Ordering::Relaxed);
         }
 
-        Some(value)
+        value
     }
 
     /// pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
-    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+    pub fn bulk_pop(&self) -> SmallVec<[T; BLOCK_SIZE]> {
         let pop_index = unsafe { self.head.index.unsync_load() };
         let head = unsafe { &mut *self.head.block.unsync_load() };
-        if let Some(v) = self.fast_bulk_pop(pop_index, head) {
-            return Some(v);
+        let v = self.fast_bulk_pop(pop_index, head);
+        if !v.is_empty() {
+            return v;
         }
 
         let push_index = self.push_index();
         if pop_index >= push_index {
-            return None;
+            return SmallVec::new();
         }
 
         // only pop within a block
@@ -360,7 +357,7 @@ impl<T> Queue<T> {
             self.head.block.store(next_block, Ordering::Relaxed);
         }
 
-        Some(value)
+        value
     }
 
     /// peek the head
@@ -429,7 +426,7 @@ mod test {
 
     impl<T: Send> ScBlockPop<T> for super::Queue<T> {
         fn block_pop(&self) -> T {
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 match self.pop() {
                     Some(v) => return v,
@@ -536,12 +533,11 @@ mod test {
 
             let mut size = 0;
             while size < total_work {
-                if let Some(v) = q.bulk_pop() {
-                    for (start, i) in v.iter().enumerate() {
-                        assert_eq!(*i, start + size);
-                    }
-                    size += v.len();
+                let v = q.bulk_pop();
+                for (start, i) in v.iter().enumerate() {
+                    assert_eq!(*i, start + size);
                 }
+                size += v.len();
             }
         });
     }
@@ -570,11 +566,10 @@ mod test {
                 s.spawn(|| {
                     let mut size = 0;
                     while size < total_work {
-                        if let Some(v) = q.bulk_pop() {
-                            size += v.len();
-                            for data in v {
-                                total += data;
-                            }
+                        let v = q.bulk_pop();
+                        size += v.len();
+                        for data in v {
+                            total += data;
                         }
                     }
                 });

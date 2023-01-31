@@ -1,4 +1,4 @@
-use crossbeam::utils::CachePadded;
+use crossbeam_utils::CachePadded;
 use smallvec::SmallVec;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};
@@ -189,7 +189,7 @@ impl<T> Queue<T> {
         let v = head.get(index & BLOCK_MASK);
 
         let new_index = index.wrapping_add(1);
-        // we need to free the old head if it's get empty
+        // we need to free the old head if it get empty
         if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
@@ -218,12 +218,12 @@ impl<T> Queue<T> {
     }
 
     // bulk pop as much as possible
-    pub fn bulk_pop(&self) -> Option<SmallVec<[T; BLOCK_SIZE]>> {
+    pub fn bulk_pop(&self) -> SmallVec<[T; BLOCK_SIZE]> {
         // self.bulk_pop_expect(0, vec)
         let index = unsafe { self.head.index.unsync_load() };
         let push_index = self.tail.index.load(Ordering::Acquire);
         if index == push_index {
-            return None;
+            return SmallVec::new();
         }
 
         let head = unsafe { &mut *self.head.block.unsync_load() };
@@ -245,7 +245,7 @@ impl<T> Queue<T> {
         // commit the pop
         self.head.index.store(new_index, Ordering::Relaxed);
 
-        Some(value)
+        value
     }
 }
 
@@ -258,7 +258,7 @@ impl<T> Default for Queue<T> {
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         //  pop all the element to make sure the queue is empty
-        while self.bulk_pop().is_some() {}
+        while !self.bulk_pop().is_empty() {}
         let head = self.head.block.load(Ordering::Relaxed);
         let tail = self.tail.block.load(Ordering::Relaxed);
         assert_eq!(head, tail);
@@ -297,10 +297,10 @@ mod tests {
         for i in 0..total_size {
             q.push(i);
         }
-        let vec = q.bulk_pop().unwrap();
+        let vec = q.bulk_pop();
         assert_eq!(vec.len(), BLOCK_SIZE);
         assert_eq!(q.len(), total_size - BLOCK_SIZE);
-        let v = q.bulk_pop().unwrap();
+        let v = q.bulk_pop();
         assert_eq!(v[0], BLOCK_SIZE);
         assert_eq!(v.len(), 17);
         assert_eq!(q.len(), 0);
@@ -325,7 +325,7 @@ mod bench {
 
     impl<T> ScBlockPop<T> for super::Queue<T> {
         fn block_pop(&self) -> T {
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = crossbeam_utils::Backoff::new();
             loop {
                 match self.pop() {
                     Some(v) => return v,
@@ -362,12 +362,11 @@ mod bench {
 
             let mut size = 0;
             while size < total_work {
-                if let Some(v) = q.bulk_pop() {
-                    for (start, i) in v.iter().enumerate() {
-                        assert_eq!(*i, start + size);
-                    }
-                    size += v.len();
+                let v = q.bulk_pop();
+                for (start, i) in v.iter().enumerate() {
+                    assert_eq!(*i, start + size);
                 }
+                size += v.len();
             }
         });
     }

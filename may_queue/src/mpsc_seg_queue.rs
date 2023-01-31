@@ -8,7 +8,7 @@ use core::mem::MaybeUninit;
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
-use crossbeam::utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
 
 // Bits indicating the state of a slot:
@@ -649,7 +649,7 @@ mod test {
 
     impl<T> ScBlockPop<T> for super::SegQueue<T> {
         fn block_pop(&self) -> T {
-            let backoff = crossbeam::utils::Backoff::new();
+            let backoff = Backoff::new();
             loop {
                 match self.pop() {
                     Some(v) => return v,

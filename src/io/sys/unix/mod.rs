@@ -163,7 +163,6 @@ impl EventData {
         });
 
         // schedule the coroutine
-        // run_coroutine(co);
         get_scheduler().schedule(co);
     }
 

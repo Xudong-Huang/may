@@ -1,4 +1,4 @@
-use crossbeam::utils::{Backoff, CachePadded};
+use crossbeam_utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
 
 use crate::atomic::{AtomicPtr, AtomicUsize};

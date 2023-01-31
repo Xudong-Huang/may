@@ -36,7 +36,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use std::sync::Arc;
 
-use crossbeam::utils::CachePadded;
+use crossbeam_utils::CachePadded;
 
 struct Node<T> {
     sequence: AtomicUsize,
