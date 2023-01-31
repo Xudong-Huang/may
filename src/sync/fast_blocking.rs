@@ -2,6 +2,7 @@
 //! this is not reusable, only for one time use
 //! and no timeout blocking support
 
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -11,32 +12,15 @@ use crate::coroutine_impl::{
 };
 use crate::park::ParkError;
 use crate::scheduler::get_scheduler;
-use crate::yield_now::{get_co_para, yield_now, yield_with};
+use crate::yield_now::{get_co_para, yield_with};
 
 pub struct Park {
     // the coroutine that waiting for this park instance
     wait_co: Arc<AtomicOption<CoroutineImpl>>,
     // flag if parked
     state: AtomicBool,
-    // a flag if kernel is entered
-    wait_kernel: AtomicBool,
-}
-
-impl Drop for Park {
-    fn drop(&mut self) {
-        // wait the kernel finish
-        while self.wait_kernel.load(Ordering::Relaxed) {
-            yield_now();
-        }
-    }
-}
-
-pub struct DropGuard<'a>(&'a Park);
-
-impl<'a> Drop for DropGuard<'a> {
-    fn drop(&mut self) {
-        self.0.wait_kernel.store(false, Ordering::Relaxed);
-    }
+    // the container of the park to hold resource in kernel
+    container: UnsafeCell<Option<Arc<Blocker>>>,
 }
 
 // this is the park resource type (spmc style)
@@ -45,16 +29,17 @@ impl Park {
         Park {
             wait_co: Arc::new(AtomicOption::none()),
             state: AtomicBool::new(false),
-            wait_kernel: AtomicBool::new(false),
+            container: UnsafeCell::new(None),
         }
     }
 
     /// park current coroutine
     /// if cancellation detected, return Err(ParkError::Canceled)
-    pub fn park(&self) -> Result<(), ParkError> {
+    pub fn park(&self, container: Arc<Blocker>) -> Result<(), ParkError> {
         if self.state.load(Ordering::Acquire) {
             return Ok(());
         }
+        unsafe { *self.container.get() = Some(container) };
         yield_with(self);
 
         if let Some(err) = get_co_para() {
@@ -76,18 +61,14 @@ impl Park {
             get_scheduler().schedule(co);
         }
     }
-
-    fn delay_drop(&self) -> DropGuard {
-        self.wait_kernel.store(true, Ordering::Relaxed);
-        DropGuard(self)
-    }
 }
 
 impl EventSource for Park {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
         let cancel = co_cancel_data(&co);
-        let _g = self.delay_drop();
+        // delay drop the container here to hold the resource
+        let _container = self.container.get_mut().take().unwrap();
         // register the coroutine
         self.wait_co.store(co);
         // re-check the state, only clear once after resume
@@ -127,9 +108,9 @@ impl Blocker {
     }
 
     #[inline]
-    pub fn park(&self) -> Result<(), ParkError> {
-        match self {
-            Blocker::Coroutine(ref co) => co.park(),
+    pub fn park(self: &Arc<Self>) -> Result<(), ParkError> {
+        match self.as_ref() {
+            Blocker::Coroutine(ref co) => co.park(self.clone()),
             Blocker::Thread(ref t) => t.park_timeout(None),
         }
     }

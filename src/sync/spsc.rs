@@ -65,6 +65,7 @@ impl<T> InnerQueue<T> {
         self.try_recv()
     }
 
+    #[inline]
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         match self.queue.pop() {
             Some(data) => Ok(data),
