@@ -4,12 +4,102 @@ use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, SendError, TryRecvError};
 use std::sync::Arc;
+use std::thread::Thread;
 
 use super::AtomicOption;
+use crate::coroutine_impl::{is_coroutine, run_coroutine, CoroutineImpl, EventSource};
 use crate::likely::{likely, unlikely};
-use crate::sync::fast_blocking::Blocker;
+use crate::scheduler::get_scheduler;
+use crate::yield_now::yield_with;
 
 use may_queue::spsc::Queue;
+
+struct Park<'a, T> {
+    queue: &'a Arc<InnerQueue<T>>,
+}
+
+impl<'a, T> Park<'a, T> {
+    fn new(queue: &'a Arc<InnerQueue<T>>) -> Park<'a, T> {
+        Park { queue }
+    }
+}
+
+impl<'a, T> EventSource for Park<'a, T> {
+    // register the coroutine to the park
+    fn subscribe(&mut self, co: CoroutineImpl) {
+        // the queue could dropped if unpark by other thread
+        let _g = self.queue.clone();
+        // register the coroutine
+        let wait_co = &self.queue.wait_co;
+        wait_co.store(Blocker::new_coroutine(co));
+        // re-check the state, only clear once after resume
+        if !self.queue.queue.is_empty() {
+            // fast check first
+            if !wait_co.is_none() {
+                if let Some(co) = wait_co.take() {
+                    run_coroutine(co.into_coroutine());
+                }
+            }
+            // return;
+        }
+    }
+}
+
+const _: () = assert!(std::mem::size_of::<Thread>() == std::mem::size_of::<usize>());
+struct Blocker {
+    handle: usize,
+}
+
+impl Blocker {
+    #[inline]
+    fn new_coroutine(co: CoroutineImpl) -> Self {
+        let handle = unsafe { std::mem::transmute(co) };
+        Blocker { handle }
+    }
+
+    #[inline]
+    fn new_thread(thread: Thread) -> Self {
+        let mut handle = unsafe { std::mem::transmute(thread) };
+        handle |= 1;
+        Blocker { handle }
+    }
+
+    #[inline]
+    fn into_coroutine(self) -> CoroutineImpl {
+        let co = unsafe { std::mem::transmute(self.handle) };
+        std::mem::forget(self);
+        co
+    }
+
+    #[inline]
+    fn into_thread(self) -> Thread {
+        let thread = unsafe { std::mem::transmute(self.handle & !1) };
+        std::mem::forget(self);
+        thread
+    }
+
+    #[inline]
+    fn unpark(self) {
+        if (self.handle & 1) == 0 {
+            let co = self.into_coroutine();
+            get_scheduler().schedule(co);
+        } else {
+            let thread = self.into_thread();
+            thread.unpark();
+        }
+    }
+}
+
+impl Drop for Blocker {
+    fn drop(&mut self) {
+        if (self.handle & 1) == 0 {
+            // let co = self.into_coroutine();
+            unreachable!()
+        } else {
+            let _thread: Thread = unsafe { std::mem::transmute(self.handle & !1) };
+        }
+    }
+}
 
 /// /////////////////////////////////////////////////////////////////////////////
 /// InnerQueue
@@ -17,7 +107,7 @@ use may_queue::spsc::Queue;
 struct InnerQueue<T> {
     queue: Queue<T>,
     // thread/coroutine for wake up, must use differently address for each round
-    to_wake: AtomicOption<Arc<Blocker>>,
+    wait_co: AtomicOption<Blocker>,
     // The number of tx channels which are currently using this queue.
     channels: AtomicUsize,
     // if rx is dropped
@@ -28,7 +118,7 @@ impl<T> InnerQueue<T> {
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
             queue: Queue::new(),
-            to_wake: AtomicOption::none(),
+            wait_co: AtomicOption::none(),
             channels: AtomicUsize::new(1),
             port_dropped: AtomicBool::new(false),
         }
@@ -39,25 +129,33 @@ impl<T> InnerQueue<T> {
             return Err(t);
         }
         self.queue.push(t);
-        if let Some(w) = self.to_wake.take() {
-            w.unpark();
+        if let Some(co) = self.wait_co.take() {
+            co.unpark();
         }
         Ok(())
     }
 
     pub fn recv(self: &Arc<Self>) -> Result<T, TryRecvError> {
-        let cur = Blocker::new();
-        // register the waiter
-        self.to_wake.store(cur.clone());
-        // re-check the queue
-        match self.try_recv() {
-            Err(TryRecvError::Empty) => {
-                cur.park().ok();
+        if is_coroutine() {
+            match self.try_recv() {
+                Err(TryRecvError::Empty) => {
+                    let park = Park::new(self);
+                    yield_with(&park);
+                }
+                data => return data,
             }
-            data => {
-                // no need to park, contention with send
-                self.to_wake.clear();
-                return data;
+        } else {
+            self.wait_co
+                .store(Blocker::new_thread(std::thread::current()));
+            match self.try_recv() {
+                Err(TryRecvError::Empty) => {
+                    // no data, wait for it
+                    std::thread::park();
+                }
+                data => {
+                    self.wait_co.clear();
+                    return data;
+                }
             }
         }
 
@@ -86,7 +184,11 @@ impl<T> InnerQueue<T> {
 
     pub fn drop_chan(&self) {
         match self.channels.fetch_sub(1, Ordering::Relaxed) {
-            1 => self.to_wake.take().map(|w| w.unpark()).unwrap_or(()),
+            1 => {
+                if let Some(co) = self.wait_co.take() {
+                    co.unpark();
+                }
+            }
             n if n > 1 => {}
             n => panic!("bad number of channels left {n}"),
         }
@@ -96,13 +198,6 @@ impl<T> InnerQueue<T> {
         self.port_dropped.store(true, Ordering::Relaxed);
         // clear all the data
         while self.queue.pop().is_some() {}
-    }
-}
-
-impl<T> Drop for InnerQueue<T> {
-    fn drop(&mut self) {
-        assert_eq!(self.channels.load(Ordering::Relaxed), 0);
-        assert!(self.to_wake.is_none());
     }
 }
 
