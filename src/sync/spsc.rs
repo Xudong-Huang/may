@@ -10,17 +10,43 @@ use super::AtomicOption;
 use crate::coroutine_impl::{is_coroutine, run_coroutine, CoroutineImpl, EventSource};
 use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
-use crate::yield_now::yield_with;
+use crate::yield_now::{yield_now, yield_with};
 
 use may_queue::spsc::Queue;
 
 struct Park<'a, T> {
-    queue: &'a Arc<InnerQueue<T>>,
+    queue: &'a InnerQueue<T>,
+    // a flag if kernel is entered
+    wait_kernel: AtomicBool,
 }
 
 impl<'a, T> Park<'a, T> {
-    fn new(queue: &'a Arc<InnerQueue<T>>) -> Park<'a, T> {
-        Park { queue }
+    fn new(queue: &'a InnerQueue<T>) -> Park<'a, T> {
+        Park {
+            queue,
+            wait_kernel: AtomicBool::new(true),
+        }
+    }
+
+    fn delay_drop(&self) -> DropGuard<T> {
+        DropGuard(self)
+    }
+}
+
+impl<'a, T> Drop for Park<'a, T> {
+    fn drop(&mut self) {
+        // wait the kernel finish
+        while self.wait_kernel.load(Ordering::Relaxed) {
+            yield_now();
+        }
+    }
+}
+
+pub struct DropGuard<'a, 'b, T>(&'b Park<'a, T>);
+
+impl<'a, 'b, T> Drop for DropGuard<'a, 'b, T> {
+    fn drop(&mut self) {
+        self.0.wait_kernel.store(false, Ordering::Relaxed);
     }
 }
 
@@ -28,17 +54,14 @@ impl<'a, T> EventSource for Park<'a, T> {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
         // the queue could dropped if unpark by other thread
-        let _g = self.queue.clone();
+        let _g = self.delay_drop();
         // register the coroutine
         let wait_co = &self.queue.wait_co;
         wait_co.store(Blocker::new_coroutine(co));
         // re-check the state, only clear once after resume
         if !self.queue.queue.is_empty() {
-            // fast check first
-            if !wait_co.is_none() {
-                if let Some(co) = wait_co.take() {
-                    run_coroutine(co.into_coroutine());
-                }
+            if let Some(co) = wait_co.take() {
+                run_coroutine(co.into_coroutine());
             }
             // return;
         }
@@ -136,27 +159,27 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn recv(self: &Arc<Self>) -> Result<T, TryRecvError> {
-        if is_coroutine() {
-            match self.try_recv() {
-                Err(TryRecvError::Empty) => {
+        match self.try_recv() {
+            Err(TryRecvError::Empty) => {
+                if is_coroutine() {
                     let park = Park::new(self);
                     yield_with(&park);
+                } else {
+                    self.wait_co
+                        .store(Blocker::new_thread(std::thread::current()));
+                    match self.try_recv() {
+                        Err(TryRecvError::Empty) => {
+                            // no data, wait for it
+                            std::thread::park();
+                        }
+                        data => {
+                            self.wait_co.clear();
+                            return data;
+                        }
+                    }
                 }
-                data => return data,
             }
-        } else {
-            self.wait_co
-                .store(Blocker::new_thread(std::thread::current()));
-            match self.try_recv() {
-                Err(TryRecvError::Empty) => {
-                    // no data, wait for it
-                    std::thread::park();
-                }
-                data => {
-                    self.wait_co.clear();
-                    return data;
-                }
-            }
+            data => return data,
         }
 
         // after come back try recv again
