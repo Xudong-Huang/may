@@ -325,13 +325,6 @@ impl<T> Queue<T> {
 
     /// pop from the queue, if it's empty return None
     pub fn bulk_pop(&self) -> SmallVec<[T; BLOCK_SIZE]> {
-        self.bulk_pop_impl(0)
-    }
-
-    /// steal pop from the queue, if not enough data return None
-    /// min_left is the minimum number of elements left to owner
-    #[inline]
-    fn bulk_pop_impl(&self, min_left: usize) -> SmallVec<[T; BLOCK_SIZE]> {
         let mut head = self.head.0.load(Ordering::Acquire);
         let mut push_index = self.tail.index.load(Ordering::Acquire);
         let mut tail_block = self.tail.block.load(Ordering::Acquire);
@@ -341,15 +334,11 @@ impl<T> Queue<T> {
             let (block, id) = BlockPtr::unpack(head);
             let push_id = push_index & BLOCK_MASK;
             // at least leave one element to the owner
-            if block == tail_block && id + min_left >= push_id {
+            if block == tail_block && id >= push_id {
                 return SmallVec::new();
             }
 
-            let new_id = if block != tail_block {
-                0
-            } else {
-                push_id - min_left
-            };
+            let new_id = if block != tail_block { 0 } else { push_id };
 
             let new_head = if new_id == 0 {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
@@ -530,8 +519,9 @@ impl<T> Steal<T> {
     /// Steals block of tasks from self and place them into `dst`.
     #[inline]
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
-        const MIN_LEFT: usize = 2;
-        let mut v = self.0.bulk_pop_impl(MIN_LEFT);
+        // const MIN_LEFT: usize = 2;
+        // let mut v = self.0.bulk_pop_impl(MIN_LEFT);
+        let mut v = self.0.bulk_pop();
         let ret = v.pop();
         for t in v {
             dst.push_back(t);
