@@ -92,9 +92,8 @@ impl<T: Send> Queue<T> {
     }
 
     #[inline]
-    fn peek_ch(&self) -> &Ch<T> {
-        let tail = unsafe { &**self.tail.get() };
-        &tail.ch
+    fn peek_ch(&self) -> &Channel<T> {
+        unsafe { &**self.tail.get() }
     }
 
     pub fn push(&self, v: T) {
@@ -108,7 +107,7 @@ impl<T: Send> Queue<T> {
     pub fn pop(&self) -> Option<T> {
         loop {
             let ch = self.peek_ch();
-            match ch.pop() {
+            match ch.ch.pop() {
                 Some(v) => return Some(v),
                 None => {
                     let (ch, popped) = self.pop_ch();
@@ -127,7 +126,7 @@ impl<T: Send> Queue<T> {
     pub fn bulk_pop(&self) -> SmallVec<[T; crate::spsc::BLOCK_SIZE]> {
         loop {
             let ch = self.peek_ch();
-            let ret = ch.bulk_pop();
+            let ret = ch.ch.bulk_pop();
             if !ret.is_empty() {
                 return ret;
             } else {
@@ -145,7 +144,7 @@ impl<T: Send> Queue<T> {
 
     pub fn is_empty(&self) -> bool {
         let ch = self.peek_ch();
-        ch.is_empty()
+        ch.next.load(Ordering::Acquire).is_null() && ch.ch.is_empty()
     }
 }
 
