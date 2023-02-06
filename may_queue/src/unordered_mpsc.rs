@@ -7,6 +7,7 @@ use crate::spsc::Queue as Ch;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
+#[derive(Debug)]
 struct Channel<T> {
     ch: Ch<T>,
     next: AtomicPtr<Channel<T>>,
@@ -23,6 +24,7 @@ impl<T> Channel<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Queue<T: Send> {
     head: CachePadded<AtomicPtr<Channel<T>>>,
     tail: UnsafeCell<*mut Channel<T>>,

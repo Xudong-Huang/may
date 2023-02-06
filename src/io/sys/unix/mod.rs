@@ -170,10 +170,6 @@ impl EventData {
     #[inline]
     pub fn fast_schedule(&self) {
         info!("event fast_schedule");
-        // fast check first
-        if self.co.is_none() {
-            return;
-        }
 
         let co = match self.co.take() {
             None => return, // it's already take by selector

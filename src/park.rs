@@ -129,10 +129,8 @@ impl Park {
 
     #[inline]
     fn fast_wake_up(&self) {
-        if !self.wait_co.is_none() {
-            if let Some(co) = self.wait_co.take() {
-                run_coroutine(co);
-            }
+        if let Some(co) = self.wait_co.take() {
+            run_coroutine(co);
         }
     }
 
