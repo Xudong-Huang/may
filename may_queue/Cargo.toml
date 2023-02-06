@@ -13,6 +13,7 @@ categories = ["concurrency"]
 build = "build.rs"
 
 [dependencies]
+num_cpus = "1"
 smallvec = "1"
 thread_local = "1"
 crossbeam-utils = "0.8"

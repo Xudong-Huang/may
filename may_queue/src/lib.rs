@@ -14,6 +14,9 @@ pub mod spmc;
 pub mod spsc;
 pub mod unordered_mpsc;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub mod cpu_local;
+
 #[cfg(test)]
 mod test_queue {
     pub trait ScBlockPop<T> {

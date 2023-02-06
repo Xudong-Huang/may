@@ -1,7 +1,10 @@
 use crossbeam_utils::{Backoff, CachePadded};
 use smallvec::SmallVec;
+#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 use thread_local::ThreadLocal;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use crate::cpu_local::CpuLocal;
 use crate::spsc::Queue as Ch;
 
 use std::cell::UnsafeCell;
@@ -26,7 +29,10 @@ impl<T> Channel<T> {
 pub struct Queue<T: Send> {
     head: CachePadded<AtomicPtr<Channel<T>>>,
     tail: UnsafeCell<*mut Channel<T>>,
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     channels: ThreadLocal<Channel<T>>,
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    channels: CpuLocal<Channel<T>>,
 }
 
 /// fast unordered mpsc queue when in highly push contention
@@ -44,10 +50,15 @@ unsafe impl<T: Send> Sync for Queue<T> {}
 
 impl<T: Send> Queue<T> {
     pub fn new() -> Self {
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
         let channels = ThreadLocal::new();
-        let ch = channels.get_or(|| Channel::new());
-        ch.detached.store(false, Ordering::Relaxed);
-        let node = ch as *const _ as *mut _;
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let channels = CpuLocal::new();
+        let node = {
+            let ch = channels.get_or(|| Channel::new());
+            ch.detached.store(false, Ordering::Relaxed);
+            &*ch as *const _ as *mut _
+        };
         Queue {
             head: AtomicPtr::new(node).into(),
             tail: UnsafeCell::new(node),
@@ -92,13 +103,12 @@ impl<T: Send> Queue<T> {
     }
 
     #[inline]
-    fn peek_ch(&self) -> &Ch<T> {
-        let tail = unsafe { &**self.tail.get() };
-        &tail.ch
+    fn peek_ch(&self) -> &Channel<T> {
+        unsafe { &**self.tail.get() }
     }
 
     pub fn push(&self, v: T) {
-        let ch = self.channels.get_or(|| Channel::new());
+        let ch = &*self.channels.get_or(|| Channel::new());
         ch.ch.push(v);
         if ch.detached.swap(false, Ordering::Relaxed) {
             self.push_ch(ch);
@@ -108,7 +118,7 @@ impl<T: Send> Queue<T> {
     pub fn pop(&self) -> Option<T> {
         loop {
             let ch = self.peek_ch();
-            match ch.pop() {
+            match ch.ch.pop() {
                 Some(v) => return Some(v),
                 None => {
                     let (ch, popped) = self.pop_ch();
@@ -127,7 +137,7 @@ impl<T: Send> Queue<T> {
     pub fn bulk_pop(&self) -> SmallVec<[T; crate::spsc::BLOCK_SIZE]> {
         loop {
             let ch = self.peek_ch();
-            let ret = ch.bulk_pop();
+            let ret = ch.ch.bulk_pop();
             if !ret.is_empty() {
                 return ret;
             } else {
@@ -145,7 +155,7 @@ impl<T: Send> Queue<T> {
 
     pub fn is_empty(&self) -> bool {
         let ch = self.peek_ch();
-        ch.is_empty()
+        ch.next.load(Ordering::Relaxed).is_null() && ch.ch.is_empty()
     }
 }
 
