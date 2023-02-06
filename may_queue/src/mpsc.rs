@@ -24,6 +24,8 @@ struct Slot<T> {
     ready: AtomicUsize,
 }
 
+impl<T> std::panic::RefUnwindSafe for Slot<T> {}
+
 impl<T> Slot<T> {
     const UNINIT: Self = Self {
         value: UnsafeCell::new(MaybeUninit::uninit()),
@@ -190,6 +192,9 @@ pub struct Queue<T> {
 
 unsafe impl<T: Send> Send for Queue<T> {}
 unsafe impl<T: Send> Sync for Queue<T> {}
+
+// the old_block prevent RefUnwindSafe
+impl<T> std::panic::RefUnwindSafe for Queue<T> {}
 
 impl<T> Queue<T> {
     /// create a spsc queue
