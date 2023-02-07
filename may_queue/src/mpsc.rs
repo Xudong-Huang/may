@@ -111,6 +111,7 @@ impl<T> BlockNode<T> {
     pub fn wait_next_block(&self) -> *mut BlockNode<T> {
         let mut next: *mut BlockNode<T> = self.next.load(Ordering::Acquire);
         while next.is_null() {
+            std::hint::spin_loop();
             next = self.next.load(Ordering::Acquire);
         }
         next
