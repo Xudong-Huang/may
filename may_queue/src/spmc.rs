@@ -351,7 +351,7 @@ impl<T> Queue<T> {
             match self
                 .head
                 .0
-                .compare_exchange(head, new_head, Ordering::AcqRel, Ordering::Acquire)
+                .compare_exchange_weak(head, new_head, Ordering::AcqRel, Ordering::Acquire)
             {
                 Ok(_) => {
                     let block_start = block.start.load(Ordering::Relaxed);
