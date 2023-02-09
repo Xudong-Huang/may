@@ -348,11 +348,12 @@ impl<T> Queue<T> {
 
             let block = unsafe { &mut *block };
             // only pop within a block
-            match self
-                .head
-                .0
-                .compare_exchange_weak(head, new_head, Ordering::AcqRel, Ordering::Acquire)
-            {
+            match self.head.0.compare_exchange_weak(
+                head,
+                new_head,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => {
                     let block_start = block.start.load(Ordering::Relaxed);
                     let pop_index = block_start + id;
