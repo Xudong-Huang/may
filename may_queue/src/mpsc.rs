@@ -99,10 +99,9 @@ impl<T> BlockNode<T> {
     /// not safe if pop out a value when hold the data ref
     #[inline]
     pub unsafe fn peek(&self, id: usize) -> &T {
-        let backoff = Backoff::new();
         let data = unsafe { self.data.get_unchecked(id) };
         while data.ready.load(Ordering::Acquire) == 0 {
-            backoff.spin();
+            std::hint::spin_loop();
         }
         (*data.value.get()).assume_init_ref()
     }
