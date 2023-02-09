@@ -61,6 +61,9 @@ pub struct WaitIoWaker {
 impl WaitIoWaker {
     /// wakeup the coroutine that is blocked by `WaitIo::wait_io`
     pub fn wakeup(&self) {
+        if self.io_data.io_flag.load(Ordering::Relaxed) {
+            return;
+        }
         self.io_data.io_flag.store(true, Ordering::Relaxed);
         self.io_data.schedule();
     }
