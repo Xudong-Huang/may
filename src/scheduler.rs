@@ -112,38 +112,34 @@ impl Scheduler {
 
         let len = self.local_queues.len();
         let mut next_id = id;
-
-        let mut get_co = || {
-            // Try get a task from the local queue.
-            local
-                .pop()
-                // Try stealing tasks from other local queues.
-                .or_else(|| {
-                    next_id = (next_id + 1).rem_euclid(len);
-                    let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                    stealer.steal_into(local)
-                })
-        };
-
-        // Pop first task
-        let mut cur_co = get_co();
-
+        let mut state = 0;
         loop {
-            // Pop another task for prefetching
-            let next_co = get_co();
-
-            if let Some(co) = cur_co {
-                if let Some(next) = &next_co {
-                    next.prefetch();
+            let co = match state {
+                0 => match local.pop() {
+                    Some(co) => co,
+                    None => {
+                        state += 1;
+                        continue;
+                    }
+                },
+                3 => return,
+                _ => {
+                    let n = next_id + 1;
+                    next_id = if n == len { 0 } else { n };
+                    let stealer = unsafe { self.stealers.get_unchecked(next_id) };
+                    match stealer.steal_into(local) {
+                        Some(co) => {
+                            state = 0;
+                            co
+                        }
+                        None => {
+                            state += 1;
+                            continue;
+                        }
+                    }
                 }
-                run_coroutine(co);
-                cur_co = next_co;
-            } else if let Some(next) = &next_co {
-                next.prefetch();
-                cur_co = next_co;
-            } else {
-                break;
-            }
+            };
+            run_coroutine(co);
         }
     }
 
