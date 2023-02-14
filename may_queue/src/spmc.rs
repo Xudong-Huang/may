@@ -460,9 +460,7 @@ impl<T> Drop for Queue<T> {
 pub fn local<T: 'static>() -> (Steal<T>, Local<T>) {
     let inner = Arc::new(Queue::new());
 
-    let local = Local {
-        inner: inner.clone(),
-    };
+    let local = Local(inner.clone());
 
     let remote = Steal(inner);
 
@@ -470,9 +468,7 @@ pub fn local<T: 'static>() -> (Steal<T>, Local<T>) {
 }
 
 /// Producer handle. May only be used from a single thread.
-pub struct Local<T: 'static> {
-    inner: Arc<Queue<T>>,
-}
+pub struct Local<T: 'static>(Arc<Queue<T>>);
 
 /// Consumer handle. May be used from many threads.
 pub struct Steal<T: 'static>(Arc<Queue<T>>);
@@ -481,7 +477,7 @@ impl<T> Local<T> {
     /// Returns true if the queue has entries that can be stolen.
     #[inline]
     pub fn is_stealable(&self) -> bool {
-        !self.inner.is_empty()
+        !self.0.is_empty()
     }
 
     /// Returns false if there are any entries in the queue
@@ -490,19 +486,19 @@ impl<T> Local<T> {
     /// some tasks from stealing won't affect this
     #[inline]
     pub fn has_tasks(&self) -> bool {
-        !self.inner.is_empty()
+        !self.0.is_empty()
     }
 
     /// Pushes a task to the back of the local queue
     #[inline]
     pub fn push_back(&mut self, task: T) {
-        self.inner.push(task)
+        self.0.push(task)
     }
 
     /// Pops a task from the local queue.
     #[inline]
     pub fn pop(&mut self) -> Option<T> {
-        self.inner.local_pop()
+        self.0.local_pop()
     }
 }
 
@@ -520,8 +516,9 @@ impl<T> Steal<T> {
     /// Steals block of tasks from self and place them into `dst`.
     #[inline]
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
-        // const MIN_LEFT: usize = 2;
-        // let mut v = self.0.bulk_pop_impl(MIN_LEFT);
+        if &self.0 as *const _ == &dst.0 as *const _ {
+            return None;
+        }
         let mut v = self.0.bulk_pop();
         let ret = v.pop();
         for t in v {
