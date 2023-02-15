@@ -1,8 +1,8 @@
+use std::io;
 use std::os::unix::net::SocketAddr;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
-use std::{self, io};
 
 use super::super::{co_io_result, IoData};
 #[cfg(feature = "io_cancel")]

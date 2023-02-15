@@ -1,6 +1,6 @@
+use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use std::{self, io};
 
 use super::super::{add_socket, co_io_result, IoData};
 #[cfg(feature = "io_cancel")]

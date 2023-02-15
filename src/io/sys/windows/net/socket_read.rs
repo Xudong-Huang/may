@@ -1,6 +1,6 @@
+use std::io;
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 use std::time::Duration;
-use std::{self, io};
 
 use super::super::{co_io_result, EventData};
 #[cfg(feature = "io_cancel")]

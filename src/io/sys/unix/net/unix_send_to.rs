@@ -1,8 +1,8 @@
+use std::io;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
-use std::{self, io};
 
 use super::super::{co_io_result, IoData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
