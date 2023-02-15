@@ -1,4 +1,6 @@
-use std::cell::{Cell, UnsafeCell};
+use std::cell::Cell;
+#[cfg(feature = "work_steal")]
+use std::cell::UnsafeCell;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
@@ -15,7 +17,10 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
 use may_queue::mpsc::Queue;
-use may_queue::spmc::{self, Local};
+#[cfg(feature = "work_steal")]
+use may_queue::spmc::{self, Local, Steal};
+#[cfg(not(feature = "work_steal"))]
+use may_queue::spsc::Queue as Local;
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -81,9 +86,12 @@ pub fn get_scheduler() -> &'static Scheduler {
 
 #[repr(align(128))]
 pub struct Scheduler {
+    #[cfg(not(feature = "work_steal"))]
+    local_queues: Vec<Local<CoroutineImpl>>,
+    #[cfg(feature = "work_steal")]
     local_queues: Vec<UnsafeCell<Local<CoroutineImpl>>>,
     #[cfg(feature = "work_steal")]
-    stealers: Vec<spmc::Steal<CoroutineImpl>>,
+    stealers: Vec<Steal<CoroutineImpl>>,
     global_queues: Vec<Queue<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
@@ -92,10 +100,16 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
+        #[cfg(not(feature = "work_steal"))]
+        let local_queues = Vec::from_iter((0..workers).map(|_| Local::new()));
+
+        #[cfg(feature = "work_steal")]
         let queues = Vec::from_iter((0..workers).map(|_| spmc::local()));
         #[cfg(feature = "work_steal")]
         let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
+        #[cfg(feature = "work_steal")]
         let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
+
         let global_queues = Vec::from_iter((0..workers).map(|_| Queue::new()));
 
         Box::new(Scheduler {
@@ -112,7 +126,7 @@ impl Scheduler {
     #[inline]
     #[cfg(not(feature = "work_steal"))]
     pub fn run_queued_tasks(&self, id: usize) {
-        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
+        let local = unsafe { self.local_queues.get_unchecked(id) };
         while let Some(co) = local.pop() {
             run_coroutine(co);
         }
@@ -174,9 +188,17 @@ impl Scheduler {
 
     /// called by selector with known id
     #[inline]
+    #[cfg(feature = "work_steal")]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
         local.push_back(co);
+    }
+
+    #[inline]
+    #[cfg(not(feature = "work_steal"))]
+    pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
+        let local = unsafe { self.local_queues.get_unchecked(id) };
+        local.push(co);
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -194,12 +216,18 @@ impl Scheduler {
 
     #[inline]
     pub fn collect_global(&self, id: usize) {
+        #[cfg(feature = "work_steal")]
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
+        #[cfg(not(feature = "work_steal"))]
+        let local = unsafe { self.local_queues.get_unchecked(id) };
         let global = unsafe { self.global_queues.get_unchecked(id) };
         let mut v = global.bulk_pop();
         while !v.is_empty() {
             for co in v {
+                #[cfg(feature = "work_steal")]
                 local.push_back(co);
+                #[cfg(not(feature = "work_steal"))]
+                local.push(co);
             }
             v = global.bulk_pop();
         }
