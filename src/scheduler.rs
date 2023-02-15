@@ -15,7 +15,7 @@ use crate::timeout_list;
 use crate::yield_now::set_co_para;
 
 use may_queue::mpsc::Queue;
-use may_queue::spmc::{self, Local, Steal};
+use may_queue::spmc::{self, Local};
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -82,7 +82,8 @@ pub fn get_scheduler() -> &'static Scheduler {
 #[repr(align(128))]
 pub struct Scheduler {
     local_queues: Vec<UnsafeCell<Local<CoroutineImpl>>>,
-    stealers: Vec<Steal<CoroutineImpl>>,
+    #[cfg(feature = "work_steal")]
+    stealers: Vec<spmc::Steal<CoroutineImpl>>,
     global_queues: Vec<Queue<CoroutineImpl>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
@@ -92,6 +93,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new(workers: usize) -> Box<Self> {
         let queues = Vec::from_iter((0..workers).map(|_| spmc::local()));
+        #[cfg(feature = "work_steal")]
         let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
         let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
         let global_queues = Vec::from_iter((0..workers).map(|_| Queue::new()));
@@ -100,6 +102,7 @@ impl Scheduler {
             pool: CoroutinePool::new(),
             event_loop: EventLoop::new(workers).expect("can't create event_loop"),
             local_queues,
+            #[cfg(feature = "work_steal")]
             stealers,
             global_queues,
             timer_thread: TimerThread::new(),
@@ -107,14 +110,21 @@ impl Scheduler {
     }
 
     #[inline]
+    #[cfg(not(feature = "work_steal"))]
+    pub fn run_queued_tasks(&self, id: usize) {
+        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
+        while let Some(co) = local.pop() {
+            run_coroutine(co);
+        }
+    }
+
+    #[inline]
+    #[cfg(feature = "work_steal")]
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
         let len = self.local_queues.len();
-        #[cfg(feature = "work_steal")]
         let max_steal = std::cmp::min(len - 1, 3);
-        #[cfg(not(feature = "work_steal"))]
-        let max_steal = 0;
         let mut next_id = id;
         let mut state = 0;
         loop {
