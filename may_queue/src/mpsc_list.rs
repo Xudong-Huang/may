@@ -249,7 +249,7 @@ mod bench {
                         let len = total_work / threads;
                         let start = i * len;
                         for v in start..start + len {
-                            let _v = q.push(v);
+                            q.push(v);
                         }
                     });
                 }

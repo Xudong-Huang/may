@@ -516,7 +516,7 @@ impl<T> Steal<T> {
     /// Steals block of tasks from self and place them into `dst`.
     #[inline]
     pub fn steal_into(&self, dst: &mut Local<T>) -> Option<T> {
-        if &self.0 as *const _ == &dst.0 as *const _ {
+        if std::ptr::eq(&self.0, &dst.0) {
             return None;
         }
         let mut v = self.0.bulk_pop();
