@@ -203,7 +203,7 @@ impl Scheduler {
 
     /// put the coroutine to global queue so that next time it can be scheduled
     #[inline]
-    pub fn schedule_global(&self, co: CoroutineImpl) {
+    fn schedule_global(&self, co: CoroutineImpl) {
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::Relaxed)
