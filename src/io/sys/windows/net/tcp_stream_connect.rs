@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{add_socket, co_io_result, EventData, IoData};
@@ -19,6 +20,7 @@ use windows_sys::Win32::Foundation::*;
 pub struct TcpStreamConnect {
     io_data: EventData,
     stream: OptionCell<std::net::TcpStream>,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     addr: SocketAddr,
     can_drop: DelayDrop,
@@ -26,7 +28,10 @@ pub struct TcpStreamConnect {
 }
 
 impl TcpStreamConnect {
-    pub fn new<A: ToSocketAddrs>(addr: A, timeout: Option<Duration>) -> io::Result<Self> {
+    pub fn new<A: ToSocketAddrs>(
+        addr: A,
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
+    ) -> io::Result<Self> {
         use socket2::{Domain, Socket, Type};
 
         let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
@@ -66,6 +71,7 @@ impl TcpStreamConnect {
                             io_data: EventData::new(s.as_raw_socket() as HANDLE),
                             addr,
                             stream: OptionCell::new(s),
+                            #[cfg(feature = "io_timeout")]
                             timeout,
                             can_drop: DelayDrop::new(),
                             is_coroutine: is_coroutine(),
@@ -89,6 +95,7 @@ impl EventSource for TcpStreamConnect {
         let s = get_scheduler();
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&mut self.io_data, dur);
         }

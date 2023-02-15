@@ -5,11 +5,13 @@
 
 use std::io::{self, Read, Write};
 use std::os::windows::io::{AsRawHandle, IntoRawHandle, RawHandle};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use self::io_impl::co_io_err::Error;
 use super::pipe::{PipeRead, PipeWrite};
 use crate::io as io_impl;
+#[cfg(feature = "io_timeout")]
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
 
@@ -19,7 +21,9 @@ use crate::yield_now::yield_with_io;
 pub struct CoIo<T: AsRawHandle> {
     inner: T,
     io: io_impl::IoData,
+    #[cfg(feature = "io_timeout")]
     read_timeout: AtomicDuration,
+    #[cfg(feature = "io_timeout")]
     write_timeout: AtomicDuration,
 }
 
@@ -51,7 +55,9 @@ impl<T: AsRawHandle> CoIo<T> {
             Ok(io_data) => Ok(CoIo {
                 inner: io,
                 io: io_data,
+                #[cfg(feature = "io_timeout")]
                 read_timeout: AtomicDuration::new(None),
+                #[cfg(feature = "io_timeout")]
                 write_timeout: AtomicDuration::new(None),
             }),
             Err(e) => Err(Error::new(e, io)),
@@ -83,22 +89,26 @@ impl<T: AsRawHandle> CoIo<T> {
     }
 
     /// get read timeout
+    #[cfg(feature = "io_timeout")]
     pub fn read_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.read_timeout.get())
     }
 
     /// get write timeout
+    #[cfg(feature = "io_timeout")]
     pub fn write_timeout(&self) -> io::Result<Option<Duration>> {
         Ok(self.write_timeout.get())
     }
 
     /// set read timeout
+    #[cfg(feature = "io_timeout")]
     pub fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.read_timeout.store(dur);
         Ok(())
     }
 
     /// set write timeout
+    #[cfg(feature = "io_timeout")]
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.write_timeout.store(dur);
         Ok(())
@@ -108,7 +118,12 @@ impl<T: AsRawHandle> CoIo<T> {
 impl<T: AsRawHandle + Read> Read for CoIo<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.io.reset();
-        let mut reader = PipeRead::new(self, buf, self.read_timeout.get());
+        let mut reader = PipeRead::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
@@ -117,7 +132,12 @@ impl<T: AsRawHandle + Read> Read for CoIo<T> {
 impl<T: AsRawHandle + Write> Write for CoIo<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.io.reset();
-        let mut writer = PipeWrite::new(self, buf, self.write_timeout.get());
+        let mut writer = PipeWrite::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.write_timeout.get(),
+        );
         yield_with_io(&writer, writer.is_coroutine);
         writer.done()
     }

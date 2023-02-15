@@ -73,7 +73,9 @@ impl UdpSocket {
         Ok(UdpSocket {
             _io: io_impl::IoData::new(0),
             sys: s,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(self.read_timeout.get()),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(self.write_timeout.get()),
         })
     }
@@ -335,6 +337,6 @@ impl FromRawSocket for UdpSocket {
         // TODO: set the time out info here
         // need to set the read/write timeout from sys and sync each other
         UdpSocket::new(FromRawSocket::from_raw_socket(s))
-            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for UdpSocket, err = {e:?}"))
     }
 }

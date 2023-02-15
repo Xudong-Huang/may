@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -15,6 +16,7 @@ pub struct UdpSendTo<'a> {
     buf: &'a [u8],
     socket: &'a ::std::net::UdpSocket,
     addr: SocketAddr,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
@@ -33,6 +35,7 @@ impl<'a> UdpSendTo<'a> {
                 buf,
                 socket: socket.inner(),
                 addr,
+                #[cfg(feature = "io_timeout")]
                 timeout: socket.write_timeout().unwrap(),
                 is_coroutine: is_coroutine(),
             })
@@ -47,6 +50,7 @@ impl<'a> EventSource for UdpSendTo<'a> {
     #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&mut self.io_data, dur);
         }

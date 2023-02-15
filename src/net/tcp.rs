@@ -117,7 +117,9 @@ impl TcpStream {
         Ok(TcpStream {
             _io: io_impl::IoData::new(0),
             sys: s,
+            #[cfg(feature = "io_timeout")]
             read_timeout: AtomicDuration::new(self.read_timeout.get()),
+            #[cfg(feature = "io_timeout")]
             write_timeout: AtomicDuration::new(self.write_timeout.get()),
         })
     }
@@ -523,7 +525,7 @@ impl FromRawSocket for TcpStream {
         // TODO: set the time out info here
         // need to set the read/write timeout from sys and sync each other
         TcpStream::new(FromRawSocket::from_raw_socket(s))
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpStream, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpStream, err = {e:?}"))
     }
 }
 
@@ -546,6 +548,6 @@ impl FromRawSocket for TcpListener {
     unsafe fn from_raw_socket(s: RawSocket) -> TcpListener {
         let s: net::TcpListener = FromRawSocket::from_raw_socket(s);
         TcpListener::new(s)
-            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {:?}", e))
+            .unwrap_or_else(|e| panic!("from_raw_socket for TcpListener, err = {e:?}"))
     }
 }

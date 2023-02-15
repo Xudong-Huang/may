@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -20,6 +21,7 @@ pub struct UdpRecvFrom<'a> {
     buf: &'a mut [u8],
     socket: &'a ::std::net::UdpSocket,
     addr: SocketAddrBuf,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     can_drop: DelayDrop,
     pub(crate) is_coroutine: bool,
@@ -32,6 +34,7 @@ impl<'a> UdpRecvFrom<'a> {
             buf,
             socket: socket.inner(),
             addr: SocketAddrBuf::new(),
+            #[cfg(feature = "io_timeout")]
             timeout: socket.read_timeout().unwrap(),
             can_drop: DelayDrop::new(),
             is_coroutine: is_coroutine(),
@@ -53,6 +56,7 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         let s = get_scheduler();
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&mut self.io_data, dur);
         }

@@ -1,5 +1,6 @@
 use std::io;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -17,18 +18,24 @@ pub struct PipeRead<'a> {
     io_data: EventData,
     buf: &'a mut [u8],
     pipe: RawHandle,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     can_drop: DelayDrop,
     pub(crate) is_coroutine: bool,
 }
 
 impl<'a> PipeRead<'a> {
-    pub fn new<T: AsRawHandle>(s: &T, buf: &'a mut [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsRawHandle>(
+        s: &T,
+        buf: &'a mut [u8],
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
+    ) -> Self {
         let pipe = s.as_raw_handle();
         PipeRead {
             io_data: EventData::new(pipe as isize),
             buf,
             pipe,
+            #[cfg(feature = "io_timeout")]
             timeout,
             can_drop: DelayDrop::new(),
             is_coroutine: is_coroutine(),
@@ -53,6 +60,7 @@ impl<'a> EventSource for PipeRead<'a> {
         // if the event happened before this there would be something wrong
         // that the timer handle can't be removed in time
         // we must prepare the timer before call the API
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&mut self.io_data, dur);
         }

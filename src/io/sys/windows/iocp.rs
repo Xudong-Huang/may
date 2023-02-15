@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{io, ptr};
 
@@ -47,6 +48,7 @@ impl EventData {
         self.overlapped.get()
     }
 
+    #[cfg(feature = "io_timeout")]
     pub fn timer_data(&self) -> TimerData {
         TimerData {
             event_data: self as *const _ as *mut _,
@@ -208,6 +210,7 @@ impl Selector {
 
     // register the io request to the timeout list
     #[inline]
+    #[cfg(feature = "io_timeout")]
     pub fn add_io_timer(&self, io: &mut EventData, timeout: Duration) {
         let id = (io.handle as usize % self.vec.len()) >> 2;
         // info!("io timeout = {:?}", dur);

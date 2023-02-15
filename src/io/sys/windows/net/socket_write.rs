@@ -1,5 +1,6 @@
 use std::io;
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
@@ -12,17 +13,23 @@ pub struct SocketWrite<'a> {
     io_data: EventData,
     buf: &'a [u8],
     socket: RawSocket,
+    #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
     pub(crate) is_coroutine: bool,
 }
 
 impl<'a> SocketWrite<'a> {
-    pub fn new<T: AsRawSocket>(s: &T, buf: &'a [u8], timeout: Option<Duration>) -> Self {
+    pub fn new<T: AsRawSocket>(
+        s: &T,
+        buf: &'a [u8],
+        #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
+    ) -> Self {
         let socket = s.as_raw_socket();
         SocketWrite {
             io_data: EventData::new(socket as HANDLE),
             buf,
             socket,
+            #[cfg(feature = "io_timeout")]
             timeout,
             is_coroutine: is_coroutine(),
         }
@@ -37,6 +44,7 @@ impl<'a> EventSource for SocketWrite<'a> {
     #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&mut self.io_data, dur);
         }
