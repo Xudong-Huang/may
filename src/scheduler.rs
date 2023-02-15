@@ -111,7 +111,10 @@ impl Scheduler {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
         let len = self.local_queues.len();
+        #[cfg(feature = "work_steal")]
         let max_steal = std::cmp::min(len - 1, 3);
+        #[cfg(not(feature = "work_steal"))]
+        let max_steal = 0;
         let mut next_id = id;
         let mut state = 0;
         loop {
