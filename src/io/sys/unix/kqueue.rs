@@ -1,11 +1,15 @@
 use std::os::unix::io::RawFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{io, ptr};
 
-use super::{timeout_handler, EventData, IoData, TimerList};
+#[cfg(feature = "io_timeout")]
+use super::{timeout_handler, TimerList};
+use super::{EventData, IoData};
 use crate::scheduler::Scheduler;
+#[cfg(feature = "io_timeout")]
 use crate::timeout_list::{now, ns_to_dur};
 
 use may_queue::mpsc::Queue;
@@ -31,6 +35,7 @@ macro_rules! kevent {
 
 struct SingleSelector {
     kqfd: RawFd,
+    #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
     free_ev: Queue<Arc<EventData>>,
 }
@@ -60,6 +65,7 @@ impl SingleSelector {
         Ok(SingleSelector {
             kqfd,
             free_ev: Queue::new(),
+            #[cfg(feature = "io_timeout")]
             timer_list: TimerList::new(),
         })
     }
@@ -96,9 +102,10 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        timeout: Option<u64>,
+        _timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let timeout = timeout.map(|to| {
+        #[cfg(feature = "io_timeout")]
+        let timeout_spec = _timeout.map(|to| {
             let dur = ns_to_dur(to);
             libc::timespec {
                 tv_sec: dur.as_secs() as libc::time_t,
@@ -106,10 +113,13 @@ impl Selector {
             }
         });
 
-        let timeout = timeout
+        #[cfg(feature = "io_timeout")]
+        let timeout = timeout_spec
             .as_ref()
             .map(|s| s as *const _)
             .unwrap_or(ptr::null_mut());
+        #[cfg(not(feature = "io_timeout"))]
+        let timeout = ptr::null_mut();
         // info!("select; timeout={:?}", timeout_ms);
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
@@ -154,6 +164,7 @@ impl Selector {
             };
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
+            #[cfg(feature = "io_timeout")]
             data.timer.borrow_mut().take().map(|h| {
                 unsafe {
                     // tell the timer handler not to cancel the io
@@ -173,9 +184,12 @@ impl Selector {
         self.free_unused_event_data(id);
 
         // deal with the timer list
+        #[cfg(feature = "io_timeout")]
         let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
+        #[cfg(not(feature = "io_timeout"))]
+        let next_expire = None;
         Ok(next_expire)
     }
 
@@ -263,6 +277,7 @@ impl Selector {
 
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
+        #[cfg(feature = "io_timeout")]
         io_data.timer.borrow_mut().take().map(|h| {
             unsafe {
                 // mark the timer as removed if any, this only happened
@@ -310,6 +325,7 @@ impl Selector {
 
     // register the io request to the timeout list
     #[inline]
+    #[cfg(feature = "io_timeout")]
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
