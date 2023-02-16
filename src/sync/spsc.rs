@@ -201,19 +201,10 @@ impl<T> InnerQueue<T> {
         }
     }
 
-    pub fn clone_chan(&self) {
-        self.channels.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn drop_chan(&self) {
-        match self.channels.fetch_sub(1, Ordering::Relaxed) {
-            1 => {
-                if let Some(co) = self.wait_co.take() {
-                    co.unpark();
-                }
-            }
-            n if n > 1 => {}
-            n => panic!("bad number of channels left {n}"),
+    fn drop_chan(&self) {
+        self.channels.store(0, Ordering::Relaxed);
+        if let Some(co) = self.wait_co.take() {
+            co.unpark();
         }
     }
 
@@ -268,13 +259,6 @@ impl<T> Sender<T> {
 
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t).map_err(SendError)
-    }
-}
-
-impl<T> Clone for Sender<T> {
-    fn clone(&self) -> Sender<T> {
-        self.inner.clone_chan();
-        Sender::new(self.inner.clone())
     }
 }
 
