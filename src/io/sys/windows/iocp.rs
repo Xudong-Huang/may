@@ -176,7 +176,10 @@ impl Selector {
                 }
             }
 
+            #[cfg(feature = "work_steal")]
             scheduler.schedule_with_id(co, id);
+            #[cfg(not(feature = "work_steal"))]
+            crate::coroutine_impl::run_coroutine(co);
         }
 
         // run all the local tasks
