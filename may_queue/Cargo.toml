@@ -20,6 +20,6 @@ crossbeam-utils = "0.8"
 rustversion = "1.0"
 
 [features]
-# default = ["inner_cache"]
+default = ["inner_cache"]
 inner_cache = []
 

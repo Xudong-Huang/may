@@ -159,20 +159,20 @@ impl<T> Queue<T> {
     fn alloc_node(&self) -> *mut BlockNode<T> {
         let first = unsafe { &mut *self.first.unsync_load() };
         let mut last_head = unsafe { &mut *self.last_head.unsync_load() };
-        if !std::ptr::eq(first, last_head) {
+        if !ptr::eq(first, last_head) {
             let next = unsafe { first.next.unsync_load() };
             self.first.store(next, Ordering::Relaxed);
-            first.next.store(ptr::null_mut(), Ordering::Relaxed);
+            // first.next.store(ptr::null_mut(), Ordering::Relaxed);
             return first;
         }
 
         last_head = unsafe { &mut *self.head.block.unsync_load() };
         self.last_head.store(last_head, Ordering::Relaxed);
 
-        if !std::ptr::eq(first, last_head) {
+        if !ptr::eq(first, last_head) {
             let next = unsafe { first.next.unsync_load() };
             self.first.store(next, Ordering::Relaxed);
-            first.next.store(ptr::null_mut(), Ordering::Relaxed);
+            // first.next.store(ptr::null_mut(), Ordering::Relaxed);
             first
         } else {
             BlockNode::new()
@@ -305,9 +305,16 @@ impl<T> Drop for Queue<T> {
         let tail = self.tail.block.load(Ordering::Relaxed);
         assert_eq!(head, tail);
 
-        unsafe {
-            let _unused_block = Box::from_raw(head);
+        #[cfg(feature = "inner_cache")]
+        let mut first = self.first.load(Ordering::Relaxed);
+        #[cfg(feature = "inner_cache")]
+        while first != tail {
+            let next = unsafe { &*first }.next.load(Ordering::Relaxed);
+            let _ = unsafe { Box::from_raw(first) };
+            first = next;
         }
+
+        let _unused_block = unsafe { Box::from_raw(head) };
     }
 }
 
