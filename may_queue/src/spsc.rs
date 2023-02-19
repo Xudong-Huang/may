@@ -57,6 +57,8 @@ impl<T> BlockNode<T> {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
             data.value.get().write(MaybeUninit::new(v));
         }
+        // make sure the data is stored before the index is updated
+        std::sync::atomic::fence(Ordering::Release);
     }
 
     /// peek the indexed value
@@ -122,6 +124,13 @@ pub struct Queue<T> {
     // use for pop
     head: Position<T>,
 
+    // only used to track node, updated by producer
+    #[cfg(feature = "inner_cache")]
+    first: AtomicPtr<BlockNode<T>>,
+    // node between first and head, update by producer
+    #[cfg(feature = "inner_cache")]
+    last_head: AtomicPtr<BlockNode<T>>,
+
     /// Indicates that dropping a `Queue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
 }
@@ -136,7 +145,37 @@ impl<T> Queue<T> {
         Queue {
             head: Position::new(init_block),
             tail: Position::new(init_block).into(),
+            #[cfg(feature = "inner_cache")]
+            first: AtomicPtr::new(init_block),
+            #[cfg(feature = "inner_cache")]
+            last_head: AtomicPtr::new(init_block),
+
             _marker: PhantomData,
+        }
+    }
+
+    #[inline]
+    #[cfg(feature = "inner_cache")]
+    fn alloc_node(&self) -> *mut BlockNode<T> {
+        let first = unsafe { &mut *self.first.unsync_load() };
+        let mut last_head = unsafe { &mut *self.last_head.unsync_load() };
+        if !std::ptr::eq(first, last_head) {
+            let next = unsafe { first.next.unsync_load() };
+            self.first.store(next, Ordering::Relaxed);
+            first.next.store(ptr::null_mut(), Ordering::Relaxed);
+            return first;
+        }
+
+        last_head = unsafe { &mut *self.head.block.unsync_load() };
+        self.last_head.store(last_head, Ordering::Relaxed);
+
+        if !std::ptr::eq(first, last_head) {
+            let next = unsafe { first.next.unsync_load() };
+            self.first.store(next, Ordering::Relaxed);
+            first.next.store(ptr::null_mut(), Ordering::Relaxed);
+            first
+        } else {
+            BlockNode::new()
         }
     }
 
@@ -146,13 +185,14 @@ impl<T> Queue<T> {
         let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
-        // make sure the data is stored before the index is updated
-        std::sync::atomic::fence(Ordering::Release);
 
         // alloc new block node if the tail is full
         let new_index = push_index.wrapping_add(1);
         if new_index & BLOCK_MASK == 0 {
+            #[cfg(not(feature = "inner_cache"))]
             let new_tail = BlockNode::new();
+            #[cfg(feature = "inner_cache")]
+            let new_tail = self.alloc_node();
             tail.next.store(new_tail, Ordering::Relaxed);
             self.tail.block.store(new_tail, Ordering::Relaxed);
         }
@@ -193,6 +233,7 @@ impl<T> Queue<T> {
         if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
+            #[cfg(not(feature = "inner_cache"))]
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.block.store(new_head, Ordering::Relaxed);
         }
@@ -238,6 +279,7 @@ impl<T> Queue<T> {
         if new_index & BLOCK_MASK == 0 {
             let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
+            #[cfg(not(feature = "inner_cache"))]
             let _unused_head = unsafe { Box::from_raw(head) };
             self.head.block.store(new_head, Ordering::Relaxed);
         }
