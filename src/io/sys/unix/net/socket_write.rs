@@ -71,7 +71,7 @@ impl<'a> EventSource for SocketWrite<'a> {
                 .get_selector()
                 .add_io_timer(self.io_data, dur);
         }
-        io_data.co.store(co);
+        unsafe { io_data.co.unsync_store(co) };
 
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) {

@@ -1,5 +1,6 @@
 //! provide single consumer single producer channel
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, SendError, TryRecvError};
@@ -57,7 +58,7 @@ impl<'a, T> EventSource for Park<'a, T> {
         let _g = self.delay_drop();
         // register the coroutine
         let wait_co = &self.queue.wait_co;
-        wait_co.store(Blocker::new_coroutine(co));
+        unsafe { wait_co.unsync_store(Blocker::new_coroutine(co)) };
         // re-check the state, only clear once after resume
         if !self.queue.queue.is_empty() {
             if let Some(co) = wait_co.take() {
@@ -70,7 +71,7 @@ impl<'a, T> EventSource for Park<'a, T> {
 
 const _: () = assert!(std::mem::size_of::<Thread>() == std::mem::size_of::<usize>());
 struct Blocker {
-    handle: usize,
+    handle: NonZeroUsize,
 }
 
 impl Blocker {
@@ -96,14 +97,14 @@ impl Blocker {
 
     #[inline]
     fn into_thread(self) -> Thread {
-        let thread = unsafe { std::mem::transmute(self.handle & !1) };
+        let thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
         std::mem::forget(self);
         thread
     }
 
     #[inline]
     fn unpark(self) {
-        if (self.handle & 1) == 0 {
+        if (self.handle.get() & 1) == 0 {
             let co = self.into_coroutine();
             get_scheduler().schedule(co);
         } else {
@@ -115,11 +116,11 @@ impl Blocker {
 
 impl Drop for Blocker {
     fn drop(&mut self) {
-        if (self.handle & 1) == 0 {
+        if (self.handle.get() & 1) == 0 {
             // let co = self.into_coroutine();
             unreachable!()
         } else {
-            let _thread: Thread = unsafe { std::mem::transmute(self.handle & !1) };
+            let _thread: Thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
         }
     }
 }
@@ -165,8 +166,10 @@ impl<T> InnerQueue<T> {
                     let park = Park::new(self);
                     yield_with(&park);
                 } else {
-                    self.wait_co
-                        .store(Blocker::new_thread(std::thread::current()));
+                    unsafe {
+                        self.wait_co
+                            .unsync_store(Blocker::new_thread(std::thread::current()))
+                    };
                     match self.try_recv() {
                         Err(TryRecvError::Empty) => {
                             // no data, wait for it

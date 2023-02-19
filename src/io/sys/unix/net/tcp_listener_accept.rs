@@ -64,7 +64,7 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
         let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
         // if there is no timer we don't need to call add_io_timer
-        io_data.co.store(co);
+        unsafe { io_data.co.unsync_store(co) };
 
         // there is event happened
         if io_data.io_flag.load(Ordering::Acquire) {

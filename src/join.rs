@@ -48,7 +48,7 @@ impl Join {
         if self.state.load(Ordering::Acquire) {
             let cur = Blocker::current();
             // register the blocker first
-            self.to_wake.store(cur.clone());
+            unsafe { self.to_wake.unsync_store(cur.clone()) };
             // re-check the state
             if self.state.load(Ordering::Acquire) {
                 // successfully register the blocker
