@@ -166,10 +166,8 @@ impl<T> InnerQueue<T> {
                     let park = Park::new(self);
                     yield_with(&park);
                 } else {
-                    unsafe {
-                        self.wait_co
-                            .unsync_store(Blocker::new_thread(std::thread::current()))
-                    };
+                    let blocker = Blocker::new_thread(std::thread::current());
+                    unsafe { self.wait_co.unsync_store(blocker) };
                     match self.try_recv() {
                         Err(TryRecvError::Empty) => {
                             // no data, wait for it
