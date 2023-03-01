@@ -216,6 +216,8 @@ pub struct Builder {
     name: Option<String>,
     // The size of the stack for the spawned coroutine
     stack_size: Option<usize>,
+    // The associated id of the coroutine, would select a specific thread to run
+    id: Option<usize>,
 }
 
 impl Builder {
@@ -225,6 +227,7 @@ impl Builder {
         Builder {
             name: None,
             stack_size: None,
+            id: None,
         }
     }
 
@@ -241,6 +244,12 @@ impl Builder {
         self
     }
 
+    /// Sets the id of the coroutine, would select a specific thread to run
+    pub fn id(mut self, id: usize) -> Builder {
+        self.id = Some(id);
+        self
+    }
+
     /// Spawns a new coroutine, and returns a join handle for it.
     /// The join handle can be used to block on
     /// termination of the child coroutine, including recovering its panics.
@@ -252,8 +261,8 @@ impl Builder {
         static DONE: Done = Done {};
 
         let sched = get_scheduler();
-        let Builder { name, stack_size } = self;
-        let stack_size = stack_size.unwrap_or_else(|| config().get_stack_size());
+        let name = self.name;
+        let stack_size = self.stack_size.unwrap_or_else(|| config().get_stack_size());
 
         // create a join resource, shared by waited coroutine and *this* coroutine
         let panic = Arc::new(AtomicOption::none());
@@ -342,9 +351,14 @@ impl Builder {
         T: Send + 'static,
     {
         // we will still get optimizations in spawn_impl
+        let id = self.id;
         let (co, handle) = self.spawn_impl(f)?;
+        let s = get_scheduler();
 
-        get_scheduler().schedule_global(co);
+        match id {
+            None => s.schedule_global(co),
+            Some(id) => s.schedule_global_with_id(co, id),
+        }
 
         Ok(handle)
     }

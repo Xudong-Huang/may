@@ -214,6 +214,16 @@ impl Scheduler {
         self.get_selector().wakeup(thread_id);
     }
 
+    /// put the coroutine to global queue so that next time it can be scheduled
+    #[inline]
+    pub fn schedule_global_with_id(&self, co: CoroutineImpl, id: usize) {
+        let thread_id = id.rem_euclid(self.global_queues.len());
+        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
+        global.push(co);
+        // signal one waiting thread if any
+        self.get_selector().wakeup(thread_id);
+    }
+
     #[inline]
     pub fn collect_global(&self, id: usize) {
         #[cfg(feature = "work_steal")]
