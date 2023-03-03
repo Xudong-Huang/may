@@ -114,16 +114,12 @@ impl<T: ?Sized> Mutex<T> {
     }
 
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
-        if self.cnt.load(Ordering::SeqCst) == 0 {
-            match self
-                .cnt
-                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            {
-                Ok(_) => Ok(MutexGuard::new(self)?),
-                Err(_) => Err(TryLockError::WouldBlock),
-            }
-        } else {
-            Err(TryLockError::WouldBlock)
+        match self
+            .cnt
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed)
+        {
+            Ok(_) => Ok(MutexGuard::new(self)?),
+            Err(_) => Err(TryLockError::WouldBlock),
         }
     }
 
