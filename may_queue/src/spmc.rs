@@ -132,7 +132,7 @@ impl<T> BlockPtr<T> {
     }
 }
 
-/// spsc queue
+/// spmc unbounded queue
 #[derive(Debug)]
 pub struct Queue<T> {
     // ----------------------------------------

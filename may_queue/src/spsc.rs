@@ -113,7 +113,7 @@ impl<T> Position<T> {
     }
 }
 
-/// spsc queue
+/// spsc unbounded queue
 #[derive(Debug)]
 pub struct Queue<T> {
     // -----------------------------------------
