@@ -42,7 +42,7 @@ May is a high-performance library for programming stackful coroutines with which
 * All the coroutine API are compatible with the standard library semantics;
 * All the coroutine API can be safely called in multi-threaded context;
 * Both stable, beta, and nightly channels are supported;
-* x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac, AArch64 Linux OS are supported.
+* x86_64 GNU/Linux, x86_64 Windows, x86_64 macOS, AArch64 GNU/Linux, and AArch64 macOS are supported.
 
 ----------
 
