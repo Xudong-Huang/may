@@ -33,10 +33,7 @@ impl TcpStreamConnect {
         // let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
         addr.to_socket_addrs()?
             .next()
-            .ok_or_else(io::Error::new(
-                io::ErrorKind::Other,
-                "no socket addresses resolved",
-            ))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no socket addresses resolved"))
             .and_then(|addr| {
                 let stream = match addr {
                     SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
