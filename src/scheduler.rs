@@ -25,7 +25,6 @@ use may_queue::spsc::Queue as Local;
 // thread id, only workers are normal ones
 #[cfg(nightly)]
 #[thread_local]
-#[no_mangle]
 pub static WORKER_ID: Cell<usize> = Cell::new(!1);
 
 #[cfg(not(nightly))]
