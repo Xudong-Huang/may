@@ -37,7 +37,7 @@ socket2 = { version = "0.5", features = ["all"] }
 may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
-nix = "0.27"
+nix = { version = "0.27", features = ["event"] }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]

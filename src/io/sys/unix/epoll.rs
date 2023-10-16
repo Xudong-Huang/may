@@ -1,5 +1,8 @@
 use std::io;
-use std::os::unix::io::RawFd;
+use std::os::fd::AsFd;
+use std::os::fd::AsRawFd;
+use std::os::fd::BorrowedFd;
+use std::os::fd::OwnedFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
@@ -12,25 +15,17 @@ use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::{now, ns_to_ms};
 
-use libc::{eventfd, EFD_NONBLOCK};
 use may_queue::mpsc::Queue;
 use nix::sys::epoll::*;
-use nix::unistd::{close, read, write};
+use nix::sys::eventfd::*;
+use nix::unistd::{read, write};
 use smallvec::SmallVec;
-
-fn create_eventfd() -> io::Result<RawFd> {
-    let fd = unsafe { eventfd(0, EFD_NONBLOCK) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(fd as RawFd)
-}
 
 pub type SysEvent = EpollEvent;
 
 struct SingleSelector {
-    epfd: RawFd,
-    evfd: RawFd,
+    epoll: Epoll,
+    evfd: OwnedFd,
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
     free_ev: Queue<Arc<EventData>>,
@@ -39,38 +34,21 @@ struct SingleSelector {
 impl SingleSelector {
     pub fn new() -> io::Result<Self> {
         // wakeup data is 0
-        let mut info = EpollEvent::new(EpollFlags::EPOLLIN, 0);
+        let info = EpollEvent::new(EpollFlags::EPOLLIN, 0);
 
-        let epfd = epoll_create().map_err(from_nix_error)?;
-        let evfd = match create_eventfd() {
-            Ok(fd) => fd,
-            Err(err) => {
-                let _ = close(epfd);
-                return Err(err);
-            }
-        };
+        let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC)?;
+        let evfd = eventfd(0, EfdFlags::EFD_NONBLOCK | EfdFlags::EFD_CLOEXEC)?;
 
         // add the eventfd to the epfd
-        if let Err(e) = epoll_ctl(epfd, EpollOp::EpollCtlAdd, evfd, &mut info) {
-            let _ = close(evfd);
-            let _ = close(epfd);
-            return Err(from_nix_error(e));
-        };
+        epoll.add(evfd.as_fd(), info)?;
 
         Ok(SingleSelector {
-            epfd,
+            epoll,
             evfd,
             free_ev: Queue::new(),
             #[cfg(feature = "io_timeout")]
             timer_list: TimerList::new(),
         })
-    }
-}
-
-impl Drop for SingleSelector {
-    fn drop(&mut self) {
-        let _ = close(self.evfd);
-        let _ = close(self.epfd);
     }
 }
 
@@ -110,10 +88,10 @@ impl Selector {
         // info!("select; timeout={:?}", timeout_ms);
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let epfd = single_selector.epfd;
+        let epoll = &single_selector.epoll;
 
         // Wait for epoll events for at most timeout_ms milliseconds
-        let n = epoll_wait(epfd, events, timeout_ms).map_err(from_nix_error)?;
+        let n = epoll.wait(events, timeout_ms)?;
         // println!("epoll_wait = {}", n);
 
         // collect coroutines
@@ -122,7 +100,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                read(single_selector.evfd, &mut buf).ok();
+                read(single_selector.evfd.as_raw_fd(), &mut buf).ok();
                 // info!("got wakeup event in select, id={}", id);
                 scheduler.collect_global(id);
                 continue;
@@ -174,14 +152,14 @@ impl Selector {
     #[inline]
     pub fn wakeup(&self, id: usize) {
         let buf = 1u64.to_le_bytes();
-        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd, &buf);
+        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd.as_raw_fd(), &buf);
         trace!("wakeup id={:?}, ret={:?}", id, ret);
     }
 
     // register io event to the selector
     #[inline]
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
-        let mut info = EpollEvent::new(
+        let info = EpollEvent::new(
             EpollFlags::EPOLLIN
                 | EpollFlags::EPOLLOUT
                 | EpollFlags::EPOLLRDHUP
@@ -192,9 +170,10 @@ impl Selector {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let epfd = single_selector.epfd;
+        let epoll = &single_selector.epoll;
         info!("add fd to epoll select, fd={:?}", fd);
-        epoll_ctl(epfd, EpollOp::EpollCtlAdd, fd, &mut info)
+        epoll
+            .add(unsafe { BorrowedFd::borrow_raw(fd) }, info)
             .map_err(from_nix_error)
             .map(|_| io_data)
     }
@@ -216,9 +195,11 @@ impl Selector {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let epfd = single_selector.epfd;
+        let epoll = &single_selector.epoll;
         info!("mod fd to epoll select, fd={:?}, is_read={}", fd, is_read);
-        epoll_ctl(epfd, EpollOp::EpollCtlMod, fd, &mut info).map_err(from_nix_error)
+        epoll
+            .modify(unsafe { BorrowedFd::borrow_raw(fd) }, &mut info)
+            .map_err(from_nix_error)
     }
 
     #[inline]
@@ -237,9 +218,9 @@ impl Selector {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
         let single_selector = unsafe { self.vec.get_unchecked(id) };
-        let epfd = single_selector.epfd;
+        let epoll = &single_selector.epoll;
         info!("del fd from epoll select, fd={:?}", fd);
-        epoll_ctl(epfd, EpollOp::EpollCtlDel, fd, None).ok();
+        epoll.delete(unsafe { BorrowedFd::borrow_raw(fd) }).ok();
 
         // after EpollCtlDel push the unused event data
         single_selector.free_ev.push((*io_data).clone());
