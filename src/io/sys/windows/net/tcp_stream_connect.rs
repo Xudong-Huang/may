@@ -34,19 +34,18 @@ impl TcpStreamConnect {
     ) -> io::Result<Self> {
         use socket2::{Domain, Socket, Type};
 
-        let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
         // TODO:
         // resolve addr is a blocking operation!
         // here we should use a thread to finish the resolve?
         addr.to_socket_addrs()?
-            .fold(Err(err), |prev, addr| {
-                prev.or_else(|_| {
-                    let socket = match addr {
-                        SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
-                        SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
-                    };
-                    Ok((socket, addr))
-                })
+            .next()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no socket addresses resolved"))
+            .and_then(|addr| {
+                let socket = match addr {
+                    SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+                    SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
+                };
+                Ok((socket, addr))
             })
             .and_then(|(socket, addr)| {
                 // windows need to bind first when call ConnectEx API

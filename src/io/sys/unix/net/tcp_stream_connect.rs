@@ -30,16 +30,19 @@ impl TcpStreamConnect {
     ) -> io::Result<Self> {
         use socket2::{Domain, Type};
 
-        let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
+        // let err = io::Error::new(io::ErrorKind::Other, "no socket addresses resolved");
         addr.to_socket_addrs()?
-            .fold(Err(err), |prev, addr| {
-                prev.or_else(|_| {
-                    let stream = match addr {
-                        SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
-                        SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
-                    };
-                    Ok((stream, addr))
-                })
+            .next()
+            .ok_or_else(io::Error::new(
+                io::ErrorKind::Other,
+                "no socket addresses resolved",
+            ))
+            .and_then(|addr| {
+                let stream = match addr {
+                    SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
+                    SocketAddr::V6(..) => Socket::new(Domain::IPV6, Type::STREAM, None)?,
+                };
+                Ok((stream, addr))
             })
             .and_then(|(stream, addr)| {
                 // before yield we must set the socket to nonblocking mode and register to selector
