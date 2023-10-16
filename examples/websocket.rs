@@ -14,11 +14,11 @@ fn main() {
                 let mut websocket = accept(stream.unwrap()).unwrap();
 
                 loop {
-                    let msg = websocket.read_message().unwrap();
+                    let msg = websocket.read().unwrap();
 
                     // Just echo back everything that the client sent to us
                     if msg.is_binary() || msg.is_text() {
-                        websocket.write_message(msg).unwrap();
+                        websocket.send(msg).unwrap();
                     }
                 }
             });
