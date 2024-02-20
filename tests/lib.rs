@@ -199,7 +199,7 @@ fn yield_from_gen() {
         go!(scope, || {
             let g = Gn::<()>::new_scoped(|mut scope| {
                 while a < 10 {
-                    unsafe { scope.yield_unsafe(a) };
+                    scope.yield_(a);
                     // this is yield from the generator context!
                     yield_now();
                     a += 1;
