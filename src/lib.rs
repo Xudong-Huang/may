@@ -22,7 +22,6 @@
 
 // #![deny(missing_docs)]
 #![cfg_attr(nightly, feature(thread_local))]
-#![cfg_attr(nightly, feature(core_intrinsics))]
 
 #[macro_use]
 extern crate log;
