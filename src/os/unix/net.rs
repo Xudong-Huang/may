@@ -232,6 +232,13 @@ impl UnixStream {
         self.0.write_timeout()
     }
 
+    /// Receives data on the socket from the remote address to which it is
+    /// connected, without removing that data from the queue. On success,
+    /// returns the number of bytes peeked.
+    pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.peek(buf)
+    }
+
     /// Returns the value of the `SO_ERROR` option.
     ///
     /// # Examples
@@ -856,6 +863,13 @@ impl UnixDatagram {
         reader.done()
     }
 
+    /// Receives data on the socket from the remote address to which it is
+    /// connected, without removing that data from the queue. On success,
+    /// returns the number of bytes peeked.
+    pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.peek(buf)
+    }
+
     /// Sends data on the socket to the specified address.
     ///
     /// On success, returns the number of bytes written.
@@ -1393,5 +1407,40 @@ mod test {
     #[test]
     fn abstract_namespace_not_allowed() {
         assert!(UnixStream::connect("\0asdf").is_err());
+    }
+
+    #[test]
+    fn socket_peek() {
+        let msg1 = b"hello";
+        let msg2 = b"world!";
+
+        let (s1, s2) = or_panic!(UnixDatagram::pair());
+        or_panic!(s2.send(msg1));
+
+        let mut buf = [0; 5];
+        or_panic!(s1.peek(&mut buf));
+        assert_eq!(&msg1[..], &buf[..]);
+        buf.copy_from_slice(&[0; 5]);
+        or_panic!(s1.peek(&mut buf));
+        assert_eq!(&msg1[..], &buf[..]);
+        buf.copy_from_slice(&[0; 5]);
+        or_panic!(s1.peek(&mut buf));
+        assert_eq!(&msg1[..], &buf[..]);
+
+        or_panic!(s2.send(msg2));
+        let mut buf = [0; 11];
+        let n = s1.peek(&mut buf).unwrap();
+        assert_eq!(n, 5);
+        assert_eq!(&buf[0..n], &msg1[..]);
+        let n = s1.recv(&mut buf).unwrap();
+        assert_eq!(n, 5);
+        let n = s1.peek(&mut buf).unwrap();
+        assert_eq!(n, 6);
+        assert_eq!(&buf[0..n], &msg2[..]);
+        let n = s1.recv(&mut buf).unwrap();
+        assert_eq!(n, 6);
+        // // this would block until there is some data
+        // let n = s1.peek(&mut buf).unwrap();
+        // assert_eq!(n, 0);
     }
 }

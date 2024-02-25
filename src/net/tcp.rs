@@ -179,6 +179,39 @@ impl TcpStream {
             write_timeout: AtomicDuration::new(None),
         }
     }
+
+    /// Receives data on the socket from the remote address to which it is
+    /// connected, without removing that data from the queue. On success,
+    /// returns the number of bytes peeked.
+    pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
+        #[cfg(unix)]
+        {
+            self._io.reset();
+            // this is an earlier return try for nonblocking read
+            // it's useful for server but not necessary for client
+            match self.sys.peek(buf) {
+                Ok(n) => return Ok(n),
+                Err(e) => {
+                    // raw_os_error is faster than kind
+                    let raw_err = e.raw_os_error();
+                    if raw_err == Some(libc::EAGAIN) || raw_err == Some(libc::EWOULDBLOCK) {
+                        // do nothing here
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        let mut reader = net_impl::SocketPeek::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
+        yield_with_io(&reader, reader.is_coroutine);
+        reader.done()
+    }
 }
 
 impl Read for TcpStream {

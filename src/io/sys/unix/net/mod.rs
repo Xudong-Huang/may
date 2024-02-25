@@ -1,3 +1,4 @@
+mod socket_peek;
 mod socket_read;
 mod socket_write;
 mod socket_write_vectored;
@@ -10,6 +11,7 @@ mod unix_recv_from;
 mod unix_send_to;
 mod unix_stream_connect;
 
+pub use self::socket_peek::SocketPeek;
 pub use self::socket_read::SocketRead;
 pub use self::socket_write::SocketWrite;
 pub use self::socket_write_vectored::SocketWriteVectored;

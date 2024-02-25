@@ -10,10 +10,13 @@ use std::time::Duration;
 
 use self::io_impl::co_io_err::Error;
 use self::io_impl::net as net_impl;
+use super::from_nix_error;
 use crate::io as io_impl;
 #[cfg(feature = "io_timeout")]
 use crate::sync::atomic_dur::AtomicDuration;
 use crate::yield_now::yield_with_io;
+
+use nix::sys::socket::{recv, MsgFlags};
 
 fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
     unsafe {
@@ -147,6 +150,34 @@ impl<T: AsRawFd> CoIo<T> {
     pub fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
         self.write_timeout.store(dur);
         Ok(())
+    }
+
+    /// Receives data on the socket from the remote address to which it is
+    /// connected, without removing that data from the queue. On success,
+    /// returns the number of bytes peeked.
+    pub fn peek(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.io.reset();
+        // this is an earlier return try for nonblocking read
+        // it's useful for server but not necessary for client
+        match recv(self.io.fd, buf, MsgFlags::MSG_PEEK) {
+            Ok(n) => return Ok(n),
+            Err(e) => {
+                if e == nix::errno::Errno::EAGAIN {
+                    // do nothing
+                } else {
+                    return Err(from_nix_error(e));
+                }
+            }
+        }
+
+        let mut reader = net_impl::SocketPeek::new(
+            self,
+            buf,
+            #[cfg(feature = "io_timeout")]
+            self.read_timeout.get(),
+        );
+        yield_with_io(&reader, reader.is_coroutine);
+        reader.done()
     }
 }
 
