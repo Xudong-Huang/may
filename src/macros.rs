@@ -94,7 +94,7 @@ macro_rules! go_with {
 #[macro_export]
 macro_rules! cqueue_add {
     ($cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr) => {{
-        go!($cqueue, $token, |es| loop {
+        $crate::go!($cqueue, $token, |es| loop {
             let $name = $top;
             es.send(es.get_token());
             $bottom
@@ -107,7 +107,7 @@ macro_rules! cqueue_add {
 #[macro_export]
 macro_rules! cqueue_add_oneshot {
     ($cqueue:ident, $token:expr, $name:pat = $top:expr => $bottom:expr) => {{
-        go!($cqueue, $token, |es| {
+        $crate::go!($cqueue, $token, |es| {
             let $name = $top;
             es.send(es.get_token());
             $bottom
@@ -126,12 +126,36 @@ macro_rules! select {
         cqueue::scope(|cqueue| {
             let mut _token = 0;
             $(
-                cqueue_add_oneshot!(cqueue, _token, $name = $top => $bottom);
+                $crate::cqueue_add_oneshot!(cqueue, _token, $name = $top => $bottom);
                 _token += 1;
             )+
             match cqueue.poll(None) {
                 Ok(ev) => return ev.token,
                 _ => unreachable!("select error"),
+            }
+        })
+    })
+}
+
+/// macro used to select in a infinite loop
+/// it never returns, and will run forever
+#[macro_export]
+macro_rules! loop_select {
+    (
+        $($name:pat = $top:expr => $bottom:expr),+
+    ) => ({
+        use $crate::cqueue;
+        cqueue::scope(|cqueue| {
+            let mut _token = 0;
+            $(
+                $crate::cqueue_add!(cqueue, _token, $name = $top => $bottom);
+                _token += 1;
+            )+
+            loop {
+                match cqueue.poll(None) {
+                    Ok(ev) => {},
+                    _ => unreachable!("select error"),
+                }
             }
         })
     })
@@ -146,7 +170,7 @@ macro_rules! join {
         use $crate::coroutine;
         coroutine::scope(|s| {
             $(
-                go!(s, || $body);
+                $crate::go!(s, || $body);
             )+
         })
     })
