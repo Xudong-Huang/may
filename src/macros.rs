@@ -29,7 +29,8 @@ macro_rules! go {
             f
         }
         let f = _go_check($func);
-        unsafe { $builder.spawn(f) }
+        let b = $builder;
+        unsafe { b.spawn(f) }
     }};
 
     // for cqueue add spawn
@@ -42,7 +43,9 @@ macro_rules! go {
             f
         }
         let f = _go_check($func);
-        unsafe { $cqueue.add($token, f) }
+        let c = $cqueue;
+        let t = $token;
+        unsafe { c.add(t, f) }
     }};
 }
 
