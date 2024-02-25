@@ -2,7 +2,6 @@ use std::io;
 use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
 use std::os::fd::BorrowedFd;
-use std::os::fd::OwnedFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
@@ -25,7 +24,7 @@ pub type SysEvent = EpollEvent;
 
 struct SingleSelector {
     epoll: Epoll,
-    evfd: OwnedFd,
+    evfd: EventFd,
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
     free_ev: Queue<Arc<EventData>>,
@@ -37,7 +36,7 @@ impl SingleSelector {
         let info = EpollEvent::new(EpollFlags::EPOLLIN, 0);
 
         let epoll = Epoll::new(EpollCreateFlags::EPOLL_CLOEXEC)?;
-        let evfd = eventfd(0, EfdFlags::EFD_NONBLOCK | EfdFlags::EFD_CLOEXEC)?;
+        let evfd = EventFd::from_flags(EfdFlags::EFD_NONBLOCK | EfdFlags::EFD_CLOEXEC)?;
 
         // add the eventfd to the epfd
         epoll.add(evfd.as_fd(), info)?;
@@ -81,10 +80,10 @@ impl Selector {
     ) -> io::Result<Option<u64>> {
         #[cfg(feature = "io_timeout")]
         let timeout_ms = _timeout
-            .map(|to| std::cmp::min(ns_to_ms(to), isize::MAX as u64) as isize)
-            .unwrap_or(-1);
+            .map(|to| EpollTimeout::try_from(ns_to_ms(to)).unwrap())
+            .unwrap_or(EpollTimeout::NONE);
         #[cfg(not(feature = "io_timeout"))]
-        let timeout_ms = -1;
+        let timeout_ms = EpollTimeout::NONE;
         // info!("select; timeout={:?}", timeout_ms);
 
         let single_selector = unsafe { self.vec.get_unchecked(id) };
@@ -152,7 +151,7 @@ impl Selector {
     #[inline]
     pub fn wakeup(&self, id: usize) {
         let buf = 1u64.to_le_bytes();
-        let ret = write(unsafe { self.vec.get_unchecked(id) }.evfd.as_raw_fd(), &buf);
+        let ret = write(&unsafe { self.vec.get_unchecked(id) }.evfd, &buf);
         trace!("wakeup id={:?}, ret={:?}", id, ret);
     }
 

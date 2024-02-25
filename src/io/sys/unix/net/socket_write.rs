@@ -40,7 +40,7 @@ impl<'a> SocketWrite<'a> {
             // clear the io_flag
             self.io_data.io_flag.store(false, Ordering::Relaxed);
 
-            match write(self.io_data.fd, self.buf) {
+            match write(self.io_data, self.buf) {
                 Ok(n) => return Ok(n),
                 Err(e) => {
                     if e == nix::errno::Errno::EAGAIN {

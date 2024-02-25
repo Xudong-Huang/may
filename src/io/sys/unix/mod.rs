@@ -23,6 +23,7 @@ pub mod wait_io;
 #[cfg(feature = "io_timeout")]
 use std::cell::RefCell;
 use std::ops::Deref;
+use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -226,6 +227,12 @@ impl fmt::Debug for IoData {
 impl Drop for IoData {
     fn drop(&mut self) {
         del_socket(self);
+    }
+}
+
+impl AsFd for IoData {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        unsafe { BorrowedFd::borrow_raw(self.0.fd) }
     }
 }
 
