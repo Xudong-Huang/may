@@ -548,7 +548,6 @@ mod test {
     use self::test::Bencher;
     use super::*;
 
-    use std::sync::Arc;
     use std::thread;
 
     use crate::test_queue::ScBlockPop;

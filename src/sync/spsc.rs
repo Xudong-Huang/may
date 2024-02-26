@@ -364,7 +364,6 @@ impl<T> fmt::Debug for Receiver<T> {
 mod tests {
     use super::*;
     use std::env;
-    use std::sync::mpsc::TryRecvError;
     use std::thread;
 
     pub fn stress_factor() -> usize {

@@ -152,9 +152,7 @@ impl fmt::Debug for SyncFlag {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn sanity_test() {

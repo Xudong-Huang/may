@@ -240,8 +240,6 @@ mod tests {
     use super::*;
     use crate::sync::mpsc::channel;
     use crate::sync::Condvar;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
     use std::thread;
 
     struct Packet<T>(Arc<(Mutex<T>, Condvar)>);

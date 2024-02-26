@@ -331,9 +331,6 @@ impl<T> TimerThread<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn test_timeout_list() {

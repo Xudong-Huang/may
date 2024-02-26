@@ -173,9 +173,7 @@ impl fmt::Debug for Semphore {
 mod tests {
     use super::*;
     use crate::sync::mpsc::channel;
-    use std::sync::Arc;
     use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn sanity_1() {

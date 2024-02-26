@@ -297,9 +297,7 @@ impl<T> fmt::Debug for Receiver<T> {
 mod tests {
     use super::*;
     use std::env;
-    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
     use std::thread;
-    use std::time::Duration;
 
     pub fn stress_factor() -> usize {
         match env::var("RUST_TEST_STRESS") {
