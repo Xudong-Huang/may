@@ -28,7 +28,7 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 log = "0.4"
 num_cpus = "1"
 smallvec = "1"
-generator = "0.7.1"
+generator = "0.7.6"
 crossbeam = "0.8"
 lazy_static = "1"
 parking_lot = "0.12"
