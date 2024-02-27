@@ -64,7 +64,7 @@ docopt = "1.0"
 tempdir = "0.3"
 httparse = "1.1"
 native-tls = "0.2"
-tungstenite = "0.20"
+tungstenite = "0.21"
 serde_derive = "1.0"
 
 [features]
