@@ -1090,10 +1090,7 @@ impl io_impl::AsIoData for UnixDatagram {
 
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
-    use std::io;
     use std::io::prelude::*;
-    #[cfg(feature = "io_timeout")]
-    use std::time::Duration;
     use tempdir::TempDir;
 
     use super::*;
