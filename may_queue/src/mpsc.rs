@@ -386,6 +386,9 @@ impl<T> Queue<T> {
     pub fn len(&self) -> usize {
         let pop_index = self.head.index.load(Ordering::Acquire);
         let push_index = self.push_index();
+        if pop_index >= push_index {
+            return 0;
+        }
         push_index - pop_index
     }
 
