@@ -1,8 +1,9 @@
 use std::io;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
+use std::os::windows::io::{AsRawHandle, RawHandle};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::pipe_read_overlapped;
 use super::super::{co_io_result, EventData};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
@@ -11,7 +12,6 @@ use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::pipe::NamedPipe;
 use windows_sys::Win32::Foundation::*;
 
 pub struct PipeRead<'a> {
@@ -69,11 +69,7 @@ impl<'a> EventSource for PipeRead<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            let pipe: NamedPipe = FromRawHandle::from_raw_handle(self.pipe);
-            let ret = pipe.read_overlapped(self.buf, self.io_data.get_overlapped());
-            // don't close the socket
-            pipe.into_raw_handle();
-            ret
+            pipe_read_overlapped(self.pipe, self.buf, self.io_data.get_overlapped())
         });
 
         #[cfg(feature = "io_cancel")]

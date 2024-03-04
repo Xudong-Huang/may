@@ -1,12 +1,12 @@
 use std::io;
-use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
+use std::os::windows::io::{AsRawHandle, RawHandle};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::pipe_write_overlapped;
 use super::super::{co_io_result, EventData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
-use miow::pipe::NamedPipe;
 
 pub struct PipeWrite<'a> {
     io_data: EventData,
@@ -51,11 +51,7 @@ impl<'a> EventSource for PipeWrite<'a> {
         self.io_data.co = Some(co);
         // call the overlapped write API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            let pipe: NamedPipe = FromRawHandle::from_raw_handle(self.pipe);
-            let ret = pipe.write_overlapped(self.buf, self.io_data.get_overlapped());
-            // don't close the socket
-            pipe.into_raw_handle();
-            ret
+            pipe_write_overlapped(self.pipe, self.buf, self.io_data.get_overlapped())
         });
     }
 }

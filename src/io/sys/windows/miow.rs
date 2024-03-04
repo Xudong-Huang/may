@@ -1,16 +1,17 @@
 //! ported from miow crate which is not maintained anymore
 
+use std::io;
 use std::net::{
     Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream,
 };
-use std::os::windows::io::{AsRawHandle, AsRawSocket};
+use std::os::windows::io::{AsRawHandle, AsRawSocket, RawHandle, RawSocket};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use std::{io, os::windows::io::RawSocket};
 
 use windows_sys::core::GUID;
-use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Networking::WinSock::*;
+use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
 use windows_sys::Win32::System::Threading::INFINITE;
 use windows_sys::Win32::System::IO::*;
 
@@ -830,4 +831,80 @@ pub unsafe fn send_to_overlapped(
         None,
     );
     cvt(r, sent_bytes)
+}
+
+pub unsafe fn pipe_read_overlapped(
+    handle: RawHandle,
+    buf: &mut [u8],
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    let wait = FALSE;
+    let len = std::cmp::min(buf.len(), <u32>::max_value() as usize) as u32;
+    let res = cvt_ret({
+        ReadFile(
+            handle as HANDLE,
+            buf.as_mut_ptr() as *mut _,
+            len,
+            std::ptr::null_mut(),
+            overlapped,
+        )
+    });
+    match res {
+        Ok(_) => (),
+        Err(ref e) if e.raw_os_error() == Some(ERROR_IO_PENDING as i32) => (),
+        Err(e) => return Err(e),
+    }
+
+    let mut bytes = 0;
+    let res = cvt_ret(GetOverlappedResult(
+        handle as HANDLE,
+        overlapped,
+        &mut bytes,
+        wait,
+    ));
+    match res {
+        Ok(_) => Ok(Some(bytes as usize)),
+        Err(ref e) if e.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) && wait == FALSE => {
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+pub unsafe fn pipe_write_overlapped(
+    handle: RawHandle,
+    buf: &[u8],
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    let wait = FALSE;
+    let len = std::cmp::min(buf.len(), <u32>::max_value() as usize) as u32;
+    let res = cvt_ret({
+        WriteFile(
+            handle as HANDLE,
+            buf.as_ptr() as *const _,
+            len,
+            std::ptr::null_mut(),
+            overlapped,
+        )
+    });
+    match res {
+        Ok(_) => (),
+        Err(ref e) if e.raw_os_error() == Some(ERROR_IO_PENDING as i32) => (),
+        Err(e) => return Err(e),
+    }
+
+    let mut bytes = 0;
+    let res = cvt_ret(GetOverlappedResult(
+        handle as HANDLE,
+        overlapped,
+        &mut bytes,
+        wait,
+    ));
+    match res {
+        Ok(_) => Ok(Some(bytes as usize)),
+        Err(ref e) if e.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) && wait == FALSE => {
+            Ok(None)
+        }
+        Err(e) => Err(e),
+    }
 }
