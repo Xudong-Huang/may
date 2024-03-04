@@ -1,18 +1,19 @@
 use std::io;
-use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, RawSocket};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
 use super::super::{co_io_result, EventData};
+use super::miow::{cvt, slice2buf};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
-use crate::coroutine_impl::{CoroutineImpl, EventSource};
+use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 #[cfg(feature = "io_cancel")]
 use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::net::TcpStreamExt;
-// use windows_sys::Win32::Foundation::*;
+use windows_sys::Win32::Foundation::*;
+use windows_sys::Win32::Networking::WinSock::{WSARecv, MSG_PEEK, SOCKET};
 
 pub struct SocketPeek<'a> {
     io_data: EventData,
@@ -30,20 +31,16 @@ impl<'a> SocketPeek<'a> {
         buf: &'a mut [u8],
         #[cfg(feature = "io_timeout")] timeout: Option<Duration>,
     ) -> Self {
-        let _ = (s, buf); // avoid unused warning
-        #[cfg(feature = "io_timeout")]
-        let _ = timeout; // avoid unused warning
-        unimplemented!()
-        // let socket = s.as_raw_socket();
-        // SocketPeek {
-        //     io_data: EventData::new(socket as HANDLE),
-        //     buf,
-        //     socket,
-        //     #[cfg(feature = "io_timeout")]
-        //     timeout,
-        //     can_drop: DelayDrop::new(),
-        //     is_coroutine: is_coroutine(),
-        // }
+        let socket = s.as_raw_socket();
+        SocketPeek {
+            io_data: EventData::new(socket as HANDLE),
+            buf,
+            socket,
+            #[cfg(feature = "io_timeout")]
+            timeout,
+            can_drop: DelayDrop::new(),
+            is_coroutine: is_coroutine(),
+        }
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
@@ -70,12 +67,19 @@ impl<'a> EventSource for SocketPeek<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            let socket: std::net::TcpStream = FromRawSocket::from_raw_socket(self.socket);
-            // TODO: impl socket.peek_overlapped()
-            let ret = socket.read_overlapped(self.buf, self.io_data.get_overlapped());
-            // don't close the socket
-            socket.into_raw_socket();
-            ret
+            let mut buf = slice2buf(self.buf);
+            let mut flags = MSG_PEEK as u32;
+            let mut bytes_read: u32 = 0;
+            let r = WSARecv(
+                self.socket as SOCKET,
+                &mut buf,
+                1,
+                &mut bytes_read,
+                &mut flags,
+                self.io_data.get_overlapped(),
+                None,
+            );
+            cvt(r, bytes_read)
         });
 
         #[cfg(feature = "io_cancel")]
