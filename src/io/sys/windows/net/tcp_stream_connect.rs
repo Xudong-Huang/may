@@ -4,6 +4,7 @@ use std::os::windows::io::AsRawSocket;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::{connect_complete, connect_overlapped};
 use super::super::{add_socket, co_io_result, EventData, IoData};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
@@ -14,7 +15,6 @@ use crate::io::OptionCell;
 use crate::net::TcpStream;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::net::TcpStreamExt;
 use windows_sys::Win32::Foundation::*;
 
 pub struct TcpStreamConnect {
@@ -83,7 +83,7 @@ impl TcpStreamConnect {
     pub fn done(&mut self) -> io::Result<TcpStream> {
         co_io_result(&self.io_data, self.is_coroutine)?;
         let stream = self.stream.take();
-        stream.connect_complete()?;
+        connect_complete(stream.as_raw_socket())?;
         Ok(TcpStream::from_stream(stream, IoData))
     }
 }
@@ -102,8 +102,12 @@ impl EventSource for TcpStreamConnect {
 
         // call the overlapped connect API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.stream
-                .connect_overlapped(&self.addr, &[], self.io_data.get_overlapped())
+            connect_overlapped(
+                self.stream.as_raw_socket(),
+                &self.addr,
+                &[],
+                self.io_data.get_overlapped(),
+            )
         });
 
         #[cfg(feature = "io_cancel")]

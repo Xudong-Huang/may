@@ -1,13 +1,20 @@
 //! ported from miow crate which is not maintained anymore
 
+use std::net::SocketAddr;
 use std::os::windows::io::{AsRawHandle, AsRawSocket};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use std::{io, os::windows::io::RawSocket};
 
+use windows_sys::core::GUID;
 use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Networking::WinSock::*;
 use windows_sys::Win32::System::Threading::INFINITE;
 use windows_sys::Win32::System::IO::*;
+
+type BOOL = i32;
+const TRUE: BOOL = 1;
+const FALSE: BOOL = 0;
 
 /// A handle to an Windows I/O Completion Port.
 #[derive(Debug)]
@@ -267,6 +274,45 @@ impl CompletionStatus {
     }
 }
 
+struct WsaExtension {
+    guid: GUID,
+    val: AtomicUsize,
+}
+
+impl WsaExtension {
+    fn get(&self, socket: SOCKET) -> io::Result<usize> {
+        let prev = self.val.load(Ordering::SeqCst);
+        if prev != 0 && !cfg!(debug_assertions) {
+            return Ok(prev);
+        }
+        let mut ret = 0 as usize;
+        let mut bytes = 0;
+
+        // https://github.com/microsoft/win32metadata/issues/671
+        const SIO_GET_EXTENSION_FUNCTION_POINTER: u32 = 33_5544_3206u32;
+
+        let r = unsafe {
+            WSAIoctl(
+                socket,
+                SIO_GET_EXTENSION_FUNCTION_POINTER,
+                &self.guid as *const _ as *mut _,
+                std::mem::size_of_val(&self.guid) as u32,
+                &mut ret as *mut _ as *mut _,
+                std::mem::size_of_val(&ret) as u32,
+                &mut bytes,
+                0 as *mut _,
+                None,
+            )
+        };
+        cvt(r, 0).map(|_| {
+            debug_assert_eq!(bytes as usize, std::mem::size_of_val(&ret));
+            debug_assert!(prev == 0 || prev == ret);
+            self.val.store(ret, Ordering::SeqCst);
+            ret
+        })
+    }
+}
+
 fn dur2ms(dur: Option<Duration>) -> u32 {
     let dur = match dur {
         Some(dur) => dur,
@@ -295,8 +341,8 @@ fn last_err() -> io::Result<Option<usize>> {
     }
 }
 
-fn cvt_ret(i: i32) -> io::Result<bool> {
-    if i == 0 {
+fn cvt_ret(i: BOOL) -> io::Result<bool> {
+    if i == FALSE {
         Err(io::Error::last_os_error())
     } else {
         Ok(i != 0)
@@ -308,6 +354,62 @@ fn cvt(i: i32, size: u32) -> io::Result<Option<usize>> {
         last_err()
     } else {
         Ok(Some(size as usize))
+    }
+}
+
+/// A type with the same memory layout as `SOCKADDR`. Used in converting Rust level
+/// SocketAddr* types into their system representation. The benefit of this specific
+/// type over using `SOCKADDR_STORAGE` is that this type is exactly as large as it
+/// needs to be and not a lot larger. And it can be initialized cleaner from Rust.
+#[repr(C)]
+pub(crate) union SocketAddrCRepr {
+    v4: SOCKADDR_IN,
+    v6: SOCKADDR_IN6,
+}
+
+impl SocketAddrCRepr {
+    pub(crate) fn as_ptr(&self) -> *const SOCKADDR {
+        self as *const _ as *const SOCKADDR
+    }
+}
+
+fn socket_addr_to_ptrs(addr: &SocketAddr) -> (SocketAddrCRepr, i32) {
+    match *addr {
+        SocketAddr::V4(ref a) => {
+            let sin_addr = IN_ADDR {
+                S_un: IN_ADDR_0 {
+                    S_addr: u32::from_ne_bytes(a.ip().octets()),
+                },
+            };
+
+            let sockaddr_in = SOCKADDR_IN {
+                sin_family: AF_INET as _,
+                sin_port: a.port().to_be(),
+                sin_addr,
+                sin_zero: [0; 8],
+            };
+
+            let sockaddr = SocketAddrCRepr { v4: sockaddr_in };
+            (sockaddr, std::mem::size_of::<SOCKADDR_IN>() as i32)
+        }
+        SocketAddr::V6(ref a) => {
+            let sockaddr_in6 = SOCKADDR_IN6 {
+                sin6_family: AF_INET6 as _,
+                sin6_port: a.port().to_be(),
+                sin6_addr: IN6_ADDR {
+                    u: IN6_ADDR_0 {
+                        Byte: a.ip().octets(),
+                    },
+                },
+                sin6_flowinfo: a.flowinfo(),
+                Anonymous: SOCKADDR_IN6_0 {
+                    sin6_scope_id: a.scope_id(),
+                },
+            };
+
+            let sockaddr = SocketAddrCRepr { v6: sockaddr_in6 };
+            (sockaddr, std::mem::size_of::<SOCKADDR_IN6>() as i32)
+        }
     }
 }
 
@@ -365,4 +467,62 @@ pub unsafe fn socket_write(
         None,
     );
     cvt(r, bytes_written)
+}
+
+pub unsafe fn connect_overlapped(
+    socket: RawSocket,
+    addr: &SocketAddr,
+    buf: &[u8],
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    static CONNECTEX: WsaExtension = WsaExtension {
+        guid: GUID {
+            data1: 0x25a207b9,
+            data2: 0xddf3,
+            data3: 0x4660,
+            data4: [0x8e, 0xe9, 0x76, 0xe5, 0x8c, 0x74, 0x06, 0x3e],
+        },
+        val: AtomicUsize::new(0),
+    };
+
+    let socket = socket as SOCKET;
+
+    let ptr = CONNECTEX.get(socket)?;
+    assert!(ptr != 0);
+    let connect_ex = std::mem::transmute::<_, LPFN_CONNECTEX>(ptr).unwrap();
+
+    let (addr_buf, addr_len) = socket_addr_to_ptrs(addr);
+    let mut bytes_sent: u32 = 0;
+    let r = connect_ex(
+        socket,
+        addr_buf.as_ptr(),
+        addr_len,
+        buf.as_ptr() as *mut _,
+        buf.len() as u32,
+        &mut bytes_sent,
+        overlapped,
+    );
+    if r == TRUE {
+        Ok(Some(bytes_sent as usize))
+    } else {
+        last_err()
+    }
+}
+
+pub fn connect_complete(socket: RawSocket) -> io::Result<()> {
+    const SO_UPDATE_CONNECT_CONTEXT: i32 = 0x7010;
+    let result = unsafe {
+        setsockopt(
+            socket as SOCKET,
+            SOL_SOCKET as _,
+            SO_UPDATE_CONNECT_CONTEXT,
+            0 as *mut _,
+            0,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }

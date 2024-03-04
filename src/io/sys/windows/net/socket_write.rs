@@ -3,8 +3,8 @@ use std::os::windows::io::{AsRawSocket, RawSocket};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
-use super::super::{co_io_result, EventData};
 use super::super::miow::socket_write;
+use super::super::{co_io_result, EventData};
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
 use windows_sys::Win32::Foundation::*;
@@ -53,11 +53,7 @@ impl<'a> EventSource for SocketWrite<'a> {
         self.io_data.co = Some(co);
         // call the overlapped write API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            socket_write(
-                self.socket,
-                self.buf,
-                self.io_data.get_overlapped(),
-            )
+            socket_write(self.socket, self.buf, self.io_data.get_overlapped())
         });
     }
 }
