@@ -1,9 +1,8 @@
 use std::io;
 
-use crate::cancel::CancelIo;
-use crate::sync::Mutex;
-// use scheduler::get_scheduler;
 use super::EventData;
+use crate::cancel::CancelIo;
+use crate::sync::AtomicOption;
 
 pub struct CancelIoData {
     ev_data: *mut EventData,
@@ -38,28 +37,24 @@ impl CancelIoData {
 
 // windows must use Mutex to protect it's data
 // because it will not use the AtomicOption<CoroutineImpl> as a gate keeper
-pub struct CancelIoImpl(Mutex<Option<CancelIoData>>);
+pub struct CancelIoImpl(AtomicOption<CancelIoData>);
 
 impl CancelIo for CancelIoImpl {
     type Data = CancelIoData;
 
     fn new() -> Self {
-        CancelIoImpl(Mutex::new(None))
+        CancelIoImpl(AtomicOption::none())
     }
 
     fn set(&self, data: CancelIoData) {
-        *self.0.lock().expect("failed to get CancelIo lock") = Some(data);
+        self.0.store(data);
     }
 
     fn clear(&self) {
-        *self.0.lock().expect("failed to get CancelIo lock") = None;
+        self.0.take();
     }
 
     unsafe fn cancel(&self) {
-        self.0
-            .lock()
-            .expect("failed to get CancelIo lock")
-            .take()
-            .map(|d| d.cancel());
+        self.0.take().map(|d| d.cancel());
     }
 }
