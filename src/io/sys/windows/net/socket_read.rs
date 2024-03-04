@@ -1,8 +1,9 @@
 use std::io;
-use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
+use std::os::windows::io::{AsRawSocket, RawSocket};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::socket_read;
 use super::super::{co_io_result, EventData};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
@@ -11,7 +12,6 @@ use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::net::TcpStreamExt;
 use windows_sys::Win32::Foundation::*;
 
 pub struct SocketRead<'a> {
@@ -66,11 +66,7 @@ impl<'a> EventSource for SocketRead<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            let socket: std::net::TcpStream = FromRawSocket::from_raw_socket(self.socket);
-            let ret = socket.read_overlapped(self.buf, self.io_data.get_overlapped());
-            // don't close the socket
-            socket.into_raw_socket();
-            ret
+            socket_read(self.socket, self.buf, 0, self.io_data.get_overlapped())
         });
 
         #[cfg(feature = "io_cancel")]

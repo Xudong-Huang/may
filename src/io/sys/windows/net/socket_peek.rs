@@ -3,8 +3,8 @@ use std::os::windows::io::{AsRawSocket, RawSocket};
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::socket_read;
 use super::super::{co_io_result, EventData};
-use super::miow::{cvt, slice2buf};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
@@ -13,7 +13,7 @@ use crate::io::cancel::CancelIoData;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
 use windows_sys::Win32::Foundation::*;
-use windows_sys::Win32::Networking::WinSock::{WSARecv, MSG_PEEK, SOCKET};
+use windows_sys::Win32::Networking::WinSock::MSG_PEEK;
 
 pub struct SocketPeek<'a> {
     io_data: EventData,
@@ -67,19 +67,12 @@ impl<'a> EventSource for SocketPeek<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            let mut buf = slice2buf(self.buf);
-            let mut flags = MSG_PEEK as u32;
-            let mut bytes_read: u32 = 0;
-            let r = WSARecv(
-                self.socket as SOCKET,
-                &mut buf,
-                1,
-                &mut bytes_read,
-                &mut flags,
+            socket_read(
+                self.socket,
+                self.buf,
+                MSG_PEEK,
                 self.io_data.get_overlapped(),
-                None,
-            );
-            cvt(r, bytes_read)
+            )
         });
 
         #[cfg(feature = "io_cancel")]
