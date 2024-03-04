@@ -14,6 +14,7 @@ use windows_sys::Win32::Networking::WinSock::*;
 use windows_sys::Win32::System::Threading::INFINITE;
 use windows_sys::Win32::System::IO::*;
 
+#[allow(clippy::upper_case_acronyms)]
 type BOOL = i32;
 const TRUE: BOOL = 1;
 const FALSE: BOOL = 0;
@@ -287,7 +288,7 @@ impl WsaExtension {
         if prev != 0 && !cfg!(debug_assertions) {
             return Ok(prev);
         }
-        let mut ret = 0 as usize;
+        let mut ret = 0;
         let mut bytes = 0;
 
         // https://github.com/microsoft/win32metadata/issues/671
@@ -302,7 +303,7 @@ impl WsaExtension {
                 &mut ret as *mut _ as *mut _,
                 std::mem::size_of_val(&ret) as u32,
                 &mut bytes,
-                0 as *mut _,
+                std::ptr::null_mut(),
                 None,
             )
         };
@@ -501,7 +502,7 @@ pub unsafe fn socket_write(
     buf: &[u8],
     overlapped: *mut OVERLAPPED,
 ) -> io::Result<Option<usize>> {
-    let mut buf = slice2buf(buf);
+    let buf = slice2buf(buf);
     let mut bytes_written = 0;
     // Note here that we capture the number of bytes written. The
     // documentation on MSDN, however, states:
@@ -521,7 +522,7 @@ pub unsafe fn socket_write(
     // [1]: https://github.com/carllerche/mio/pull/520#issuecomment-273983823
     let r = WSASend(
         socket as SOCKET,
-        &mut buf,
+        &buf,
         1,
         &mut bytes_written,
         0,
@@ -578,7 +579,7 @@ pub fn connect_complete(socket: RawSocket) -> io::Result<()> {
             socket as SOCKET,
             SOL_SOCKET as _,
             SO_UPDATE_CONNECT_CONTEXT,
-            0 as *mut _,
+            std::ptr::null_mut(),
             0,
         )
     };
@@ -630,9 +631,9 @@ impl AcceptAddrsBuf {
     /// succeeded to parse out the data that was written in.
     pub fn parse(&self, socket: &TcpListener) -> io::Result<AcceptAddrs> {
         let mut ret = AcceptAddrs {
-            local: 0 as *mut _,
+            local: std::ptr::null_mut(),
             local_len: 0,
-            remote: 0 as *mut _,
+            remote: std::ptr::null_mut(),
             remote_len: 0,
             _data: self,
         };
@@ -657,7 +658,8 @@ impl AcceptAddrsBuf {
 
     #[allow(deref_nullptr)]
     fn args(&self) -> (*mut std::ffi::c_void, u32, u32, u32) {
-        let remote_offset = unsafe { &(*(0 as *const AcceptAddrsBuf)).remote as *const _ as usize };
+        let remote_offset =
+            unsafe { &(*(std::ptr::null::<AcceptAddrsBuf>())).remote as *const _ as usize };
         (
             self as *const _ as *mut _,
             0,
@@ -746,4 +748,86 @@ pub fn accept_complete(me: RawSocket, socket: &TcpStream) -> io::Result<()> {
     } else {
         Err(io::Error::last_os_error())
     }
+}
+
+/// A type to represent a buffer in which a socket address will be stored.
+///
+/// This type is used with the `recv_from_overlapped` function on the
+/// `UdpSocketExt` trait to provide space for the overlapped I/O operation to
+/// fill in the address upon completion.
+#[derive(Clone, Copy)]
+pub struct SocketAddrBuf {
+    buf: SOCKADDR_STORAGE,
+    len: i32,
+}
+
+impl SocketAddrBuf {
+    /// Creates a new blank socket address buffer.
+    ///
+    /// This should be used before a call to `recv_from_overlapped` overlapped
+    /// to create an instance to pass down.
+    pub fn new() -> SocketAddrBuf {
+        SocketAddrBuf {
+            buf: unsafe { std::mem::zeroed() },
+            len: std::mem::size_of::<SOCKADDR_STORAGE>() as i32,
+        }
+    }
+
+    /// Parses this buffer to return a standard socket address.
+    ///
+    /// This function should be called after the buffer has been filled in with
+    /// a call to `recv_from_overlapped` being completed. It will interpret the
+    /// address filled in and return the standard socket address type.
+    ///
+    /// If an error is encountered then `None` is returned.
+    #[allow(clippy::wrong_self_convention)]
+    pub fn to_socket_addr(&self) -> Option<SocketAddr> {
+        unsafe { ptrs_to_socket_addr(&self.buf as *const _ as *const _, self.len) }
+    }
+}
+
+pub unsafe fn recv_from_overlapped(
+    socket: RawSocket,
+    buf: &mut [u8],
+    addr: *mut SocketAddrBuf,
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    let buf = slice2buf(buf);
+    let mut flags = 0;
+    let mut received_bytes: u32 = 0;
+    let r = WSARecvFrom(
+        socket as SOCKET,
+        &buf,
+        1,
+        &mut received_bytes,
+        &mut flags,
+        &mut (*addr).buf as *mut _ as *mut _,
+        &mut (*addr).len,
+        overlapped,
+        None,
+    );
+    cvt(r, received_bytes)
+}
+
+pub unsafe fn send_to_overlapped(
+    socket: RawSocket,
+    buf: &[u8],
+    addr: &SocketAddr,
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    let (addr_buf, addr_len) = socket_addr_to_ptrs(addr);
+    let buf = slice2buf(buf);
+    let mut sent_bytes = 0;
+    let r = WSASendTo(
+        socket as SOCKET,
+        &buf,
+        1,
+        &mut sent_bytes,
+        0,
+        addr_buf.as_ptr() as *const _,
+        addr_len,
+        overlapped,
+        None,
+    );
+    cvt(r, sent_bytes)
 }

@@ -4,6 +4,7 @@ use std::os::windows::io::AsRawSocket;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::super::miow::{recv_from_overlapped, SocketAddrBuf};
 use super::super::{co_io_result, EventData};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
@@ -13,7 +14,6 @@ use crate::io::cancel::CancelIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::net::{SocketAddrBuf, UdpSocketExt};
 use windows_sys::Win32::Foundation::*;
 
 pub struct UdpRecvFrom<'a> {
@@ -64,7 +64,8 @@ impl<'a> EventSource for UdpRecvFrom<'a> {
         self.io_data.co = Some(co);
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket.recv_from_overlapped(
+            recv_from_overlapped(
+                self.socket.as_raw_socket(),
                 self.buf,
                 &mut self.addr,
                 self.io_data.get_overlapped(),
