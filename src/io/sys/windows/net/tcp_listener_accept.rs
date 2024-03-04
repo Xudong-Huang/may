@@ -2,6 +2,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
 
+use super::super::miow::{accept_complete, accept_overlapped, AcceptAddrsBuf};
 use super::super::{add_socket, co_io_result, EventData};
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_cancel_data;
@@ -12,7 +13,6 @@ use crate::io::OptionCell;
 use crate::net::{TcpListener, TcpStream};
 use crate::scheduler::get_scheduler;
 use crate::sync::delay_drop::DelayDrop;
-use miow::net::{AcceptAddrsBuf, TcpListenerExt};
 use windows_sys::Win32::Foundation::*;
 
 pub struct TcpListenerAccept<'a> {
@@ -49,7 +49,7 @@ impl<'a> TcpListenerAccept<'a> {
         co_io_result(&self.io_data, self.is_coroutine)?;
         let socket = &self.socket;
         let ss = self.ret.take();
-        let s = socket.accept_complete(&ss).and_then(|_| {
+        let s = accept_complete(socket.as_raw_socket(), &ss).and_then(|_| {
             ss.set_nonblocking(true)?;
             add_socket(&ss).map(|io| TcpStream::from_stream(ss, io))
         })?;
@@ -76,8 +76,12 @@ impl<'a> EventSource for TcpListenerAccept<'a> {
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
-            self.socket
-                .accept_overlapped(&self.ret, &mut self.addr, self.io_data.get_overlapped())
+            accept_overlapped(
+                self.socket.as_raw_socket(),
+                &self.ret,
+                &mut self.addr,
+                self.io_data.get_overlapped(),
+            )
         });
 
         #[cfg(feature = "io_cancel")]
