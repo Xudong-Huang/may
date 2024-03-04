@@ -331,3 +331,38 @@ pub unsafe fn socket_read(
     );
     cvt(r, bytes_read)
 }
+
+pub unsafe fn socket_write(
+    socket: RawSocket,
+    buf: &[u8],
+    overlapped: *mut OVERLAPPED,
+) -> io::Result<Option<usize>> {
+    let mut buf = slice2buf(buf);
+    let mut bytes_written = 0;
+    // Note here that we capture the number of bytes written. The
+    // documentation on MSDN, however, states:
+    //
+    // > Use NULL for this parameter if the lpOverlapped parameter is not
+    // > NULL to avoid potentially erroneous results. This parameter can be
+    // > NULL only if the lpOverlapped parameter is not NULL.
+    //
+    // If we're not passing a null overlapped pointer here, then why are we
+    // then capturing the number of bytes! Well so it turns out that this is
+    // clearly faster to learn the bytes here rather than later calling
+    // `WSAGetOverlappedResult`, and in practice almost all implementations
+    // use this anyway [1].
+    //
+    // As a result we use this to and report back the result.
+    //
+    // [1]: https://github.com/carllerche/mio/pull/520#issuecomment-273983823
+    let r = WSASend(
+        socket as SOCKET,
+        &mut buf,
+        1,
+        &mut bytes_written,
+        0,
+        overlapped,
+        None,
+    );
+    cvt(r, bytes_written)
+}
