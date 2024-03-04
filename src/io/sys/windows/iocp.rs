@@ -4,11 +4,11 @@ use std::os::windows::io::AsRawSocket;
 use std::time::Duration;
 use std::{io, ptr};
 
+use super::miow::{CompletionPort, CompletionStatus};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
 use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
-use miow::iocp::{CompletionPort, CompletionStatus};
 use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
