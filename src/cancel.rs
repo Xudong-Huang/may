@@ -35,6 +35,7 @@ pub trait CancelIo {
     type Data;
     fn new() -> Self;
     // set the io data
+    #[allow(dead_code)]
     fn set(&self, io_data: Self::Data);
     // clear the io data
     fn clear(&self);
@@ -53,7 +54,9 @@ impl CancelIo for CancelIoImpl {
     }
     fn set(&self, _: Self::Data) {}
     fn clear(&self) {}
-    unsafe fn cancel(&self) {}
+    unsafe fn cancel(&self) -> Option<io::Result<()>> {
+        None
+    }
 }
 
 // each coroutine has it's own Cancel data

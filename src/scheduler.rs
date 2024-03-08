@@ -25,10 +25,10 @@ use may_queue::spsc::Queue as Local;
 // thread id, only workers are normal ones
 #[cfg(nightly)]
 #[thread_local]
-pub static WORKER_ID: Cell<usize> = Cell::new(!1);
+pub static WORKER_ID: Cell<usize> = Cell::new(usize::MAX);
 
 #[cfg(not(nightly))]
-thread_local! { pub static WORKER_ID: Cell<usize> = Cell::new(!1); }
+thread_local! { pub static WORKER_ID: Cell<usize> = Cell::new(usize::MAX); }
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
@@ -178,7 +178,7 @@ impl Scheduler {
         #[cfg(not(nightly))]
         let id = WORKER_ID.with(|id| id.get());
 
-        if id != !1 {
+        if id != usize::MAX {
             self.schedule_with_id(co, id);
         } else {
             self.schedule_global(co);

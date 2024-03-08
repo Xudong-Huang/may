@@ -36,6 +36,11 @@ jobs:
         with:
           command: clippy
           args: -- -D warnings
+      - name: Run cargo clippy no default features
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --no-default-features -- -D warnings
   test:
     name: Test ${{ matrix.rust }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -65,4 +70,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release 
+          args: --release
