@@ -119,18 +119,16 @@ impl<T: CancelIo> CancelImpl<T> {
     #[cold]
     pub unsafe fn cancel(&self) {
         self.state.fetch_or(1, Ordering::Release);
-        match self.co.take() {
-            Some(co) => {
-                co.take()
-                    .map(|mut co| {
-                        // set the cancel result for the coroutine
-                        set_co_para(&mut co, io::Error::new(io::ErrorKind::Other, "Canceled"));
-                        get_scheduler().schedule(co);
-                    })
-                    .unwrap_or(())
+
+        if let Some(co) = self.co.take() {
+            if let Some(mut co) = co.take() {
+                self.io.clear();
+                // set the cancel result for the coroutine
+                set_co_para(&mut co, io::Error::new(io::ErrorKind::Other, "Canceled"));
+                return get_scheduler().schedule(co);
             }
-            None => self.io.cancel(),
         }
+        self.io.cancel();
     }
 
     // clear the cancel bit so that we can reuse the cancel
