@@ -54,7 +54,7 @@ impl CancelIo for CancelIoImpl {
         self.0.take();
     }
 
-    unsafe fn cancel(&self) {
-        self.0.take().map(|d| d.cancel());
+    unsafe fn cancel(&self) -> Option<io::Result<()>> {
+        self.0.take().map(|d| d.cancel())
     }
 }

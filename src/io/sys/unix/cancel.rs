@@ -22,11 +22,13 @@ impl CancelIo for CancelIoImpl {
         self.0.take();
     }
 
-    unsafe fn cancel(&self) {
+    unsafe fn cancel(&self) -> Option<io::Result<()>> {
         if let Some(e) = self.0.take() {
             if let Some(co) = e.co.take() {
                 get_scheduler().schedule(co);
+                return Some(Ok(()));
             }
         }
+        None
     }
 }

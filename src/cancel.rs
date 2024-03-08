@@ -34,9 +34,12 @@ pub fn trigger_cancel_panic() -> ! {
 pub trait CancelIo {
     type Data;
     fn new() -> Self;
-    fn set(&self, _: Self::Data);
+    // set the io data
+    fn set(&self, io_data: Self::Data);
+    // clear the io data
     fn clear(&self);
-    unsafe fn cancel(&self);
+    // if io was set, return Some(io::Result<()>)
+    unsafe fn cancel(&self) -> Option<io::Result<()>>;
 }
 
 #[cfg(not(feature = "io_cancel"))]
@@ -120,15 +123,19 @@ impl<T: CancelIo> CancelImpl<T> {
     pub unsafe fn cancel(&self) {
         self.state.fetch_or(1, Ordering::Release);
 
+        if let Some(Ok(())) = self.io.cancel() {
+            // successfully canceled
+            return;
+        }
+
         if let Some(co) = self.co.take() {
             if let Some(mut co) = co.take() {
-                self.io.clear();
+                // this is not safe, the kernel may still need to use the overlapped
                 // set the cancel result for the coroutine
                 set_co_para(&mut co, io::Error::new(io::ErrorKind::Other, "Canceled"));
-                return get_scheduler().schedule(co);
+                get_scheduler().schedule(co);
             }
         }
-        self.io.cancel();
     }
 
     // clear the cancel bit so that we can reuse the cancel
@@ -153,9 +160,7 @@ impl<T: CancelIo> CancelImpl<T> {
     // clear the cancel io data
     // should be called after io completion
     pub fn clear(&self) {
-        // if self.co.take(Ordering::Acquire).is_none() {
         self.io.clear();
-        // }
     }
 }
 
