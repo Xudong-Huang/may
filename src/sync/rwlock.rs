@@ -617,7 +617,7 @@ mod tests {
 
         // cancel one coroutine that is waiting for the rwlock
         let mut cancel_id = id + 1;
-        if cancel_id == N + 2 {
+        if cancel_id == N + 1 {
             cancel_id = 1;
         }
         // println!("cancel id = {}", cancel_id);
