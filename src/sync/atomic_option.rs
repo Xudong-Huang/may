@@ -14,13 +14,13 @@ const _: () = assert!(AtomicCell::<Option<CoroutineImpl>>::is_lock_free());
 const _: () = assert!(AtomicCell::<Option<Arc<Blocker>>>::is_lock_free());
 
 impl<T> AtomicOption<T> {
-    pub fn none() -> AtomicOption<T> {
+    pub const fn none() -> AtomicOption<T> {
         AtomicOption {
             inner: AtomicCell::new(None),
         }
     }
 
-    pub fn some(t: T) -> AtomicOption<T> {
+    pub const fn some(t: T) -> AtomicOption<T> {
         AtomicOption {
             inner: AtomicCell::new(Some(t)),
         }
