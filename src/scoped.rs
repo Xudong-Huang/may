@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
-use crate::coroutine_impl::{spawn, Coroutine};
+use crate::coroutine_impl::{spawn_builder, Builder, Coroutine};
 use crate::join::JoinHandle;
 use crate::sync::AtomicOption;
 
@@ -17,9 +17,16 @@ pub unsafe fn spawn_unsafe<'a, F>(f: F) -> JoinHandle<()>
 where
     F: FnOnce() + Send + 'a,
 {
+    spawn_unsafe_builder(f, Builder::new())
+}
+
+pub unsafe fn spawn_unsafe_builder<'a, F>(f: F, builder: Builder) -> JoinHandle<()>
+where
+    F: FnOnce() + Send + 'a,
+{
     let closure: Box<dyn FnOnce() + 'a> = Box::new(f);
     let closure: Box<dyn FnOnce() + Send> = mem::transmute(closure);
-    spawn(closure)
+    spawn_builder(closure, builder)
 }
 
 pub struct Scope<'a> {
@@ -131,7 +138,7 @@ impl<'a> Scope<'a> {
     /// before the current stack frame goes away, allowing you to reference the parent stack frame
     /// directly. This is ensured by having the parent join on the child coroutine before the
     /// scope exits.
-    fn spawn_impl<F, T>(&self, f: F) -> ScopedJoinHandle<T>
+    fn spawn_impl<F, T>(&self, f: F, builder: Builder) -> ScopedJoinHandle<T>
     where
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
@@ -140,9 +147,12 @@ impl<'a> Scope<'a> {
         let my_packet = their_packet.clone();
 
         let join_handle = unsafe {
-            spawn_unsafe(move || {
-                their_packet.store(f());
-            })
+            spawn_unsafe_builder(
+                move || {
+                    their_packet.store(f());
+                },
+                builder,
+            )
         };
 
         let co = join_handle.coroutine().clone();
@@ -173,7 +183,15 @@ impl<'a> Scope<'a> {
         F: FnOnce() -> T + Send + 'a,
         T: Send + 'a,
     {
-        self.spawn_impl(f)
+        self.spawn_impl(f, Builder::new())
+    }
+
+    pub unsafe fn spawn_with_builder<F, T>(&self, f: F, builder: Builder) -> ScopedJoinHandle<T>
+    where
+        F: FnOnce() -> T + Send + 'a,
+        T: Send + 'a,
+    {
+        self.spawn_impl(f, builder)
     }
 }
 
