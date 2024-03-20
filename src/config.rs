@@ -1,7 +1,7 @@
 //! `May` Configuration interface
 //!
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
@@ -11,6 +11,14 @@ const DEFAULT_POOL_CAPACITY: usize = 1000;
 static WORKERS: AtomicUsize = AtomicUsize::new(0);
 static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
 static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
+
+// How long does the epoll wait before continuing with other tasks
+// By default, 1000ns = 1ms
+#[cfg(feature = "io_timeout")]
+static POLL_TIMEOUT_NS: AtomicU64 = AtomicU64::new(1_000);
+
+// Should cores be pinned?
+static PIN_WORKERS: AtomicBool = AtomicBool::new(false);
 
 /// `May` Configuration type
 pub struct Config;
@@ -83,5 +91,27 @@ impl Config {
     /// get the default coroutine stack size
     pub fn get_stack_size(&self) -> usize {
         STACK_SIZE.load(Ordering::Acquire)
+    }
+
+    /// Get the current poll timeout
+    #[cfg(feature = "io_timeout")]
+    pub fn get_timeout_ns(&self) -> u64 {
+        POLL_TIMEOUT_NS.load(Ordering::Acquire)
+    }
+
+    /// Set the poll timeout
+    #[cfg(feature = "io_timeout")]
+    pub fn set_timeout_ns(&self, timeout: u64) {
+        POLL_TIMEOUT_NS.store(timeout, Ordering::Release);
+    }
+
+    /// Enable/Disable core/worker pinning
+    pub fn set_worker_pin(&self, pin: bool) {
+        PIN_WORKERS.store(pin, Ordering::Release);
+    }
+
+    /// Check if worker pinning is on
+    pub fn get_worker_pin(&self) -> bool {
+        PIN_WORKERS.load(Ordering::Acquire)
     }
 }
