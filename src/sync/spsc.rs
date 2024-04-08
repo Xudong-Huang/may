@@ -77,27 +77,27 @@ struct Blocker {
 impl Blocker {
     #[inline]
     fn new_coroutine(co: CoroutineImpl) -> Self {
-        let handle = unsafe { std::mem::transmute(co) };
+        let handle: NonZeroUsize = unsafe { std::mem::transmute(co) };
         Blocker { handle }
     }
 
     #[inline]
     fn new_thread(thread: Thread) -> Self {
-        let mut handle = unsafe { std::mem::transmute(thread) };
+        let mut handle: NonZeroUsize = unsafe { std::mem::transmute(thread) };
         handle |= 1;
         Blocker { handle }
     }
 
     #[inline]
     fn into_coroutine(self) -> CoroutineImpl {
-        let co = unsafe { std::mem::transmute(self.handle) };
+        let co: CoroutineImpl = unsafe { std::mem::transmute(self.handle) };
         std::mem::forget(self);
         co
     }
 
     #[inline]
     fn into_thread(self) -> Thread {
-        let thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
+        let thread: Thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
         std::mem::forget(self);
         thread
     }

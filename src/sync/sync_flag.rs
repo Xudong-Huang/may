@@ -130,7 +130,7 @@ impl SyncFlag {
     /// set the SyncFlag to true
     /// and would wakeup all threads/coroutines that are calling `wait`
     pub fn fire(&self) {
-        self.cnt.store(std::isize::MAX, Ordering::SeqCst);
+        self.cnt.store(isize::MAX, Ordering::SeqCst);
 
         // try to wakeup all waiters
         self.wakeup_all();

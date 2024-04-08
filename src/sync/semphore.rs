@@ -50,7 +50,7 @@ pub struct Semphore {
 impl Semphore {
     /// create a semphore with the initial value
     pub fn new(init: usize) -> Self {
-        assert!(init < ::std::isize::MAX as usize);
+        assert!(init < isize::MAX as usize);
         Semphore {
             to_wake: SegQueue::new(),
             cnt: AtomicIsize::new(init as isize),
@@ -144,7 +144,7 @@ impl Semphore {
     /// and would wakeup a thread/coroutine that is calling `wait`
     pub fn post(&self) {
         let cnt = self.cnt.fetch_add(1, Ordering::SeqCst);
-        assert!(cnt < ::std::isize::MAX);
+        assert!(cnt < isize::MAX);
 
         // try to wakeup one waiter first
         if cnt < 0 {
