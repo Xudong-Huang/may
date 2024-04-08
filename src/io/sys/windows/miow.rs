@@ -137,7 +137,7 @@ impl CompletionPort {
         );
         let mut removed = 0;
         let timeout = dur2ms(timeout);
-        let len = std::cmp::min(list.len(), <u32>::max_value() as usize) as u32;
+        let len = std::cmp::min(list.len(), u32::MAX as usize) as u32;
         let ret = unsafe {
             GetQueuedCompletionStatusEx(
                 self.handle,
@@ -325,13 +325,13 @@ fn dur2ms(dur: Option<Duration>) -> u32 {
     let ms = dur.as_secs().checked_mul(1_000);
     let ms_extra = dur.subsec_millis();
     ms.and_then(|ms| ms.checked_add(ms_extra as u64))
-        .map(|ms| std::cmp::min(u32::max_value() as u64, ms) as u32)
+        .map(|ms| std::cmp::min(u32::MAX as u64, ms) as u32)
         .unwrap_or(INFINITE - 1)
 }
 
 unsafe fn slice2buf(slice: &[u8]) -> WSABUF {
     WSABUF {
-        len: std::cmp::min(slice.len(), <u32>::max_value() as usize) as u32,
+        len: std::cmp::min(slice.len(), u32::MAX as usize) as u32,
         buf: slice.as_ptr() as *mut _,
     }
 }
@@ -553,7 +553,7 @@ pub unsafe fn connect_overlapped(
 
     let ptr = CONNECTEX.get(socket)?;
     assert!(ptr != 0);
-    let connect_ex = std::mem::transmute::<_, LPFN_CONNECTEX>(ptr).unwrap();
+    let connect_ex = std::mem::transmute::<usize, LPFN_CONNECTEX>(ptr).unwrap();
 
     let (addr_buf, addr_len) = socket_addr_to_ptrs(addr);
     let mut bytes_sent: u32 = 0;
@@ -641,7 +641,8 @@ impl AcceptAddrsBuf {
         let ptr = GETACCEPTEXSOCKADDRS.get(socket.as_raw_socket() as SOCKET)?;
         assert!(ptr != 0);
         unsafe {
-            let get_sockaddrs = std::mem::transmute::<_, LPFN_GETACCEPTEXSOCKADDRS>(ptr).unwrap();
+            let get_sockaddrs =
+                std::mem::transmute::<usize, LPFN_GETACCEPTEXSOCKADDRS>(ptr).unwrap();
             let (a, b, c, d) = self.args();
             get_sockaddrs(
                 a,
@@ -710,7 +711,7 @@ pub unsafe fn accept_overlapped(
 
     let ptr = ACCEPTEX.get(me as SOCKET)?;
     assert!(ptr != 0);
-    let accept_ex = std::mem::transmute::<_, LPFN_ACCEPTEX>(ptr).unwrap();
+    let accept_ex = std::mem::transmute::<usize, LPFN_ACCEPTEX>(ptr).unwrap();
 
     let mut bytes = 0;
     let (a, b, c, d) = (*addrs).args();
@@ -839,7 +840,7 @@ pub unsafe fn pipe_read_overlapped(
     overlapped: *mut OVERLAPPED,
 ) -> io::Result<Option<usize>> {
     let wait = FALSE;
-    let len = std::cmp::min(buf.len(), <u32>::max_value() as usize) as u32;
+    let len = std::cmp::min(buf.len(), u32::MAX as usize) as u32;
     let res = cvt_ret({
         ReadFile(
             handle as HANDLE,
@@ -877,7 +878,7 @@ pub unsafe fn pipe_write_overlapped(
     overlapped: *mut OVERLAPPED,
 ) -> io::Result<Option<usize>> {
     let wait = FALSE;
-    let len = std::cmp::min(buf.len(), <u32>::max_value() as usize) as u32;
+    let len = std::cmp::min(buf.len(), u32::MAX as usize) as u32;
     let res = cvt_ret({
         WriteFile(
             handle as HANDLE,
