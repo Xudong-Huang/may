@@ -28,7 +28,7 @@ use may_queue::spsc::Queue as Local;
 pub static WORKER_ID: Cell<usize> = Cell::new(usize::MAX);
 
 #[cfg(not(nightly))]
-thread_local! { pub static WORKER_ID: Cell<usize> = Cell::new(usize::MAX); }
+thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX) }; }
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
 // other event may try to consume the coroutine while timer thread consume it
