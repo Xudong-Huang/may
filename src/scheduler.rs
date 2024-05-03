@@ -141,7 +141,7 @@ impl Scheduler {
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
-        let max_steal: usize = 8;
+        let max_steal: usize = std::cmp::min(8, self.workers - 1);
 
         #[cfg(feature = "rand_work_steal")]
         let mut rng = fastrand::Rng::new();
@@ -166,7 +166,7 @@ impl Scheduler {
                     if #[cfg(feature = "rand_work_steal")] {
                         let target = rng.usize(0..self.workers);
                     } else {
-                        let target = (id + _i) % self.workers;
+                        let target = (id + _i + 1) % self.workers;
                     }
                 };
                 let stealer = self.stealers.get(target).unwrap();
