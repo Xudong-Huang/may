@@ -10,8 +10,8 @@ impl<T> Local<T> {
         self.0.push(value);
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    pub fn has_tasks(&self) -> bool {
+        !self.0.is_empty()
     }
 }
 
