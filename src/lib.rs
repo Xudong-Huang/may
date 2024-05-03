@@ -41,7 +41,7 @@ mod scoped;
 mod timeout_list;
 mod yield_now;
 
-#[cfg(feature = "work_steal")]
+#[cfg(feature = "crossbeam_queue_steal")]
 mod crossbeam_queue_shim;
 
 pub mod coroutine;

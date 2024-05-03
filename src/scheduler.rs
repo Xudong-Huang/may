@@ -15,13 +15,17 @@ use crate::pool::CoroutinePool;
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
-
-#[cfg(feature = "work_steal")]
-use crate::crossbeam_queue_shim::{self, Local, Steal};
 use may_queue::mpsc::Queue;
-// use may_queue::spmc::{self, Local, Steal};
-#[cfg(not(feature = "work_steal"))]
-use may_queue::spsc::Queue as Local;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "crossbeam_queue_steal")] {
+        use crate::crossbeam_queue_shim::{self as spmc, Local, Steal};
+    } else if #[cfg(feature = "work_steal")] {
+        use may_queue::spmc::{self, Local, Steal};
+    } else {
+        use may_queue::spsc::Queue as Local;
+    }
+}
 
 // thread id, only workers are normal ones
 thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX) }; }
@@ -103,7 +107,7 @@ impl Scheduler {
         let local_queues = Vec::from_iter((0..workers).map(|_| Local::new()));
 
         #[cfg(feature = "work_steal")]
-        let queues = Vec::from_iter((0..workers).map(|_| crossbeam_queue_shim::local()));
+        let queues = Vec::from_iter((0..workers).map(|_| spmc::local()));
         #[cfg(feature = "work_steal")]
         let stealers = Vec::from_iter(queues.iter().map(|(s, _l)| s.clone()));
         #[cfg(feature = "work_steal")]
@@ -137,8 +141,11 @@ impl Scheduler {
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
-        let max_steal = 8;
+        let max_steal: usize = 8;
+
+        #[cfg(feature = "rand_work_steal")]
         let mut rng = fastrand::Rng::new();
+
         'work: loop {
             match local.pop() {
                 Some(co) => {
@@ -147,13 +154,21 @@ impl Scheduler {
                 }
                 None => {
                     self.collect_global(id);
-                    if !local.is_empty() {
+                    if local.has_tasks() {
                         continue 'work;
                     }
                 }
             }
-            for _ in 0..max_steal {
-                let target = rng.usize(0..self.workers);
+
+            // The i variable is unused if rand_work_steal is enabled since it selects the steal target randomly instead.
+            for _i in 0..max_steal {
+                cfg_if::cfg_if! {
+                    if #[cfg(feature = "rand_work_steal")] {
+                        let target = rng.usize(0..self.workers);
+                    } else {
+                        let target = (id + _i) % self.workers;
+                    }
+                };
                 let stealer = self.stealers.get(target).unwrap();
                 if let Some(co) = stealer.steal_into(local) {
                     run_coroutine(co);
