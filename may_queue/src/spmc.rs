@@ -24,6 +24,7 @@ struct Slot<T> {
 }
 
 impl<T> Slot<T> {
+    #[allow(clippy::declare_interior_mutable_const)]
     const UNINIT: Self = Self {
         value: UnsafeCell::new(MaybeUninit::uninit()),
     };
