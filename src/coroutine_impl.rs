@@ -439,7 +439,15 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    Builder::new().spawn(f).unwrap()
+    spawn_builder(f, Builder::new())
+}
+
+pub unsafe fn spawn_builder<F, T>(f: F, builder: Builder) -> JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    builder.spawn(f).unwrap()
 }
 
 /// Gets a handle to the coroutine that invokes it.
