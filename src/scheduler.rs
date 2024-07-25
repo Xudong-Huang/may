@@ -15,12 +15,17 @@ use crate::pool::CoroutinePool;
 use crate::sync::AtomicOption;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
-
 use may_queue::mpsc::Queue;
-#[cfg(feature = "work_steal")]
-use may_queue::spmc::{self, Local, Steal};
-#[cfg(not(feature = "work_steal"))]
-use may_queue::spsc::Queue as Local;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "crossbeam_queue_steal")] {
+        use crate::crossbeam_queue_shim::{self as spmc, Local, Steal};
+    } else if #[cfg(feature = "work_steal")] {
+        use may_queue::spmc::{self, Local, Steal};
+    } else {
+        use may_queue::spsc::Queue as Local;
+    }
+}
 
 // thread id, only workers are normal ones
 #[cfg(nightly)]
@@ -61,10 +66,13 @@ fn init_scheduler() {
     });
 
     let core_ids = core_affinity::get_core_ids().unwrap();
+    let pin_cores = config().get_worker_pin();
     // io event loop thread
     for (id, core) in (0..workers).zip(core_ids.into_iter().cycle()) {
         thread::spawn(move || {
-            core_affinity::set_for_current(core);
+            if pin_cores {
+                core_affinity::set_for_current(core);
+            }
             let s = unsafe { &*SCHED };
             s.event_loop.run(id);
         });
@@ -95,6 +103,7 @@ pub struct Scheduler {
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
+    pub workers: usize,
 }
 
 impl Scheduler {
@@ -119,6 +128,7 @@ impl Scheduler {
             stealers,
             global_queues,
             timer_thread: TimerThread::new(),
+            workers,
         })
     }
 
@@ -136,47 +146,48 @@ impl Scheduler {
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
 
-        let len = self.local_queues.len();
-        let max_steal = std::cmp::min(len - 1, 3);
-        let mut next_id = id;
-        let mut state = 0;
-        loop {
-            let co = match state {
-                0 => match local.pop() {
-                    Some(co) => co,
-                    None => {
-                        state += 1;
-                        continue;
-                    }
-                },
-                n if n >= max_steal => return,
-                _ => {
-                    let n = next_id + 1;
-                    next_id = if n == len { 0 } else { n };
-                    let stealer = unsafe { self.stealers.get_unchecked(next_id) };
-                    match stealer.steal_into(local) {
-                        Some(co) => {
-                            state = 0;
-                            co
-                        }
-                        None => {
-                            state += 1;
-                            continue;
-                        }
+        let max_steal: usize = std::cmp::min(8, self.workers - 1);
+
+        #[cfg(feature = "rand_work_steal")]
+        let mut rng = fastrand::Rng::new();
+
+        'work: loop {
+            match local.pop() {
+                Some(co) => {
+                    run_coroutine(co);
+                    continue 'work;
+                }
+                None => {
+                    self.collect_global(id);
+                    if local.has_tasks() {
+                        continue 'work;
                     }
                 }
-            };
-            run_coroutine(co);
+            }
+
+            // The i variable is unused if rand_work_steal is enabled since it selects the steal target randomly instead.
+            for _i in 0..max_steal {
+                cfg_if::cfg_if! {
+                    if #[cfg(feature = "rand_work_steal")] {
+                        let target = rng.usize(0..self.workers);
+                    } else {
+                        let target = (id + _i + 1) % self.workers;
+                    }
+                };
+                let stealer = self.stealers.get(target).unwrap();
+                if let Some(co) = stealer.steal_into(local) {
+                    run_coroutine(co);
+                    continue 'work;
+                }
+            }
+            return;
         }
     }
 
     /// put the coroutine to correct queue so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        #[cfg(nightly)]
         let id = WORKER_ID.get();
-        #[cfg(not(nightly))]
-        let id = WORKER_ID.with(|id| id.get());
 
         if id != usize::MAX {
             self.schedule_with_id(co, id);
@@ -206,17 +217,15 @@ impl Scheduler {
         static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::Relaxed)
-            .rem_euclid(self.global_queues.len());
-        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
-        global.push(co);
-        // signal one waiting thread if any
-        self.get_selector().wakeup(thread_id);
+            .rem_euclid(self.workers);
+        self.schedule_global_with_id(co, thread_id)
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
     #[inline]
     pub fn schedule_global_with_id(&self, co: CoroutineImpl, id: usize) {
-        let thread_id = id.rem_euclid(self.global_queues.len());
+        let thread_id = id.rem_euclid(self.workers);
+        // println!("Scheduling to {thread_id}");
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
         // signal one waiting thread if any
