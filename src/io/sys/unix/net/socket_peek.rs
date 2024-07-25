@@ -40,7 +40,7 @@ impl<'a> SocketPeek<'a> {
             co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             // finish the read operation
             match recv(self.io_data.fd, self.buf, MsgFlags::MSG_PEEK) {
@@ -54,7 +54,7 @@ impl<'a> SocketPeek<'a> {
                 }
             }
 
-            if self.io_data.io_flag.load(Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) != 0 {
                 continue;
             }
 
@@ -84,7 +84,7 @@ impl<'a> EventSource for SocketPeek<'a> {
         // till here the io may be done in other thread
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
             return io_data.fast_schedule();
         }

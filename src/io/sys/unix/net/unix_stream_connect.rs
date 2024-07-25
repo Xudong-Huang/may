@@ -66,7 +66,7 @@ impl UnixStreamConnect {
             co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             match self.stream.connect(&self.path) {
                 Ok(_) => return Ok(convert_to_stream(self)),
@@ -78,7 +78,7 @@ impl UnixStreamConnect {
                 Err(e) => return Err(e),
             }
 
-            if self.io_data.io_flag.load(Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) != 0 {
                 continue;
             }
 
@@ -101,7 +101,7 @@ impl EventSource for UnixStreamConnect {
         unsafe { io_data.co.unsync_store(co) };
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
             return io_data.fast_schedule();
         }

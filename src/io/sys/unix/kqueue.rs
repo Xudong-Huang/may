@@ -149,13 +149,14 @@ impl Selector {
                 // let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
                 // read(self.vec[id].evfd, &mut buf).ok();
-                info!("got wakeup event in select, id={}", id);
+                // info!("got wakeup event in select, id={}", id);
                 scheduler.collect_global(id);
                 continue;
             }
             let data = unsafe { &mut *(event.udata as *mut EventData) };
             // info!("select got event, data={:p}", data);
-            data.io_flag.store(true, Ordering::Release);
+            data.io_flag
+                .fetch_or(event.flags as usize, Ordering::Release);
 
             // first check the atomic co, this may be grab by the worker first
             let co = match data.co.take() {

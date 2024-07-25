@@ -38,7 +38,7 @@ impl<'a> UnixRecvFrom<'a> {
             co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             match self.socket.recv_from(self.buf) {
                 Ok(n) => return Ok(n),
@@ -53,7 +53,7 @@ impl<'a> UnixRecvFrom<'a> {
                 }
             }
 
-            if self.io_data.io_flag.load(Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) != 0 {
                 continue;
             }
 
@@ -78,7 +78,7 @@ impl<'a> EventSource for UnixRecvFrom<'a> {
         unsafe { io_data.co.unsync_store(co) };
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
             return io_data.fast_schedule();
         }

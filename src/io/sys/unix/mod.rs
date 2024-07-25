@@ -3,7 +3,6 @@
 mod select;
 
 #[cfg(any(
-    target_os = "bitrig",
     target_os = "dragonfly",
     target_os = "freebsd",
     target_os = "ios",
@@ -25,7 +24,7 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{fmt, io};
 
@@ -117,7 +116,7 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 // each file handle, the epoll event.data would point to it
 pub struct EventData {
     pub fd: RawFd,
-    pub io_flag: AtomicBool,
+    pub io_flag: AtomicUsize,
     #[cfg(feature = "io_timeout")]
     pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
@@ -130,7 +129,7 @@ impl EventData {
     pub fn new(fd: RawFd) -> EventData {
         EventData {
             fd,
-            io_flag: AtomicBool::new(false),
+            io_flag: AtomicUsize::new(0),
             #[cfg(feature = "io_timeout")]
             timer: RefCell::new(None),
             co: AtomicOption::none(),
@@ -146,10 +145,9 @@ impl EventData {
 
     #[inline]
     pub fn schedule(&self) {
-        info!("event schedule");
         let co = match self.co.take() {
-            None => return, // it's already take by selector
             Some(co) => co,
+            None => return, // it's already take by selector
         };
 
         // it's safe to remove the timer since we are running the timer_list in the same thread
@@ -170,11 +168,9 @@ impl EventData {
     /// used by local re-schedule that in `subscribe`
     #[inline]
     pub fn fast_schedule(&self) {
-        info!("event fast_schedule");
-
         let co = match self.co.take() {
-            None => return, // it's already take by selector
             Some(co) => co,
+            None => return, // it's already take by selector
         };
 
         // it's safe to remove the timer since we are running the timer_list in the same thread
@@ -205,8 +201,8 @@ impl IoData {
 
     // clear the io flag
     #[inline]
-    pub fn reset(&self) {
-        self.io_flag.store(false, Ordering::Relaxed);
+    pub fn reset(&self) -> usize {
+        self.io_flag.swap(0, Ordering::AcqRel)
     }
 }
 

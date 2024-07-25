@@ -3,7 +3,7 @@ use std::io;
 use super::sys::{Selector, SysEvent};
 use crate::scheduler::{get_scheduler, WORKER_ID};
 
-const IO_POLLS_MAX: usize = 128;
+const IO_POLLS_MAX: usize = 1024;
 
 /// Single threaded IO event loop.
 pub struct EventLoop {

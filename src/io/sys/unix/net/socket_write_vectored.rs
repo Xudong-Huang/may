@@ -41,7 +41,7 @@ impl<'a> SocketWriteVectored<'a> {
             co_io_result(self.is_coroutine)?;
 
             // clear the io_flag
-            self.io_data.io_flag.store(false, Ordering::Relaxed);
+            self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             match self.socket.write_vectored(self.bufs) {
                 Ok(n) => return Ok(n),
@@ -55,7 +55,7 @@ impl<'a> SocketWriteVectored<'a> {
                 }
             }
 
-            if self.io_data.io_flag.load(Ordering::Relaxed) {
+            if self.io_data.io_flag.load(Ordering::Relaxed) != 0 {
                 continue;
             }
 
@@ -78,7 +78,7 @@ impl<'a> EventSource for SocketWriteVectored<'a> {
         unsafe { io_data.co.unsync_store(co) };
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             io_data.fast_schedule();
         }
     }

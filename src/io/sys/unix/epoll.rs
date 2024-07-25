@@ -105,8 +105,9 @@ impl Selector {
                 continue;
             }
             let data = unsafe { &mut *(event.data() as *mut EventData) };
-            // info!("select got event, data={:p}", data);
-            data.io_flag.store(true, Ordering::Release);
+            let events = event.events().bits() as usize;
+            // info!("select got event, data={:p}, events={}", data, events);
+            data.io_flag.fetch_or(events, Ordering::Release);
 
             // first check the atomic co, this may be grab by the worker first
             let co = match data.co.take() {

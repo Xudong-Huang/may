@@ -29,7 +29,7 @@ impl<'a> EventSource for RawIoBlock<'a> {
         let io_data = self.io_data;
         unsafe { io_data.co.unsync_store(co) };
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) {
+        if io_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
             return io_data.fast_schedule();
         }
@@ -61,10 +61,9 @@ pub struct WaitIoWaker {
 impl WaitIoWaker {
     /// wakeup the coroutine that is blocked by `WaitIo::wait_io`
     pub fn wakeup(&self) {
-        if self.io_data.io_flag.load(Ordering::Relaxed) {
-            return;
-        }
-        self.io_data.io_flag.store(true, Ordering::Relaxed);
+        self.io_data
+            .io_flag
+            .fetch_or(0x8000_0000, Ordering::Release);
         self.io_data.schedule();
     }
 }
@@ -72,27 +71,28 @@ impl WaitIoWaker {
 /// This is trait that can block on io events but doing nothing about io
 pub trait WaitIo {
     /// reset the io before io operation
-    fn reset_io(&self);
-    /// block on read/write event
-    fn wait_io(&self);
+    #[deprecated(since = "0.3.46", note = "don't need to call this method")]
+    fn reset_io(&self) -> usize;
+    /// block on read/write event, return events flags
+    fn wait_io(&self) -> usize;
     /// wake up the coroutine that is waiting for io
     fn waker(&self) -> WaitIoWaker;
 }
 
 impl<T: io_impl::AsIoData> WaitIo for T {
-    fn reset_io(&self) {
+    fn reset_io(&self) -> usize {
         let io_data = self.as_io_data();
-        io_data.reset();
+        io_data.reset()
     }
-
-    fn wait_io(&self) {
+    fn wait_io(&self) -> usize {
         let io_data = self.as_io_data();
         // when io flag is set we do nothing
-        if io_data.io_flag.load(Ordering::Relaxed) {
-            return;
+        if io_data.io_flag.load(Ordering::Relaxed) != 0 {
+            return io_data.reset();
         }
         let blocker = RawIoBlock::new(self.as_io_data());
         yield_with_io(&blocker, true);
+        io_data.reset()
     }
 
     fn waker(&self) -> WaitIoWaker {
