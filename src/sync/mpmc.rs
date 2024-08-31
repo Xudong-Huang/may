@@ -1,4 +1,5 @@
 //! mpmc synchronized channel implementation
+//!
 //! support an unbounded mpmc queue, senders would not block
 //! receivers would block if there is no data until sender send data
 //! it's almost the same as `mpsc` except that we support multi receivers

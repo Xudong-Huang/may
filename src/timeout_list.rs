@@ -39,14 +39,9 @@ pub const fn ns_to_ms(ns: u64) -> u64 {
 
 #[inline]
 fn get_instant() -> &'static Instant {
-    // TODO: wait for MaybeUninit::zero stable https://github.com/rust-lang/rust/issues/91850
-    // use std::mem::MaybeUninit;
-    // static START_TIME: MaybeUninit<Instant> = MaybeUninit::zeroed();
-    // unsafe {&*START_TIME.as_ptr() }
-    lazy_static::lazy_static! {
-        static ref START_TIME: Instant = Instant::now();
-    }
-    &START_TIME
+    use std::mem::MaybeUninit;
+    static START_TIME: MaybeUninit<Instant> = MaybeUninit::zeroed();
+    unsafe { START_TIME.assume_init_ref() }
 }
 // get the current wall clock in ns
 #[inline]
