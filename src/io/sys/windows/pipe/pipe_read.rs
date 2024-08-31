@@ -32,7 +32,7 @@ impl<'a> PipeRead<'a> {
     ) -> Self {
         let pipe = s.as_raw_handle();
         PipeRead {
-            io_data: EventData::new(pipe as isize),
+            io_data: EventData::new(pipe),
             buf,
             pipe,
             #[cfg(feature = "io_timeout")]
