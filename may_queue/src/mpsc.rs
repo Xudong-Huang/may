@@ -50,13 +50,13 @@ struct BlockNode<T> {
 impl<T> BlockNode<T> {
     /// create a new BlockNode with uninitialized data
     #[inline]
-    pub fn new_box(index: usize) -> *mut BlockNode<T> {
+    fn new_box(index: usize) -> *mut BlockNode<T> {
         Box::into_raw(Box::new(BlockNode::new(index)))
     }
 
     /// create a new BlockNode with uninitialized data
     #[inline]
-    pub fn new(index: usize) -> BlockNode<T> {
+    fn new(index: usize) -> BlockNode<T> {
         BlockNode {
             next: AtomicPtr::new(ptr::null_mut()),
             data: [Slot::UNINIT; BLOCK_SIZE],
@@ -66,7 +66,7 @@ impl<T> BlockNode<T> {
 
     /// write index with data
     #[inline]
-    pub fn set(&self, id: usize, v: T) {
+    fn set(&self, id: usize, v: T) {
         unsafe {
             let data = self.data.get_unchecked(id);
             data.value.get().write(MaybeUninit::new(v));
@@ -78,7 +78,7 @@ impl<T> BlockNode<T> {
     }
 
     #[inline]
-    pub fn try_get(&self, id: usize) -> Option<T> {
+    fn try_get(&self, id: usize) -> Option<T> {
         let data = unsafe { self.data.get_unchecked(id) };
         if data.ready.load(Ordering::Acquire) != 0 {
             Some(unsafe { data.value.get().read().assume_init() })
@@ -88,7 +88,7 @@ impl<T> BlockNode<T> {
     }
 
     #[inline]
-    pub fn get(&self, id: usize) -> T {
+    fn get(&self, id: usize) -> T {
         let data = unsafe { self.data.get_unchecked(id) };
         while data.ready.load(Ordering::Acquire) == 0 {
             std::hint::spin_loop();
@@ -99,7 +99,7 @@ impl<T> BlockNode<T> {
     /// peek the indexed value
     /// not safe if pop out a value when hold the data ref
     #[inline]
-    pub unsafe fn peek(&self, id: usize) -> &T {
+    unsafe fn peek(&self, id: usize) -> &T {
         let data = unsafe { self.data.get_unchecked(id) };
         while data.ready.load(Ordering::Acquire) == 0 {
             std::hint::spin_loop();
@@ -108,7 +108,7 @@ impl<T> BlockNode<T> {
     }
 
     #[inline]
-    pub fn wait_next_block(&self) -> *mut BlockNode<T> {
+    fn wait_next_block(&self) -> *mut BlockNode<T> {
         let mut next: *mut BlockNode<T> = self.next.load(Ordering::Acquire);
         while next.is_null() {
             std::hint::spin_loop();
@@ -118,7 +118,7 @@ impl<T> BlockNode<T> {
     }
 
     #[inline]
-    pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
+    fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
         let len = end - start;
         let start = start & BLOCK_MASK;
         SmallVec::from_iter((start..start + len).map(|i| self.get(i)))
@@ -127,7 +127,7 @@ impl<T> BlockNode<T> {
 
 /// return the bulk end with in the block
 #[inline]
-pub fn bulk_end(start: usize, end: usize) -> usize {
+fn bulk_end(start: usize, end: usize) -> usize {
     let block_end = (start + BLOCK_SIZE) & !BLOCK_MASK;
     cmp::min(end, block_end)
 }

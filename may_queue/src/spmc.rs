@@ -47,7 +47,7 @@ struct BlockNode<T> {
 impl<T> BlockNode<T> {
     /// create a new BlockNode with uninitialized data
     #[inline]
-    pub fn new(index: usize) -> *mut BlockNode<T> {
+    fn new(index: usize) -> *mut BlockNode<T> {
         Box::into_raw(Box::new(BlockNode {
             next: AtomicPtr::new(ptr::null_mut()),
             used: AtomicUsize::new(BLOCK_SIZE),
@@ -58,7 +58,7 @@ impl<T> BlockNode<T> {
 
     /// write index with data
     #[inline]
-    pub fn set(&self, index: usize, v: T) {
+    fn set(&self, index: usize, v: T) {
         unsafe {
             let data = self.data.get_unchecked(index & BLOCK_MASK);
             data.value.get().write(MaybeUninit::new(v));
@@ -68,7 +68,7 @@ impl<T> BlockNode<T> {
     /// read out indexed value
     /// this would make the underlying data dropped when it get out of scope
     #[inline]
-    pub fn get(&self, id: usize) -> T {
+    fn get(&self, id: usize) -> T {
         unsafe {
             let data = self.data.get_unchecked(id);
             data.value.get().read().assume_init()
@@ -78,13 +78,13 @@ impl<T> BlockNode<T> {
     /// make a range slots read
     /// if all slots read, then we can safely free the block
     #[inline]
-    pub fn mark_slots_read(&self, size: usize) -> bool {
+    fn mark_slots_read(&self, size: usize) -> bool {
         let old = self.used.fetch_sub(size, Ordering::Relaxed);
         old == size
     }
 
     #[inline]
-    pub fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
+    fn copy_to_bulk(&self, start: usize, end: usize) -> SmallVec<[T; BLOCK_SIZE]> {
         let len = end - start;
         let start = start & BLOCK_MASK;
         (start..start + len).map(|id| self.get(id)).collect()
