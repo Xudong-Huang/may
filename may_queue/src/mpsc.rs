@@ -67,6 +67,7 @@ impl<T> BlockNode<T> {
     /// write index with data
     #[inline]
     fn set(&self, id: usize, v: T) {
+        debug_assert!(id < BLOCK_SIZE);
         unsafe {
             let data = self.data.get_unchecked(id);
             data.value.get().write(MaybeUninit::new(v));
@@ -79,6 +80,7 @@ impl<T> BlockNode<T> {
 
     #[inline]
     fn try_get(&self, id: usize) -> Option<T> {
+        debug_assert!(id < BLOCK_SIZE);
         let data = unsafe { self.data.get_unchecked(id) };
         if data.ready.load(Ordering::Acquire) != 0 {
             Some(unsafe { data.value.get().read().assume_init() })
@@ -89,6 +91,7 @@ impl<T> BlockNode<T> {
 
     #[inline]
     fn get(&self, id: usize) -> T {
+        debug_assert!(id < BLOCK_SIZE);
         let data = unsafe { self.data.get_unchecked(id) };
         while data.ready.load(Ordering::Acquire) == 0 {
             std::hint::spin_loop();

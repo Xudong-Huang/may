@@ -74,6 +74,7 @@ impl<T> BlockNode<T> {
     /// this would make the underlying data dropped when it get out of scope
     #[inline]
     fn get(&self, id: usize) -> T {
+        debug_assert!(id < BLOCK_SIZE);
         unsafe {
             let data = self.data.get_unchecked(id);
             data.value.get().read().assume_init()
