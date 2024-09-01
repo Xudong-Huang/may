@@ -1,7 +1,9 @@
 //! `May` Configuration interface
 //!
 
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+#[cfg(feature = "io_timeout")]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
@@ -13,12 +15,12 @@ static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
 static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
 
 // How long does the epoll wait before continuing with other tasks
-// By default, 1000ns = 1ms
+// By default, 10ms
 #[cfg(feature = "io_timeout")]
-static POLL_TIMEOUT_NS: AtomicU64 = AtomicU64::new(1_000);
+static POLL_TIMEOUT_NS: AtomicU64 = AtomicU64::new(10_000_000);
 
 // Should cores be pinned?
-static PIN_WORKERS: AtomicBool = AtomicBool::new(false);
+static PIN_WORKERS: AtomicBool = AtomicBool::new(true);
 
 /// `May` Configuration type
 pub struct Config;

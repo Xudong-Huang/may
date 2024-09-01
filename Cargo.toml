@@ -26,6 +26,7 @@ appveyor = { repository = "Xudong-Huang/may", service = "github" }
 
 [dependencies]
 log = "0.4"
+cfg-if = "1"
 num_cpus = "1"
 smallvec = "1"
 generator = "0.8"
@@ -33,9 +34,8 @@ crossbeam = "0.8"
 parking_lot = "0.12"
 core_affinity = "0.8"
 socket2 = { version = "0.5", features = ["all"] }
-may_queue = { version = "0.1", path = "may_queue" }
 fastrand = { version = "2.0", optional = true }
-cfg-if = "1.0.0"
+may_queue = { version = "0.1", path = "may_queue" }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["event", "socket"] }

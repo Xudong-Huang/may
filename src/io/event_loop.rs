@@ -1,10 +1,7 @@
 use std::io;
 
 use super::sys::{Selector, SysEvent};
-use crate::{
-    config,
-    scheduler::{get_scheduler, WORKER_ID},
-};
+use crate::scheduler::{get_scheduler, WORKER_ID};
 
 const IO_POLLS_MAX: usize = 1024;
 
@@ -28,8 +25,10 @@ impl EventLoop {
         let selector = &self.selector;
         let scheduler = get_scheduler();
 
-        let cfg = config();
-        let timeout_ns = cfg.get_timeout_ns();
+        #[cfg(feature = "io_timeout")]
+        let timeout_ns = crate::config().get_timeout_ns();
+        #[cfg(not(feature = "io_timeout"))]
+        let timeout_ns = 1_000_000_000; // 1s
 
         loop {
             next_expire = match selector.select(scheduler, id, &mut events_buf, next_expire) {
