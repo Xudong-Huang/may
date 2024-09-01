@@ -21,7 +21,6 @@
 //! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 
 // #![deny(missing_docs)]
-#![cfg_attr(nightly, feature(thread_local))]
 
 #[macro_use]
 extern crate log;

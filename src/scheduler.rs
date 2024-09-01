@@ -23,11 +23,6 @@ use may_queue::spmc::{self, Local, Steal};
 use may_queue::spsc::Queue as Local;
 
 // thread id, only workers are normal ones
-#[cfg(nightly)]
-#[thread_local]
-pub static WORKER_ID: Cell<usize> = Cell::new(usize::MAX);
-
-#[cfg(not(nightly))]
 thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX) }; }
 
 // here we use Arc<AtomicOption<>> for that in the select implementation
@@ -173,10 +168,7 @@ impl Scheduler {
     /// put the coroutine to correct queue so that next time it can be scheduled
     #[inline]
     pub fn schedule(&self, co: CoroutineImpl) {
-        #[cfg(nightly)]
         let id = WORKER_ID.get();
-        #[cfg(not(nightly))]
-        let id = WORKER_ID.with(|id| id.get());
 
         if id != usize::MAX {
             self.schedule_with_id(co, id);
