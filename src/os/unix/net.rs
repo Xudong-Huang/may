@@ -1091,12 +1091,11 @@ impl io_impl::AsIoData for UnixDatagram {
 #[cfg(all(test, not(target_os = "emscripten")))]
 mod test {
     use std::io::prelude::*;
-    use tempdir::TempDir;
 
     use super::*;
 
-    fn tmpdir() -> TempDir {
-        TempDir::new("test").expect("failed to create TempDir")
+    fn tmpdir() -> tempfile::TempDir {
+        tempfile::tempdir().expect("failed to create TempDir")
     }
 
     macro_rules! or_panic {
