@@ -213,7 +213,10 @@ impl Scheduler {
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::Relaxed)
             .rem_euclid(self.workers);
-        self.schedule_global_with_id(co, thread_id)
+        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
+        global.push(co);
+        // signal one waiting thread if any
+        self.get_selector().wakeup(thread_id);
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
