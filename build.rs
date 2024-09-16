@@ -5,9 +5,9 @@ const NIGHTLY: bool = true;
 const NIGHTLY: bool = false;
 
 fn main() {
-    println!("cargo::rustc-check-cfg=cfg(nightly)");
-    // Set cfg flags depending on release channel
+    println!("cargo:rustc-check-cfg=cfg(nightly)");
     if NIGHTLY {
         println!("cargo:rustc-cfg=nightly");
     }
 }
+
