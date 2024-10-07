@@ -64,7 +64,7 @@ impl<'a> TcpListenerAccept<'a> {
     }
 }
 
-impl<'a> EventSource for TcpListenerAccept<'a> {
+impl EventSource for TcpListenerAccept<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();

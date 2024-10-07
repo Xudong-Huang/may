@@ -459,7 +459,7 @@ pub struct Incoming<'a> {
     listener: &'a TcpListener,
 }
 
-impl<'a> Iterator for Incoming<'a> {
+impl Iterator for Incoming<'_> {
     type Item = io::Result<TcpStream>;
     fn next(&mut self) -> Option<io::Result<TcpStream>> {
         Some(self.listener.accept().map(|p| p.0))

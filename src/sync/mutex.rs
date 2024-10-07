@@ -190,7 +190,7 @@ impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
     }
 }
 
-impl<'mutex, T: ?Sized> Deref for MutexGuard<'mutex, T> {
+impl<T: ?Sized> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -198,13 +198,13 @@ impl<'mutex, T: ?Sized> Deref for MutexGuard<'mutex, T> {
     }
 }
 
-impl<'mutex, T: ?Sized> DerefMut for MutexGuard<'mutex, T> {
+impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.__lock.data.get() }
     }
 }
 
-impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
+impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         self.__lock.poison.done(&self.__poison);
@@ -214,7 +214,7 @@ impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'a, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("MutexGuard")
             .field("lock", &self.__lock)

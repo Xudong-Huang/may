@@ -44,10 +44,5 @@ impl AtomicDuration {
 }
 
 fn dur_to_ms(dur: Duration) -> u64 {
-    // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
-    const MS_PER_SEC: u64 = 1_000;
-    const NANOS_PER_MILLI: u64 = 1_000_000;
-    let ns = u64::from(dur.subsec_nanos());
-    let ms = (ns + NANOS_PER_MILLI - 1) / NANOS_PER_MILLI;
-    dur.as_secs().saturating_mul(MS_PER_SEC).saturating_add(ms)
+    dur.as_millis() as u64
 }

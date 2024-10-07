@@ -51,7 +51,7 @@ impl<'a> PipeRead<'a> {
     }
 }
 
-impl<'a> EventSource for PipeRead<'a> {
+impl EventSource for PipeRead<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         #[cfg(feature = "io_cancel")]

@@ -47,7 +47,7 @@ impl<'a> SocketRead<'a> {
     }
 }
 
-impl<'a> EventSource for SocketRead<'a> {
+impl EventSource for SocketRead<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         #[cfg(feature = "io_cancel")]

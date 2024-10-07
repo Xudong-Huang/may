@@ -50,7 +50,7 @@ impl<'a> UdpRecvFrom<'a> {
     }
 }
 
-impl<'a> EventSource for UdpRecvFrom<'a> {
+impl EventSource for UdpRecvFrom<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let _g = self.can_drop.delay_drop();
         let s = get_scheduler();

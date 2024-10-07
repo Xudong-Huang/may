@@ -265,7 +265,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     }
 }
 
-impl<'a, T: fmt::Debug> fmt::Debug for RwLockReadGuard<'a, T> {
+impl<T: fmt::Debug> fmt::Debug for RwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RwLockReadGuard")
             .field("lock", &self.__lock)
@@ -273,7 +273,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for RwLockReadGuard<'a, T> {
     }
 }
 
-impl<'a, T: fmt::Debug> fmt::Debug for RwLockWriteGuard<'a, T> {
+impl<T: fmt::Debug> fmt::Debug for RwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RwLockWriteGuard")
             .field("lock", &self.__lock)
@@ -281,7 +281,7 @@ impl<'a, T: fmt::Debug> fmt::Debug for RwLockWriteGuard<'a, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> Deref for RwLockReadGuard<'rwlock, T> {
+impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -289,7 +289,7 @@ impl<'rwlock, T: ?Sized> Deref for RwLockReadGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> Deref for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -297,19 +297,19 @@ impl<'rwlock, T: ?Sized> Deref for RwLockWriteGuard<'rwlock, T> {
     }
 }
 
-impl<'rwlock, T: ?Sized> DerefMut for RwLockWriteGuard<'rwlock, T> {
+impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe { &mut *self.__lock.data.get() }
     }
 }
 
-impl<'a, T: ?Sized> Drop for RwLockReadGuard<'a, T> {
+impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
         self.__lock.read_unlock();
     }
 }
 
-impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
+impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
         self.__lock.poison.done(&self.__poison);
         self.__lock.write_unlock();

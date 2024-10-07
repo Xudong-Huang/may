@@ -178,7 +178,7 @@ impl Park {
     }
 }
 
-impl<'a> Drop for DropGuard<'a> {
+impl Drop for DropGuard<'_> {
     fn drop(&mut self) {
         self.0.wait_kernel.store(false, Ordering::Release);
     }

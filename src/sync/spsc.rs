@@ -34,7 +34,7 @@ impl<'a, T> Park<'a, T> {
     }
 }
 
-impl<'a, T> Drop for Park<'a, T> {
+impl<T> Drop for Park<'_, T> {
     fn drop(&mut self) {
         // wait the kernel finish
         while self.wait_kernel.load(Ordering::Relaxed) {
@@ -45,13 +45,13 @@ impl<'a, T> Drop for Park<'a, T> {
 
 pub struct DropGuard<'a, 'b, T>(&'b Park<'a, T>);
 
-impl<'a, 'b, T> Drop for DropGuard<'a, 'b, T> {
+impl<T> Drop for DropGuard<'_, '_, T> {
     fn drop(&mut self) {
         self.0.wait_kernel.store(false, Ordering::Relaxed);
     }
 }
 
-impl<'a, T> EventSource for Park<'a, T> {
+impl<T> EventSource for Park<'_, T> {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
         // the queue could dropped if unpark by other thread
@@ -249,9 +249,9 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     (Sender::new(a.clone()), Receiver::new(a))
 }
 
-/// /////////////////////////////////////////////////////////////////////////////
-/// Sender
-/// /////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Sender
+////////////////////////////////////////////////////////////////////////////////
 
 impl<T> Sender<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Sender<T> {
@@ -275,9 +275,9 @@ impl<T> fmt::Debug for Sender<T> {
     }
 }
 
-/// /////////////////////////////////////////////////////////////////////////////
-/// Receiver
-/// /////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Receiver
+////////////////////////////////////////////////////////////////////////////////
 
 impl<T> Receiver<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Receiver<T> {
@@ -306,7 +306,7 @@ impl<T> Receiver<T> {
     }
 }
 
-impl<'a, T> Iterator for Iter<'a, T> {
+impl<T> Iterator for Iter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
@@ -314,7 +314,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for TryIter<'a, T> {
+impl<T> Iterator for TryIter<'_, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {

@@ -46,7 +46,7 @@ impl<'a> UdpSendTo<'a> {
     }
 }
 
-impl<'a> EventSource for UdpSendTo<'a> {
+impl EventSource for UdpSendTo<'_> {
     #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();

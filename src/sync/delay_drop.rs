@@ -32,7 +32,7 @@ impl DelayDrop {
     }
 }
 
-impl<'a> Drop for DropGuard<'a> {
+impl Drop for DropGuard<'_> {
     fn drop(&mut self) {
         // kernel would set it to true
         self.0.can_drop.fetch_and(1, Ordering::Release);

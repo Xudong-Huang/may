@@ -682,7 +682,7 @@ pub struct AcceptAddrs<'a> {
     _data: &'a AcceptAddrsBuf,
 }
 
-impl<'a> AcceptAddrs<'a> {
+impl AcceptAddrs<'_> {
     /// Returns the local socket address contained in this buffer.
     #[allow(dead_code)]
     pub fn local(&self) -> Option<SocketAddr> {

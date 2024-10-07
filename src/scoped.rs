@@ -81,7 +81,7 @@ where
     ret
 }
 
-impl<'a> fmt::Debug for Scope<'a> {
+impl fmt::Debug for Scope<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Scope {{ ... }}")
     }
@@ -208,7 +208,7 @@ impl<T> ScopedJoinHandle<T> {
     }
 }
 
-impl<'a> Drop for Scope<'a> {
+impl Drop for Scope<'_> {
     fn drop(&mut self) {
         self.drop_all()
     }

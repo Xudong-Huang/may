@@ -94,9 +94,9 @@ pub struct EventSender<'a> {
     cqueue: &'a Cqueue,
 }
 
-unsafe impl<'a> Send for EventSender<'a> {}
+unsafe impl Send for EventSender<'_> {}
 
-impl<'a> EventSender<'a> {
+impl EventSender<'_> {
     /// get the token
     pub fn get_token(&self) -> usize {
         self.token
@@ -111,7 +111,7 @@ impl<'a> EventSender<'a> {
     }
 }
 
-impl<'a> EventSource for EventSender<'a> {
+impl EventSource for EventSender<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         self.cqueue.ev_queue.push(Event {
             id: self.id,
@@ -130,7 +130,7 @@ impl<'a> EventSource for EventSender<'a> {
     }
 }
 
-impl<'a> Drop for EventSender<'a> {
+impl Drop for EventSender<'_> {
     // when the select coroutine finished will trigger this drop
     fn drop(&mut self) {
         self.cqueue.ev_queue.push(Event {
