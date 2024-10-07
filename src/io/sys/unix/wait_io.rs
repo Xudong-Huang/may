@@ -22,7 +22,7 @@ impl<'a> RawIoBlock<'a> {
     }
 }
 
-impl<'a> EventSource for RawIoBlock<'a> {
+impl EventSource for RawIoBlock<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let handle = co_get_handle(&co);

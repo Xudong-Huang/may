@@ -58,7 +58,7 @@ impl<'a> TcpListenerAccept<'a> {
     }
 }
 
-impl<'a> EventSource for TcpListenerAccept<'a> {
+impl EventSource for TcpListenerAccept<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);

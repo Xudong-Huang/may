@@ -58,7 +58,7 @@ impl<'a> UnixListenerAccept<'a> {
     }
 }
 
-impl<'a> EventSource for UnixListenerAccept<'a> {
+impl EventSource for UnixListenerAccept<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);

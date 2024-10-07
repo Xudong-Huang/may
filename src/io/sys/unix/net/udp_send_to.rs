@@ -63,7 +63,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
     }
 }
 
-impl<'a, A: ToSocketAddrs> EventSource for UdpSendTo<'a, A> {
+impl<A: ToSocketAddrs> EventSource for UdpSendTo<'_, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 

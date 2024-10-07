@@ -596,7 +596,7 @@ pub struct Incoming<'a> {
     listener: &'a UnixListener,
 }
 
-impl<'a> Iterator for Incoming<'a> {
+impl Iterator for Incoming<'_> {
     type Item = io::Result<UnixStream>;
 
     fn next(&mut self) -> Option<io::Result<UnixStream>> {

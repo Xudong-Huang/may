@@ -63,7 +63,7 @@ impl<'a> UnixSendTo<'a> {
     }
 }
 
-impl<'a> EventSource for UnixSendTo<'a> {
+impl EventSource for UnixSendTo<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 

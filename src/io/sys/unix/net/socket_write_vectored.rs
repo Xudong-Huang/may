@@ -65,7 +65,7 @@ impl<'a> SocketWriteVectored<'a> {
     }
 }
 
-impl<'a> EventSource for SocketWriteVectored<'a> {
+impl EventSource for SocketWriteVectored<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 

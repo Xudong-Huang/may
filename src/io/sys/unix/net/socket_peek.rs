@@ -64,7 +64,7 @@ impl<'a> SocketPeek<'a> {
     }
 }
 
-impl<'a> EventSource for SocketPeek<'a> {
+impl EventSource for SocketPeek<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);

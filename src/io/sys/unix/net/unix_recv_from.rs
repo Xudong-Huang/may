@@ -63,7 +63,7 @@ impl<'a> UnixRecvFrom<'a> {
     }
 }
 
-impl<'a> EventSource for UnixRecvFrom<'a> {
+impl EventSource for UnixRecvFrom<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
