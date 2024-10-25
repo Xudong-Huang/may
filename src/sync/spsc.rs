@@ -69,7 +69,6 @@ impl<T> EventSource for Park<'_, T> {
     }
 }
 
-const _: () = assert!(std::mem::size_of::<Thread>() == std::mem::size_of::<usize>());
 struct Blocker {
     handle: NonZeroUsize,
 }
@@ -77,29 +76,29 @@ struct Blocker {
 impl Blocker {
     #[inline]
     fn new_coroutine(co: CoroutineImpl) -> Self {
-        let handle: NonZeroUsize = unsafe { std::mem::transmute(co) };
+        let handle = NonZeroUsize::new(co.into_raw() as usize).unwrap();
         Blocker { handle }
     }
 
     #[inline]
     fn new_thread(thread: Thread) -> Self {
-        let mut handle: NonZeroUsize = unsafe { std::mem::transmute(thread) };
+        let mut handle = NonZeroUsize::new(Box::into_raw(Box::new(thread)) as usize).unwrap();
         handle |= 1;
         Blocker { handle }
     }
 
     #[inline]
     fn into_coroutine(self) -> CoroutineImpl {
-        let co: CoroutineImpl = unsafe { std::mem::transmute(self.handle) };
+        let co = unsafe { CoroutineImpl::from_raw(self.handle.get() as *mut _) };
         std::mem::forget(self);
         co
     }
 
     #[inline]
     fn into_thread(self) -> Thread {
-        let thread: Thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
+        let thread: Box<Thread> = unsafe { Box::from_raw((self.handle.get() & !1) as *mut _) };
         std::mem::forget(self);
-        thread
+        *thread
     }
 
     #[inline]
@@ -120,7 +119,7 @@ impl Drop for Blocker {
             // let co = self.into_coroutine();
             unreachable!()
         } else {
-            let _thread: Thread = unsafe { std::mem::transmute(self.handle.get() & !1) };
+            let _thread: Box<Thread> = unsafe { Box::from_raw((self.handle.get() & !1) as *mut _) };
         }
     }
 }
