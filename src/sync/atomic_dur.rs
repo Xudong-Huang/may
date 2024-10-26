@@ -9,7 +9,7 @@ impl AtomicDuration {
     pub fn new(dur: Option<Duration>) -> Self {
         let dur = match dur {
             None => 0,
-            Some(d) => dur_to_ms(d) as usize,
+            Some(d) => d.as_millis() as usize,
         };
 
         AtomicDuration(AtomicUsize::new(dur))
@@ -28,7 +28,7 @@ impl AtomicDuration {
     pub fn store(&self, dur: Option<Duration>) {
         let timeout = match dur {
             None => 0,
-            Some(d) => dur_to_ms(d) as usize,
+            Some(d) => d.as_millis() as usize,
         };
 
         self.0.store(timeout, Ordering::Relaxed);
@@ -41,8 +41,4 @@ impl AtomicDuration {
             d => Some(Duration::from_millis(d as u64)),
         }
     }
-}
-
-fn dur_to_ms(dur: Duration) -> u64 {
-    dur.as_millis() as u64
 }
