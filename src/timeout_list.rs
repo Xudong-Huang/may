@@ -307,7 +307,7 @@ impl<T> TimerThread<T> {
             }
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
-            unsafe { self.wakeup.unsync_store(current_thread.clone()) };
+            self.wakeup.store(current_thread.clone());
 
             if !self.remove_list.is_empty() {
                 if let Some(t) = self.wakeup.take() {
