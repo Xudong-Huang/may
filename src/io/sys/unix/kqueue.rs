@@ -10,7 +10,7 @@ use super::{timeout_handler, TimerList};
 use super::{EventData, IoData};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
-use crate::timeout_list::{now, ns_to_dur};
+use crate::timeout_list::now;
 
 use may_queue::mpsc::Queue;
 use smallvec::SmallVec;
@@ -106,7 +106,7 @@ impl Selector {
     ) -> io::Result<Option<u64>> {
         #[cfg(feature = "io_timeout")]
         let timeout_spec = _timeout.map(|to| {
-            let dur = ns_to_dur(to);
+            let dur = Duration::from_nanos(to);
             libc::timespec {
                 tv_sec: dur.as_secs() as libc::time_t,
                 tv_nsec: dur.subsec_nanos() as libc::c_long,
