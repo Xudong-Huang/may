@@ -122,8 +122,8 @@ impl<T> TimeOutList<T> {
     // return true if we need to recall next expire
     pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
         let interval = dur.as_nanos() as u64;
-        let time = now() + interval; // TODO: deal with overflow?
-                                     //println!("add timer = {:?}", time);
+        let time = now() + interval;
+        //println!("add timer = {:?}", time);
 
         let timeout = TimeoutData { time, data };
 
@@ -246,7 +246,7 @@ pub struct TimerThread<T> {
     // collect the remove request
     remove_list: Queue<TimeoutHandle<T>>,
     // the timer thread wakeup handler
-    wakeup: AtomicOption<thread::Thread>,
+    wakeup: AtomicOption<Arc<thread::Thread>>,
 }
 
 impl<T> TimerThread<T> {
@@ -278,14 +278,14 @@ impl<T> TimerThread<T> {
 
     // the timer thread function
     pub fn run<F: Fn(T)>(&self, f: &F) {
-        let current_thread = thread::current();
+        let current_thread = Arc::new(thread::current());
         loop {
             while let Some(h) = self.remove_list.pop() {
                 h.remove();
             }
             // we must register the thread handle first
             // or there will be no signal to wakeup the timer thread
-            self.wakeup.store(current_thread.clone());
+            unsafe { self.wakeup.unsync_store(current_thread.clone()) };
 
             if !self.remove_list.is_empty() {
                 if let Some(t) = self.wakeup.take() {
