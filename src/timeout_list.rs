@@ -13,29 +13,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::sync::AtomicOption;
 
-const NANOS_PER_MILLI: u64 = 1_000_000;
-const NANOS_PER_SEC: u64 = 1_000_000_000;
-
 const HASH_CAP: usize = 1024;
-
-#[inline]
-fn dur_to_ns(dur: Duration) -> u64 {
-    // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair
-    dur.as_secs()
-        .saturating_mul(NANOS_PER_SEC)
-        .saturating_add(u64::from(dur.subsec_nanos()))
-}
-
-#[inline]
-pub const fn ns_to_dur(ns: u64) -> Duration {
-    Duration::new(ns / NANOS_PER_SEC, (ns % NANOS_PER_SEC) as u32)
-}
-
-#[allow(dead_code)]
-#[inline]
-pub const fn ns_to_ms(ns: u64) -> u64 {
-    ns.div_ceil(NANOS_PER_MILLI)
-}
 
 #[inline]
 fn get_instant() -> &'static Instant {
@@ -143,7 +121,7 @@ impl<T> TimeOutList<T> {
     // this can be called in any thread
     // return true if we need to recall next expire
     pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
-        let interval = dur_to_ns(dur);
+        let interval = dur.as_nanos() as u64;
         let time = now() + interval; // TODO: deal with overflow?
                                      //println!("add timer = {:?}", time);
 
@@ -316,7 +294,7 @@ impl<T> TimerThread<T> {
             }
 
             match self.timer_list.schedule_timer(now(), f) {
-                Some(time) => thread::park_timeout(ns_to_dur(time)),
+                Some(time) => thread::park_timeout(Duration::from_nanos(time)),
                 None => thread::park(),
             }
         }

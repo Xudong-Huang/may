@@ -12,7 +12,7 @@ use super::{from_nix_error, EventData, IoData};
 use super::{timeout_handler, TimerList};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
-use crate::timeout_list::{now, ns_to_ms};
+use crate::timeout_list::now;
 
 use may_queue::mpsc::Queue;
 use nix::sys::epoll::*;
@@ -80,7 +80,7 @@ impl Selector {
     ) -> io::Result<Option<u64>> {
         #[cfg(feature = "io_timeout")]
         let timeout_ms = _timeout
-            .map(|to| EpollTimeout::try_from(ns_to_ms(to)).unwrap())
+            .map(|to| EpollTimeout::try_from(to.div_ceil(1_000_000)).unwrap())
             .unwrap_or(EpollTimeout::NONE);
         #[cfg(not(feature = "io_timeout"))]
         let timeout_ms = EpollTimeout::NONE;

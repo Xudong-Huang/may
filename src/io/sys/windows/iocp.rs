@@ -7,7 +7,7 @@ use std::{io, ptr};
 use super::miow::{CompletionPort, CompletionStatus};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
-use crate::timeout_list::{now, ns_to_dur, TimeOutList, TimeoutHandle};
+use crate::timeout_list::{now, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
 use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
@@ -107,7 +107,7 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
-        let timeout = timeout.map(ns_to_dur);
+        let timeout = timeout.map(Duration::from_nanos);
         // info!("select; timeout={:?}", timeout);
         let single_selector = unsafe { self.vec.get_unchecked(id) };
 
