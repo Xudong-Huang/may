@@ -448,6 +448,18 @@ mod test {
         }
     }
 
+    impl<T: Send> ScBlockPop<T> for crossbeam_queue::SegQueue<T> {
+        fn block_pop(&self) -> T {
+            let backoff = Backoff::new();
+            loop {
+                match self.pop() {
+                    Some(v) => return v,
+                    None => backoff.snooze(),
+                }
+            }
+        }
+    }
+
     #[test]
     fn queue_sanity() {
         let q = Queue::<usize>::new();
@@ -498,6 +510,27 @@ mod test {
     }
 
     #[bench]
+    fn multi_crossbeam_1p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(crossbeam_queue::SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
+
+            for i in 0..total_work {
+                let v = q.block_pop();
+                assert_eq!(i, v);
+            }
+        });
+    }
+
+    #[bench]
     fn multi_2p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
@@ -520,6 +553,38 @@ mod test {
                 }
                 s.spawn(|| {
                     for _ in 0..total_work {
+                        total += q.block_pop();
+                    }
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(total, (0..total_work).sum::<usize>());
+        });
+    }
+
+    #[bench]
+    fn multi_crossbeam_2p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(crossbeam_queue::SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            let mut total = 0;
+
+            thread::scope(|s| {
+                let threads = 20;
+                for i in 0..threads {
+                    let q = q.clone();
+                    s.spawn(move || {
+                        let len = total_work / threads;
+                        let start = i * len;
+                        for v in start..start + len {
+                            q.push(v);
+                        }
+                    });
+                }
+                s.spawn(|| {
+                    for _i in 0..total_work {
                         total += q.block_pop();
                     }
                 });

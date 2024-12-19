@@ -616,9 +616,59 @@ mod test {
     }
 
     #[bench]
+    fn multi_crossbeam_1p1c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(crossbeam_queue::SegQueue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            let _q = q.clone();
+            // in other thread the value should be still 100
+            thread::spawn(move || {
+                for i in 0..total_work {
+                    _q.push(i);
+                }
+            });
+
+            for i in 0..total_work {
+                let v = q.block_pop();
+                assert_eq!(i, v);
+            }
+        });
+    }
+
+    #[bench]
     fn multi_1p2c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
+            let total_work: usize = 1_000_000;
+            // create worker threads that generate mono increasing index
+            // in other thread the value should be still 100
+            for i in 0..total_work {
+                q.push(i);
+            }
+
+            let sum = AtomicUsize::new(0);
+            let threads = 20;
+            thread::scope(|s| {
+                (0..threads).for_each(|_| {
+                    s.spawn(|| {
+                        let mut total = 0;
+                        for _i in 0..total_work / threads {
+                            total += q.block_pop();
+                        }
+                        sum.fetch_add(total, Ordering::Relaxed);
+                    });
+                });
+            });
+            assert!(q.is_empty());
+            assert_eq!(sum.load(Ordering::Relaxed), (0..total_work).sum());
+        });
+    }
+
+    #[bench]
+    fn multi_crossbeam_1p2c_test(b: &mut Bencher) {
+        b.iter(|| {
+            let q = Arc::new(crossbeam_queue::SegQueue::new());
             let total_work: usize = 1_000_000;
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
