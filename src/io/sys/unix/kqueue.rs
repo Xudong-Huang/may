@@ -282,7 +282,7 @@ impl Selector {
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
         #[cfg(feature = "io_timeout")]
-        io_data.timer.borrow_mut().take().map(|h| {
+        if let Some(h) = io_data.timer.borrow_mut().take() {
             unsafe {
                 // mark the timer as removed if any, this only happened
                 // when cancel an IO. what if the timer expired at the same time?
@@ -290,7 +290,7 @@ impl Selector {
                 // will not got the coroutine
                 h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
             }
-        });
+        }
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
