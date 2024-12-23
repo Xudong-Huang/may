@@ -27,7 +27,7 @@ impl EventSource for RawIoBlock<'_> {
         #[cfg(feature = "io_cancel")]
         let handle = co_get_handle(&co);
         let io_data = self.io_data;
-        unsafe { io_data.co.unsync_store(co) };
+        io_data.co.store(co);
         // there is event, re-run the coroutine
         if io_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]

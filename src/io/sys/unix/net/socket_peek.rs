@@ -80,7 +80,7 @@ impl EventSource for SocketPeek<'_> {
         // after register the coroutine, it's possible that other thread run it immediately
         // and cause the process after it invalid, this is kind of user and kernel competition
         // so we need to delay the drop of the EventSource, that's why _g is here
-        unsafe { io_data.co.unsync_store(co) };
+        io_data.co.store(co);
         // till here the io may be done in other thread
 
         // there is event, re-run the coroutine

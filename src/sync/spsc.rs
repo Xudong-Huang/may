@@ -58,7 +58,7 @@ impl<T> EventSource for Park<'_, T> {
         let _g = self.delay_drop();
         // register the coroutine
         let wait_co = &self.queue.wait_co;
-        unsafe { wait_co.unsync_store(Blocker::new_coroutine(co)) };
+        wait_co.store(Blocker::new_coroutine(co));
         // re-check the state, only clear once after resume
         if !self.queue.queue.is_empty() {
             if let Some(co) = wait_co.take() {
@@ -166,7 +166,7 @@ impl<T> InnerQueue<T> {
                     yield_with(&park);
                 } else {
                     let blocker = Blocker::new_thread(std::thread::current());
-                    unsafe { self.wait_co.unsync_store(blocker) };
+                    self.wait_co.store(blocker);
                     match self.try_recv() {
                         Err(TryRecvError::Empty) => {
                             // no data, wait for it

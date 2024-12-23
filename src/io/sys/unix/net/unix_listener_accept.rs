@@ -65,7 +65,7 @@ impl EventSource for UnixListenerAccept<'_> {
         let io_data = self.io_data;
 
         // if there is no timer we don't need to call add_io_timer
-        unsafe { io_data.co.unsync_store(co) };
+        io_data.co.store(co);
 
         // there is event happened
         if io_data.io_flag.load(Ordering::Acquire) != 0 {
