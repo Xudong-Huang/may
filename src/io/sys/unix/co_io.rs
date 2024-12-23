@@ -268,11 +268,23 @@ mod tests {
     #[test]
     fn compile_co_io() {
         #[derive(Debug)]
-        struct Fd;
+        struct Fd {
+            file: std::net::UdpSocket,
+        }
+
+        impl Fd {
+            fn new() -> Self {
+                Fd {
+                    // this would call set_nonblocking for the fd
+                    // so we need to open a real fd here
+                    file: std::net::UdpSocket::bind(("127.0.0.1", 9765)).unwrap(),
+                }
+            }
+        }
 
         impl AsRawFd for Fd {
             fn as_raw_fd(&self) -> RawFd {
-                0
+                self.file.as_raw_fd()
             }
         }
 
@@ -283,7 +295,7 @@ mod tests {
             }
         }
 
-        let a = Fd;
+        let a = Fd::new();
         let mut io = CoIo::new(a).unwrap();
         let mut buf = [0u8; 100];
         io.read_exact(&mut buf).unwrap();
