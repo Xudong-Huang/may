@@ -1,4 +1,5 @@
 use crate::sync::{Condvar, Mutex};
+
 use std::fmt;
 
 /// A barrier enables multiple threads to synchronize the beginning

@@ -7,6 +7,7 @@ mod poison;
 mod rwlock;
 mod semphore;
 mod sync_flag;
+mod wait_group;
 
 pub(crate) mod atomic_dur;
 #[cfg(not(unix))]
@@ -23,3 +24,4 @@ pub use mutex::{Mutex, MutexGuard};
 pub use rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use semphore::Semphore;
 pub use sync_flag::SyncFlag;
+pub use wait_group::WaitGroup;
