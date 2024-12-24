@@ -1,16 +1,3 @@
-#[allow(unused_macros)]
-macro_rules! syscall {
-    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
-        #[allow(unused_unsafe)]
-        let res = unsafe { libc::$fn($($arg, )*) };
-        if res < 0 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(res)
-        }
-    }};
-}
-
 #[cfg(any(target_os = "linux", target_os = "android"))]
 #[path = "epoll.rs"]
 mod select;
@@ -52,7 +39,7 @@ use crate::yield_now::get_co_para;
 #[cfg(feature = "io_timeout")]
 use crate::yield_now::set_co_para;
 
-pub use self::select::{Selector, SysEvent};
+pub(crate) use self::select::{Selector, SysEvent};
 
 #[inline]
 pub fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {

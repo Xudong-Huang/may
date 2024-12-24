@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 
 pub type SysEvent = EpollEvent;
 
-struct SingleSelector {
+pub(crate) struct SingleSelector {
     epoll: Epoll,
     evfd: EventFd,
     #[cfg(feature = "io_timeout")]
@@ -51,7 +51,7 @@ impl SingleSelector {
     }
 }
 
-pub struct Selector {
+pub(crate) struct Selector {
     // 128 should be fine for max io threads
     vec: SmallVec<[SingleSelector; 128]>,
 }

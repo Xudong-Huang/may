@@ -34,7 +34,19 @@ macro_rules! kevent {
     };
 }
 
-struct SingleSelector {
+macro_rules! syscall {
+    ($fn: ident ( $($arg: expr),* $(,)* ) ) => {{
+        #[allow(unused_unsafe)]
+        let res = unsafe { libc::$fn($($arg, )*) };
+        if res < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(res)
+        }
+    }};
+}
+
+pub(crate) struct SingleSelector {
     kqfd: OwnedFd,
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
@@ -75,7 +87,7 @@ impl SingleSelector {
     }
 }
 
-pub struct Selector {
+pub(crate) struct Selector {
     // 128 should be fine for max io threads
     vec: SmallVec<[SingleSelector; 128]>,
 }
