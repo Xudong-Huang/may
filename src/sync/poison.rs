@@ -10,7 +10,7 @@ pub struct Flag {
 }
 
 impl Flag {
-    pub fn new() -> Flag {
+    pub const fn new() -> Flag {
         Flag {
             failed: AtomicUsize::new(0),
         }

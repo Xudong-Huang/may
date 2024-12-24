@@ -124,6 +124,20 @@ impl Condvar {
         }
     }
 
+    pub fn wait_while<'a, T, F>(
+        &self,
+        mut guard: MutexGuard<'a, T>,
+        mut condition: F,
+    ) -> LockResult<MutexGuard<'a, T>>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        while condition(&mut *guard) {
+            guard = self.wait(guard)?;
+        }
+        Ok(guard)
+    }
+
     pub fn wait_timeout<'a, T>(
         &self,
         guard: MutexGuard<'a, T>,
