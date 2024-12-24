@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 
 pub type SysEvent = EpollEvent;
 
-pub(crate) struct SingleSelector {
+struct SingleSelector {
     epoll: Epoll,
     evfd: EventFd,
     #[cfg(feature = "io_timeout")]

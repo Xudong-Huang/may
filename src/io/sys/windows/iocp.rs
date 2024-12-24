@@ -80,7 +80,7 @@ impl SingleSelector {
     }
 }
 
-pub struct Selector {
+pub(crate) struct Selector {
     // 128 should be fine for max io threads
     vec: SmallVec<[SingleSelector; 128]>,
 }

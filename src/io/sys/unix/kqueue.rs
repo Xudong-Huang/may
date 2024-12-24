@@ -46,7 +46,7 @@ macro_rules! syscall {
     }};
 }
 
-pub(crate) struct SingleSelector {
+struct SingleSelector {
     kqfd: OwnedFd,
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,

@@ -28,7 +28,7 @@ use crate::likely::likely;
 use crate::scheduler::get_scheduler;
 use crate::yield_now::get_co_para;
 
-pub use self::iocp::{EventData, Selector, SysEvent};
+pub(crate) use self::iocp::{EventData, Selector, SysEvent};
 
 // each file associated data, windows already have OVERLAPPED
 // fake windows interface
