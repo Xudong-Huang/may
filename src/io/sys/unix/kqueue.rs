@@ -114,6 +114,7 @@ impl Selector {
         events: &mut [SysEvent],
         _timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
+        assert!(id < self.vec.len());
         #[cfg(feature = "io_timeout")]
         let timeout_spec = _timeout.map(|to| {
             let dur = Duration::from_nanos(to);
@@ -132,7 +133,7 @@ impl Selector {
         let timeout = ptr::null();
         // debug!("select; timeout={:?}", timeout_spec);
 
-        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let single_selector = &self.vec[id];
 
         // Wait for kqueue events for at most timeout_ms milliseconds
         let kqfd = single_selector.as_raw_fd();
@@ -199,7 +200,7 @@ impl Selector {
     // this will post an os event so that we can wakeup the event loop
     #[inline]
     pub fn wakeup(&self, id: usize) {
-        let selector = unsafe { self.vec.get_unchecked(id) };
+        let selector = &self.vec[id];
         let kqfd = selector.as_raw_fd();
         let mut kev = libc::kevent {
             ident: NOTIFY_IDENT,
@@ -221,7 +222,7 @@ impl Selector {
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let kqfd = unsafe { self.vec.get_unchecked(id) }.as_raw_fd();
+        let kqfd = self.vec[id].as_raw_fd();
 
         let flags = libc::EV_ADD | libc::EV_CLEAR | libc::EV_RECEIPT;
         let udata = io_data.as_ref() as *const _;
@@ -247,7 +248,7 @@ impl Selector {
     pub fn mod_fd(&self, io_data: &IoData, is_read: bool) -> io::Result<()> {
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let kqfd = unsafe { self.vec.get_unchecked(id) }.as_raw_fd();
+        let kqfd = self.vec[id].as_raw_fd();
 
         let flags = libc::EV_CLEAR | libc::EV_RECEIPT;
         let udata = io_data.as_ref() as *const _;
@@ -291,7 +292,7 @@ impl Selector {
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
-        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let single_selector = &self.vec[id];
         let kqfd = single_selector.as_raw_fd();
 
         let filter = libc::EV_DELETE | libc::EV_RECEIPT;
@@ -320,7 +321,7 @@ impl Selector {
     // must free them before the next epoll_wait
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
-        let free_ev = &unsafe { self.vec.get_unchecked(id) }.free_ev;
+        let free_ev = &&self.vec[id].free_ev;
         while !free_ev.bulk_pop().is_empty() {}
     }
 
@@ -330,9 +331,7 @@ impl Selector {
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = unsafe { self.vec.get_unchecked(id) }
-            .timer_list
-            .add_timer(timeout, io.timer_data());
+        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(id);
