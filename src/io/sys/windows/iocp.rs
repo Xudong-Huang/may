@@ -107,9 +107,10 @@ impl Selector {
         events: &mut [SysEvent],
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
+        assert!(id < self.vec.len());
         let timeout = timeout.map(Duration::from_nanos);
         // info!("select; timeout={:?}", timeout);
-        let single_selector = unsafe { self.vec.get_unchecked(id) };
+        let single_selector = &self.vec[id];
 
         let n = match single_selector.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
@@ -196,7 +197,7 @@ impl Selector {
     #[inline]
     pub fn wakeup(&self, id: usize) {
         // this is not correct for multi thread io, which thread will it wakeup?
-        unsafe { self.vec.get_unchecked(id) }
+        self.vec[id]
             .port
             .post(CompletionStatus::new(0, 0, ptr::null_mut()))
             .unwrap();
@@ -208,7 +209,7 @@ impl Selector {
         // the token para is not used, just pass the handle
         let fd = (t.as_raw_socket() as usize) >> 2;
         let id = fd % self.vec.len();
-        unsafe { self.vec.get_unchecked(id) }.port.add_socket(fd, t)
+        self.vec[id].port.add_socket(fd, t)
     }
 
     // register the io request to the timeout list
@@ -217,9 +218,7 @@ impl Selector {
     pub fn add_io_timer(&self, io: &mut EventData, timeout: Duration) {
         let id = (io.handle as usize % self.vec.len()) >> 2;
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = unsafe { self.vec.get_unchecked(id) }
-            .timer_list
-            .add_timer(timeout, io.timer_data());
+        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(0);
