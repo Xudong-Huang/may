@@ -1,6 +1,7 @@
 //! compatible with std::sync::condvar except for both thread and coroutine
 //! please ref the doc from std::sync::condvar
-use std::collections::VecDeque;
+use crossbeam::queue::SegQueue;
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::{LockResult, PoisonError};
@@ -25,7 +26,7 @@ impl WaitTimeoutResult {
 
 pub struct Condvar {
     // the waiting blocker list
-    to_wake: Mutex<VecDeque<Arc<SyncBlocker>>>,
+    to_wake: SegQueue<Arc<SyncBlocker>>,
     // used to verify the same mutex instance
     mutex: AtomicUsize,
 }
@@ -33,7 +34,7 @@ pub struct Condvar {
 impl Condvar {
     pub fn new() -> Condvar {
         Condvar {
-            to_wake: Mutex::new(VecDeque::new()),
+            to_wake: SegQueue::new(),
             mutex: AtomicUsize::new(0),
         }
     }
@@ -53,9 +54,7 @@ impl Condvar {
             c.disable_cancel();
         }
 
-        let mut g = self.to_wake.lock().unwrap();
-        g.push_back(cur.clone());
-        drop(g);
+        self.to_wake.push(cur.clone());
 
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
@@ -170,9 +169,7 @@ impl Condvar {
         // NOTICE: the following code would not drop the lock!
         // if let Some(w) = self.to_wake.lock().unwrap().pop() {
 
-        let mut g = self.to_wake.lock().unwrap();
-        let w = g.pop_front();
-        drop(g);
+        let w = self.to_wake.pop();
 
         if let Some(w) = w {
             w.unpark();
@@ -183,8 +180,7 @@ impl Condvar {
     }
 
     pub fn notify_all(&self) {
-        let mut g = self.to_wake.lock().unwrap();
-        while let Some(w) = g.pop_front() {
+        while let Some(w) = self.to_wake.pop() {
             w.unpark();
         }
     }
