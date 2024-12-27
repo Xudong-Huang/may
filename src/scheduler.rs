@@ -37,7 +37,7 @@ type TimerThread = timeout_list::TimerThread<TimerData>;
 
 static mut SCHED: *const Scheduler = std::ptr::null();
 
-#[inline(never)]
+#[cold]
 fn init_scheduler() {
     let workers = config().get_workers();
     let b: Box<Scheduler> = Scheduler::new(workers);
