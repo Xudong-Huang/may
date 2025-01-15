@@ -33,7 +33,10 @@ impl EventLoop {
         loop {
             next_expire = match selector.select(scheduler, id, &mut events_buf, next_expire) {
                 Ok(t) => t.or(Some(timeout_ns)),
-                Err(e) => error!("select error = {:?}", e),
+                Err(e) => {
+                    error!("select error = {:?}", e);
+                    Some(timeout_ns)
+                }
             }
         }
     }
