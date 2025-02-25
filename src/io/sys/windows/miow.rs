@@ -660,7 +660,6 @@ impl AcceptAddrsBuf {
         }
     }
 
-    #[allow(deref_nullptr)]
     fn args(&self) -> (*mut std::ffi::c_void, u32, u32, u32) {
         let remote_offset = std::mem::offset_of!(AcceptAddrsBuf, remote);
         (
