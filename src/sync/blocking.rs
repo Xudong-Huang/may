@@ -13,7 +13,6 @@ pub struct ThreadPark {
     cvar: Condvar,
 }
 
-#[allow(clippy::mutex_atomic)]
 impl ThreadPark {
     pub fn new() -> Self {
         ThreadPark {

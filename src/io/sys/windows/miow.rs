@@ -782,9 +782,9 @@ impl SocketAddrBuf {
     /// address filled in and return the standard socket address type.
     ///
     /// If an error is encountered then `None` is returned.
-    #[allow(clippy::wrong_self_convention)]
-    pub fn to_socket_addr(&self) -> Option<SocketAddr> {
-        unsafe { ptrs_to_socket_addr(&self.buf as *const _ as *const _, self.len) }
+    pub fn get_socket_addr(&self) -> Option<SocketAddr> {
+        let ptr = (&self.buf as *const SOCKADDR_STORAGE).cast();
+        unsafe { ptrs_to_socket_addr(ptr, self.len) }
     }
 }
 

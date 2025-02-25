@@ -317,7 +317,6 @@ impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use crate::sync::mpsc::channel;
     use crate::sync::{Condvar, Mutex, RwLock};

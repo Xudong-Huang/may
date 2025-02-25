@@ -250,7 +250,6 @@ impl UdpSocket {
         self.sys.set_ttl(ttl)
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn join_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.sys.join_multicast_v4(multiaddr, interface)
     }
@@ -259,7 +258,6 @@ impl UdpSocket {
         self.sys.join_multicast_v6(multiaddr, interface)
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn leave_multicast_v4(&self, multiaddr: &Ipv4Addr, interface: &Ipv4Addr) -> io::Result<()> {
         self.sys.leave_multicast_v4(multiaddr, interface)
     }

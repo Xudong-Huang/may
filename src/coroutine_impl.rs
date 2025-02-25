@@ -90,9 +90,8 @@ impl EventSource for Done {
 pub type CoroutineImpl = Generator<'static, EventResult, EventSubscriber>;
 
 #[inline]
-#[allow(clippy::cast_ptr_alignment)]
 fn get_co_local(co: &CoroutineImpl) -> *mut CoroutineLocal {
-    co.get_local_data() as *mut CoroutineLocal
+    co.get_local_data().cast()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

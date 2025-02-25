@@ -35,7 +35,6 @@ pub trait CancelIo {
     type Data;
     fn new() -> Self;
     // set the io data
-    #[allow(dead_code)]
     fn set(&self, io_data: Self::Data);
     // clear the io data
     fn clear(&self);

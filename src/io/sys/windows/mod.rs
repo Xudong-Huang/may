@@ -6,6 +6,7 @@ macro_rules! co_try {
                 let mut co = $co;
                 crate::yield_now::set_co_para(&mut co, err);
                 $s.schedule(co);
+                #[allow(clippy::needless_return)]
                 return;
             }
         }

@@ -359,7 +359,6 @@ impl<T> fmt::Debug for Receiver<T> {
 }
 
 #[cfg(test)]
-#[allow(clippy::redundant_clone)]
 mod tests {
     use super::*;
     use std::env;

@@ -64,11 +64,10 @@ impl<T: AsRawHandle> CoIo<T> {
         }
     }
 
-    /// reset internal io data
-    #[allow(dead_code)]
-    pub(crate) fn io_reset(&self) {
-        self.io.reset()
-    }
+    // /// reset internal io data
+    // pub(crate) fn io_reset(&self) {
+    //     self.io.reset()
+    // }
 
     /// get inner ref
     #[inline]
@@ -177,6 +176,7 @@ mod tests {
 
         impl AsRawHandle for Hd {
             fn as_raw_handle(&self) -> RawHandle {
+                // this is a fake handle, can't run!
                 0 as _
             }
         }

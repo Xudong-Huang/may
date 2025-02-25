@@ -46,8 +46,7 @@ impl CoroutineLocal {
 #[inline]
 pub fn get_co_local_data() -> Option<NonNull<CoroutineLocal>> {
     let ptr = get_local_data();
-    #[allow(clippy::cast_ptr_alignment)]
-    NonNull::new(ptr as *mut CoroutineLocal)
+    NonNull::new(ptr.cast())
 }
 
 #[inline]

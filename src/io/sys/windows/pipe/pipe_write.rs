@@ -40,7 +40,6 @@ impl<'a> PipeWrite<'a> {
 }
 
 impl EventSource for PipeWrite<'_> {
-    #[allow(clippy::needless_return)]
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
         #[cfg(feature = "io_timeout")]

@@ -43,7 +43,7 @@ impl<'a> UdpRecvFrom<'a> {
 
     pub fn done(&mut self) -> io::Result<(usize, SocketAddr)> {
         let size = co_io_result(&self.io_data, self.is_coroutine)?;
-        let addr = self.addr.to_socket_addr().ok_or_else(|| {
+        let addr = self.addr.get_socket_addr().ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "could not obtain remote address")
         })?;
         Ok((size, addr))

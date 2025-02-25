@@ -216,17 +216,19 @@ fn yield_from_gen() {
 }
 
 #[test]
-#[allow(unused_assignments)]
 fn unpark() {
     let mut a = 0;
+    let mut b = 0;
     coroutine::scope(|scope| {
         let h = go!(scope, || {
             let co = coroutine::current();
             println!("child coroutine name:{co:?}");
             co.unpark();
             a = 5;
+            b += a;
             coroutine::park();
             a = 10;
+            b += a;
             coroutine::park();
         });
 
@@ -239,6 +241,7 @@ fn unpark() {
     });
 
     assert_eq!(a, 10);
+    assert_eq!(b, 15);
 }
 
 #[test]

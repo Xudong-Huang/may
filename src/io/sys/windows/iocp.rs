@@ -1,6 +1,5 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
-#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{io, ptr};
 
