@@ -30,7 +30,11 @@ pub fn yield_with<T: EventSource>(resource: &T) {
         return resource.yield_back(cancel);
     }
 
-    let r = resource as &dyn EventSource as *const _ as *mut _;
+    let r = unsafe {
+        std::mem::transmute::<*const (dyn EventSource + '_), *mut (dyn EventSource + 'static)>(
+            resource as &dyn EventSource,
+        )
+    };
     let es = EventSubscriber::new(r);
     co_yield_with(es);
 
@@ -45,13 +49,21 @@ pub fn yield_with_io<T: EventSource>(resource: &T, is_coroutine: bool) {
         yield_with(resource);
         #[cfg(not(feature = "io_cancel"))]
         {
-            let r = resource as &dyn EventSource as *const _ as *mut _;
+            let r = unsafe {
+                std::mem::transmute::<*const (dyn EventSource + '_), *mut (dyn EventSource + 'static)>(
+                    resource as &dyn EventSource,
+                )
+            };
             let es = EventSubscriber::new(r);
             co_yield_with(es);
         }
     } else {
         // for thread is only park the thread
-        let r = resource as &dyn EventSource as *const _ as *mut _;
+        let r = unsafe {
+            std::mem::transmute::<*const (dyn EventSource + '_), *mut (dyn EventSource + 'static)>(
+                resource as &dyn EventSource,
+            )
+        };
         let es = EventSubscriber::new(r);
         crate::io::thread::PROXY_CO_SENDER.with(|tx| {
             tx.send(es).unwrap();
