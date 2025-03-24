@@ -55,9 +55,8 @@ impl<'a> TcpListenerAccept<'a> {
         })?;
 
         let addr = self.addr.parse(self.socket).and_then(|a| {
-            a.remote().ok_or_else(|| {
-                io::Error::other("could not obtain remote address")
-            })
+            a.remote()
+                .ok_or_else(|| io::Error::other("could not obtain remote address"))
         })?;
 
         Ok((s, addr))
