@@ -39,7 +39,7 @@ impl TcpStreamConnect {
         // here we should use a thread to finish the resolve?
         addr.to_socket_addrs()?
             .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no socket addresses resolved"))
+            .ok_or_else(|| io::Error::other("no socket addresses resolved"))
             .and_then(|addr| {
                 let socket = match addr {
                     SocketAddr::V4(..) => Socket::new(Domain::IPV4, Type::STREAM, None)?,

@@ -29,7 +29,7 @@ impl<'a> UdpSendTo<'a> {
     ) -> io::Result<Self> {
         addr.to_socket_addrs()?
             .next()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no socket addresses resolved"))
+            .ok_or_else(|| io::Error::other("no socket addresses resolved"))
             .map(|addr| UdpSendTo {
                 io_data: EventData::new(socket.as_raw_socket() as HANDLE),
                 buf,
