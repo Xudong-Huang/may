@@ -77,7 +77,7 @@ fn main() {
 
     let msg = vec![0; test_msg_len];
 
-    let err = io::Error::new(io::ErrorKind::Other, "can't resolve socket addresses");
+    let err = io::Error::other("can't resolve socket addresses");
     let addr = t!(target_addr.to_socket_addrs())
         .fold(Err(err), |prev, addr| prev.or(Ok(addr)))
         .unwrap();

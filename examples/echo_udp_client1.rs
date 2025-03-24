@@ -70,7 +70,7 @@ fn main() {
     let test_conn_num = args.flag_c;
     let test_seconds = args.flag_d;
 
-    let err = io::Error::new(io::ErrorKind::Other, "can't resolve socket addresses");
+    let err = io::Error::other("can't resolve socket addresses");
     let addr = t!(target_addr.to_socket_addrs())
         .fold(Err(err), |prev, addr| prev.or(Ok(addr)))
         .unwrap();

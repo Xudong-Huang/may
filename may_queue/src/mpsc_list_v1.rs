@@ -172,7 +172,7 @@ impl<T> Queue<T> {
             (*node).prev = prev;
             (*prev).next.store(node, Ordering::Release);
             let tail = *self.tail.get();
-            let is_head = tail == prev;
+            let is_head = std::ptr::eq(tail, prev);
             (Entry(ptr::NonNull::new_unchecked(node)), is_head)
         }
     }
@@ -182,7 +182,7 @@ impl<T> Queue<T> {
     pub fn is_empty(&self) -> bool {
         let tail = unsafe { *self.tail.get() };
         // the list is empty
-        self.head.load(Ordering::Acquire) == tail
+        std::ptr::eq(self.head.load(Ordering::Acquire), tail)
     }
 
     /// get the head ref
@@ -192,7 +192,7 @@ impl<T> Queue<T> {
     pub unsafe fn peek(&self) -> Option<&T> {
         let tail = *self.tail.get();
         // the list is empty
-        if self.head.load(Ordering::Acquire) == tail {
+        if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
             return None;
         }
         // spin until tail next become non-null
@@ -219,7 +219,7 @@ impl<T> Queue<T> {
         unsafe {
             let tail = *self.tail.get();
             // the list is empty
-            if self.head.load(Ordering::Acquire) == tail {
+            if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
                 return None;
             }
 
@@ -270,7 +270,7 @@ impl<T> Queue<T> {
             let tail = *self.tail.get();
 
             // the list is empty
-            if self.head.load(Ordering::Acquire) == tail {
+            if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
                 return None;
             }
 

@@ -195,7 +195,7 @@ impl<T> Queue<T> {
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-            if block == tail_block && id >= (push_index & BLOCK_MASK) {
+            if std::ptr::eq(block, tail_block) && id >= (push_index & BLOCK_MASK) {
                 return None;
             }
 
@@ -265,7 +265,7 @@ impl<T> Queue<T> {
         loop {
             head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
             let (block, id) = BlockPtr::unpack(head);
-            if block == tail_block && id >= (push_index & BLOCK_MASK) {
+            if std::ptr::eq(block, tail_block) && id >= (push_index & BLOCK_MASK) {
                 return None;
             }
 
@@ -336,11 +336,15 @@ impl<T> Queue<T> {
             let (block, id) = BlockPtr::unpack(head);
             let push_id = push_index & BLOCK_MASK;
             // at least leave one element to the owner
-            if block == tail_block && id >= push_id {
+            if std::ptr::eq(block, tail_block) && id >= push_id {
                 return SmallVec::new();
             }
 
-            let new_id = if block != tail_block { 0 } else { push_id };
+            let new_id = if !std::ptr::eq(block, tail_block) {
+                0
+            } else {
+                push_id
+            };
 
             let new_head = if new_id == 0 {
                 (head as usize | (1 << 63)) as *mut BlockNode<T>
@@ -435,7 +439,7 @@ impl<T> Queue<T> {
         let push_index = self.tail.index.load(Ordering::Acquire);
         let tail_block = self.tail.block.load(Ordering::Acquire);
 
-        block == tail_block && id == (push_index & BLOCK_MASK)
+        std::ptr::eq(block, tail_block) && id == (push_index & BLOCK_MASK)
     }
 }
 

@@ -310,7 +310,7 @@ impl<T> Drop for Queue<T> {
         #[cfg(feature = "inner_cache")]
         let mut first = self.first.load(Ordering::Relaxed);
         #[cfg(feature = "inner_cache")]
-        while first != tail {
+        while !std::ptr::eq(first, tail) {
             let next = unsafe { &*first }.next.load(Ordering::Relaxed);
             let _ = unsafe { Box::from_raw(first) };
             first = next;

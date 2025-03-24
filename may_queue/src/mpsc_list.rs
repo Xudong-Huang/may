@@ -53,7 +53,7 @@ impl<T> Queue<T> {
     pub fn is_empty(&self) -> bool {
         let tail = unsafe { *self.tail.get() };
         // the list is empty
-        self.head.load(Ordering::Acquire) == tail
+        std::ptr::eq(self.head.load(Ordering::Acquire), tail)
     }
 
     /// Pops some data from this queue.
@@ -62,7 +62,7 @@ impl<T> Queue<T> {
             let tail = *self.tail.get();
 
             // the list is empty
-            if self.head.load(Ordering::Acquire) == tail {
+            if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
                 return None;
             }
 

@@ -134,7 +134,7 @@ impl<T: CancelIo> CancelImpl<T> {
             if let Some(mut co) = co.take() {
                 // this is not safe, the kernel may still need to use the overlapped
                 // set the cancel result for the coroutine
-                set_co_para(&mut co, io::Error::new(io::ErrorKind::Other, "Canceled"));
+                set_co_para(&mut co, io::Error::other("Canceled"));
                 get_scheduler().schedule(co);
             }
         }
