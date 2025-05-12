@@ -15,6 +15,9 @@ use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
 use windows_sys::Win32::System::Threading::INFINITE;
 use windows_sys::Win32::System::IO::*;
 
+// Added import for memoffset
+use memoffset::offset_of;
+
 #[allow(clippy::upper_case_acronyms)]
 type BOOL = i32;
 const TRUE: BOOL = 1;
@@ -660,8 +663,15 @@ impl AcceptAddrsBuf {
         }
     }
 
+<<<<<<< HEAD
     fn args(&self) -> (*mut std::ffi::c_void, u32, u32, u32) {
         let remote_offset = std::mem::offset_of!(AcceptAddrsBuf, remote);
+=======
+    // #[allow(deref_nullptr)] // This allow was for the original unsafe code
+    fn args(&self) -> (*mut std::ffi::c_void, u32, u32, u32) {
+        // Corrected: Use memoffset::offset_of!
+        let remote_offset = offset_of!(AcceptAddrsBuf, remote);
+>>>>>>> 2dd3905 (2025-05-12 @weix2025)
         (
             self as *const _ as *mut _,
             0,
