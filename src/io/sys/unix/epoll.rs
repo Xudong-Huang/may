@@ -1,6 +1,5 @@
 use std::io;
 use std::os::fd::AsFd;
-use std::os::fd::AsRawFd;
 use std::os::fd::BorrowedFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -100,7 +99,7 @@ impl Selector {
                 // this is just a wakeup event, ignore it
                 let mut buf = [0u8; 8];
                 // clear the eventfd, ignore the result
-                read(single_selector.evfd.as_raw_fd(), &mut buf).ok();
+                read(single_selector.evfd.as_fd(), &mut buf).ok();
                 // info!("got wakeup event in select, id={}", id);
                 scheduler.collect_global(id);
                 continue;

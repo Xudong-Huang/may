@@ -1,4 +1,5 @@
 use std::io;
+use std::os::fd::BorrowedFd;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
@@ -35,6 +36,7 @@ impl<'a> SocketRead<'a> {
     }
 
     pub fn done(&mut self) -> io::Result<usize> {
+        let fd = unsafe { BorrowedFd::borrow_raw(self.io_data.fd) };
         loop {
             co_io_result(self.is_coroutine)?;
 
@@ -42,7 +44,7 @@ impl<'a> SocketRead<'a> {
             self.io_data.io_flag.store(0, Ordering::Relaxed);
 
             // finish the read operation
-            match read(self.io_data.fd, self.buf) {
+            match read(fd, self.buf) {
                 Ok(n) => return Ok(n),
                 Err(e) => {
                     if e == nix::errno::Errno::EAGAIN {
