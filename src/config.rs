@@ -39,7 +39,7 @@ impl Config {
     ///
     /// the minimum worker thread is 1, if you pass 0 to it, will use internal default
     pub fn set_workers(&self, workers: usize) -> &Self {
-        info!("set workers={:?}", workers);
+        info!("set workers={workers:?}");
         WORKERS.store(workers, Ordering::Relaxed);
         self
     }
@@ -66,7 +66,7 @@ impl Config {
     ///
     /// if you pass 0 to it, will use internal default
     pub fn set_pool_capacity(&self, capacity: usize) -> &Self {
-        info!("set pool capacity={:?}", capacity);
+        info!("set pool capacity={capacity:?}");
         POOL_CAPACITY.store(capacity, Ordering::Release);
         self
     }
@@ -85,7 +85,7 @@ impl Config {
     ///
     /// if you pass 0 to it, will use internal default
     pub fn set_stack_size(&self, size: usize) -> &Self {
-        info!("set stack size={:?}", size);
+        info!("set stack size={size:?}");
         STACK_SIZE.store(size, Ordering::Release);
         self
     }

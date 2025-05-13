@@ -26,7 +26,7 @@ impl CancelIoData {
         let ret = CancelIoEx(handle, overlapped);
         if ret == 0 {
             let err = io::Error::last_os_error();
-            error!("cancel err={:?}", err);
+            error!("cancel err={err:?}");
             // ev.co.take().map(|co| get_scheduler().schedule(co));
             Err(err)
         } else {

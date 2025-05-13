@@ -165,7 +165,7 @@ impl Selector {
                     // the timeout function would remove the timer handle
                 }
                 err => {
-                    error!("iocp err=0x{:08x}", err);
+                    error!("iocp err=0x{err:08x}");
                     unsafe {
                         // convert the ntstatus to winerr
                         let mut size: u32 = 0;
@@ -248,6 +248,6 @@ pub fn timeout_handler(data: TimerData) {
         event_data.timer.take();
         // ignore the error, the select may grab the data first!
         cancel_io(event_data.handle, event_data.get_overlapped())
-            .unwrap_or_else(|e| error!("CancelIoEx failed! e = {}", e));
+            .unwrap_or_else(|e| error!("CancelIoEx failed! e = {e}"));
     }
 }
