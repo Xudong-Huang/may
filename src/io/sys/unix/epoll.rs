@@ -153,7 +153,7 @@ impl Selector {
     pub fn wakeup(&self, id: usize) {
         let buf = 1u64.to_le_bytes();
         let ret = write(&self.vec[id].evfd, &buf);
-        trace!("wakeup id={:?}, ret={:?}", id, ret);
+        trace!("wakeup id={id:?}, ret={ret:?}");
     }
 
     // register io event to the selector
@@ -171,7 +171,7 @@ impl Selector {
         let id = fd as usize % self.vec.len();
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
-        info!("add fd to epoll select, fd={:?}", fd);
+        info!("add fd to epoll select, fd={fd:?}");
         epoll
             .add(unsafe { BorrowedFd::borrow_raw(fd) }, info)
             .map_err(from_nix_error)
@@ -196,7 +196,7 @@ impl Selector {
         let id = fd as usize % self.vec.len();
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
-        info!("mod fd to epoll select, fd={:?}, is_read={}", fd, is_read);
+        info!("mod fd to epoll select, fd={fd:?}, is_read={is_read}");
         epoll
             .modify(unsafe { BorrowedFd::borrow_raw(fd) }, &mut info)
             .map_err(from_nix_error)
@@ -219,7 +219,7 @@ impl Selector {
         let id = fd as usize % self.vec.len();
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
-        info!("del fd from epoll select, fd={:?}", fd);
+        info!("del fd from epoll select, fd={fd:?}");
         epoll.delete(unsafe { BorrowedFd::borrow_raw(fd) }).ok();
 
         // after EpollCtlDel push the unused event data
