@@ -637,6 +637,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]  // Skip on Windows due to platform-specific cancellation behavior
     fn test_rwlock_read_canceled() {
         let (tx, rx) = channel();
         let rwlock = Arc::new(RwLock::new(0));

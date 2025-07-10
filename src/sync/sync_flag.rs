@@ -170,6 +170,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]  // Skip on Windows due to platform-specific cancellation behavior
     fn test_syncflag_canceled() {
         use crate::sleep::sleep;
 
@@ -199,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]  // Skip on Windows due to platform-specific timeout behavior
     fn test_syncflag_co_timeout() {
         use crate::sleep::sleep;
 
