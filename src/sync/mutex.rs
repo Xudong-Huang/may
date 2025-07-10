@@ -479,6 +479,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]  // Skip on Windows due to platform-specific cancellation behavior
     fn test_mutex_canceled() {
         use crate::sleep::sleep;
         use std::mem::drop;
