@@ -746,7 +746,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => {},
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
@@ -787,7 +787,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => {},
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }

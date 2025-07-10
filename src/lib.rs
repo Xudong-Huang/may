@@ -16,7 +16,13 @@
 //!         42
 //!     })?;
 //!     
-//!     let result = handle.join()?;
+//!     let result = match handle.join() {
+//!         Ok(val) => val,
+//!         Err(e) => {
+//!             eprintln!("Coroutine panicked: {:?}", e);
+//!             return Err("Coroutine execution failed".into());
+//!         }
+//!     };
 //!     println!("Result: {}", result);
 //!     Ok(())
 //! }
@@ -33,7 +39,13 @@
 //!         .name("worker")
 //!         .spawn_safe(|| "Safe coroutine with configuration!")?;
 //!     
-//!     println!("{}", handle.join()?);
+//!     match handle.join() {
+//!         Ok(result) => println!("{}", result),
+//!         Err(e) => {
+//!             eprintln!("Coroutine panicked: {:?}", e);
+//!             return Err("Coroutine execution failed".into());
+//!         }
+//!     }
 //!     Ok(())
 //! }
 //! ```
@@ -57,9 +69,9 @@
 //! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
 //!
 //! ## Safety Levels
-//! 
+//!
 //! May provides configurable safety levels to balance safety and performance:
-//! 
+//!
 //! - [`SafetyLevel::Strict`]: Maximum safety with comprehensive runtime validation
 //! - [`SafetyLevel::Balanced`]: Good safety with minimal performance overhead (recommended)
 //! - [`SafetyLevel::Permissive`]: Basic safety for performance-critical code

@@ -311,6 +311,15 @@ impl SafeBuilder {
             Ok(builder.spawn(move || wrapped_fn.call())?)
         }
     }
+
+    /// Build and spawn a safe coroutine (alias for spawn)
+    pub fn spawn_safe<F, T>(self, f: F) -> Result<crate::join::JoinHandle<T>, SafetyViolation>
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.spawn(f)
+    }
 }
 
 /// Wrapper that adds safety monitoring to coroutine functions
