@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]  // Unix version - synchronous cancellation
+    #[cfg(unix)] // Unix version - synchronous cancellation
     fn test_syncflag_canceled() {
         use crate::sleep::sleep;
 
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]  // Unix version - synchronous timeout
+    #[cfg(unix)] // Unix version - synchronous timeout
     fn test_syncflag_co_timeout() {
         use crate::sleep::sleep;
 
@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]  // Windows version - asynchronous cancellation
+    #[cfg(windows)] // Windows version - asynchronous cancellation
     fn test_syncflag_canceled_windows() {
         use crate::sleep::sleep;
 
@@ -276,14 +276,14 @@ mod tests {
         println!("flag1={flag1:?}");
         // cancel h1
         unsafe { h1.coroutine().cancel() };
-        
+
         // On Windows, cancellation is asynchronous, handle both cases
         let h1_result = h1.join();
-        
+
         // release the SyncFlag
         flag1.fire();
         h2.join().unwrap();
-        
+
         // Verify cancellation behavior - on Windows it might succeed or fail
         match h1_result {
             Err(_) => {
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]  // Windows version - asynchronous timeout
+    #[cfg(windows)] // Windows version - asynchronous timeout
     fn test_syncflag_co_timeout_windows() {
         use crate::sleep::sleep;
 
