@@ -4,7 +4,43 @@
 //! you can easily develop and maintain massive concurrent programs. It can be thought
 //! as the Rust version of the popular Goroutine.
 //!
+//! ## Quick Start
+//!
+//! ### Safe Coroutine Spawning (Recommended)
+//! ```rust
+//! use may::coroutine::spawn_safe;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let handle = spawn_safe(|| {
+//!         println!("Hello from a safe coroutine!");
+//!         42
+//!     })?;
+//!     
+//!     let result = handle.join()?;
+//!     println!("Result: {}", result);
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ### Advanced Configuration
+//! ```rust
+//! use may::coroutine::{SafeBuilder, SafetyLevel};
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let handle = SafeBuilder::new()
+//!         .safety_level(SafetyLevel::Strict)
+//!         .stack_size(1024 * 1024)
+//!         .name("worker")
+//!         .spawn_safe(|| "Safe coroutine with configuration!")?;
+//!     
+//!     println!("{}", handle.join()?);
+//!     Ok(())
+//! }
+//! ```
+//!
 //! ## Features
+//! * **Safe coroutine spawning** with compile-time and runtime safety guarantees;
+//! * **Comprehensive safety infrastructure** with TLS safety and stack overflow protection;
 //! * The stackful coroutine's implementation is based on [generator][generator];
 //! * Support schedule on a configurable number of threads for multi-core systems;
 //! * Support coroutine's version of a local storage ([CLS][cls]);
@@ -19,6 +55,20 @@
 //! * All the coroutine's API can be safely called in multi-threaded context;
 //! * Both stable, beta, and nightly channels are supported;
 //! * Both x86_64 GNU/Linux, x86_64 Windows, x86_64 Mac OS are supported.
+//!
+//! ## Safety Levels
+//! 
+//! May provides configurable safety levels to balance safety and performance:
+//! 
+//! - [`SafetyLevel::Strict`]: Maximum safety with comprehensive runtime validation
+//! - [`SafetyLevel::Balanced`]: Good safety with minimal performance overhead (recommended)
+//! - [`SafetyLevel::Permissive`]: Basic safety for performance-critical code
+//! - [`SafetyLevel::Development`]: Enhanced debugging and validation for development
+//!
+//! [`SafetyLevel::Strict`]: safety::SafetyLevel::Strict
+//! [`SafetyLevel::Balanced`]: safety::SafetyLevel::Balanced
+//! [`SafetyLevel::Permissive`]: safety::SafetyLevel::Permissive
+//! [`SafetyLevel::Development`]: safety::SafetyLevel::Development
 
 // #![deny(missing_docs)]
 
@@ -36,6 +86,7 @@ mod sleep;
 #[macro_use]
 mod macros;
 mod coroutine_impl;
+pub mod safety;
 mod scheduler;
 mod scoped;
 mod timeout_list;

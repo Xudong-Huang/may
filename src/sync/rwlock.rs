@@ -349,7 +349,7 @@ mod tests {
             let r = r.clone();
             let f = move || {
                 for i in 0..M {
-                    if i % 5 == 0 {
+                    if i.is_multiple_of(5) {
                         drop(r.write().unwrap());
                     } else {
                         drop(r.read().unwrap());
@@ -357,7 +357,7 @@ mod tests {
                 }
                 drop(tx);
             };
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 go!(f);
             } else {
                 thread::spawn(f);
