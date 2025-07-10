@@ -228,11 +228,11 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter { rx: self }
     }
 
-    pub fn try_iter(&self) -> TryIter<T> {
+    pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { rx: self }
     }
 }
@@ -732,7 +732,7 @@ mod tests {
 
         thread::spawn(move || {
             for i in 0..stress {
-                if i % 2 == 0 {
+                if i.is_multiple_of(2) {
                     thread::sleep(timeout * 2);
                 }
                 tx.send(1usize).unwrap();
@@ -746,7 +746,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {},
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
@@ -787,7 +787,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {},
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }

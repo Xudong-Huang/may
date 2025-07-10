@@ -120,7 +120,7 @@ impl Selector {
             let dur = Duration::from_nanos(to);
             libc::timespec {
                 tv_sec: dur.as_secs() as libc::time_t,
-                tv_nsec: dur.subsec_nanos() as libc::c_long,
+                tv_nsec: libc::c_long::from(dur.subsec_nanos()),
             }
         });
 
@@ -214,7 +214,7 @@ impl Selector {
         syscall!(kevent(kqfd, &kev, 1, &mut kev, 1, ptr::null())).unwrap();
         assert!(kev.flags & libc::EV_ERROR == 0 || kev.data == 0);
 
-        trace!("wakeup id={:?}", id);
+        trace!("wakeup id={id:?}");
     }
 
     // register io event to the selector
@@ -240,7 +240,7 @@ impl Selector {
             ptr::null(),
         ))?;
 
-        debug!("add fd to kqueue select, fd={:?}", fd);
+        debug!("add fd to kqueue select, fd={fd:?}");
         Ok(io_data)
     }
 
@@ -273,7 +273,7 @@ impl Selector {
             ptr::null(),
         ))?;
 
-        debug!("modify fd to kqueue select, fd={:?}", fd);
+        debug!("modify fd to kqueue select, fd={fd:?}");
         Ok(())
     }
 
@@ -312,7 +312,7 @@ impl Selector {
         ))
         .ok();
 
-        debug!("del fd from kqueue select, fd={:?}", fd);
+        debug!("del fd from kqueue select, fd={fd:?}");
         // after EpollCtlDel push the unused event data
         single_selector.free_ev.push((*io_data).clone());
     }

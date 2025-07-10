@@ -172,7 +172,7 @@ impl Park {
         Ok(())
     }
 
-    fn delay_drop(&self) -> DropGuard {
+    fn delay_drop(&self) -> DropGuard<'_> {
         self.wait_kernel.store(true, Ordering::Release);
         DropGuard(self)
     }
