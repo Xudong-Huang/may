@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]  // Unix version - synchronous cancellation
+    #[cfg(unix)] // Unix version - synchronous cancellation
     fn test_semphore_canceled() {
         use crate::sleep::sleep;
 
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]  // Unix version - synchronous timeout
+    #[cfg(unix)] // Unix version - synchronous timeout
     fn test_semphore_co_timeout() {
         use crate::sleep::sleep;
 
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]  // Windows version - asynchronous cancellation
+    #[cfg(windows)] // Windows version - asynchronous cancellation
     fn test_semphore_canceled_windows() {
         use crate::sleep::sleep;
 
@@ -338,14 +338,14 @@ mod tests {
         println!("sem1={sem1:?}");
         // cancel h1
         unsafe { h1.coroutine().cancel() };
-        
+
         // On Windows, cancellation is asynchronous, handle both cases
         let h1_result = h1.join();
-        
+
         // release the semphore
         sem1.post();
         h2.join().unwrap();
-        
+
         // Verify cancellation behavior - on Windows it might succeed or fail
         match h1_result {
             Err(_) => {
@@ -361,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]  // Windows version - asynchronous timeout
+    #[cfg(windows)] // Windows version - asynchronous timeout
     fn test_semphore_co_timeout_windows() {
         use crate::sleep::sleep;
 
