@@ -1,0 +1,71 @@
+# .nextest.toml
+# Nextest configuration for May coroutine library
+
+[profile.default]
+# Don't fail fast - we want to see all test results
+fail-fast = false
+
+# Show slow tests (>60s) - important for coroutine timing tests
+status-level = "slow"
+
+# Retry flaky tests once - coroutines can have timing issues
+retries = 1
+
+# Run tests with reduced parallelism for coroutine stability
+test-threads = 4
+
+# Timeout for individual tests (important for coroutine tests that might hang)
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+# Global timeout for the entire test run
+final-status-level = "slow"
+
+[profile.default.junit]
+# Generate JUnit XML for CI/CD integration
+path = "target/nextest/junit.xml"
+
+# Test groups for different types of tests
+[[profile.default.overrides]]
+filter = 'test(safe_spawn)'
+test-threads = 2
+slow-timeout = { period = "30s" }
+
+[[profile.default.overrides]]
+filter = 'test(integration)'
+test-threads = 1
+slow-timeout = { period = "60s" }
+
+[[profile.default.overrides]]
+filter = 'test(bench)'
+test-threads = 1
+retries = 0
+slow-timeout = { period = "180s" }
+
+# Coroutine-specific test overrides
+[[profile.default.overrides]]
+filter = 'test(coroutine) or test(spawn) or test(yield)'
+test-threads = 2
+slow-timeout = { period = "45s" }
+
+# I/O tests need more time and less concurrency
+[[profile.default.overrides]]
+filter = 'test(io) or test(net) or test(tcp) or test(udp)'
+test-threads = 1
+slow-timeout = { period = "90s" }
+
+# Sync primitive tests
+[[profile.default.overrides]]
+filter = 'test(mutex) or test(rwlock) or test(channel) or test(mpsc) or test(mpmc)'
+test-threads = 2
+slow-timeout = { period = "30s" }
+
+# Coverage profile for code coverage analysis
+[profile.coverage]
+# Minimal parallelism for stable coverage collection
+test-threads = 1
+retries = 0
+fail-fast = true
+slow-timeout = { period = "180s", terminate-after = 1 }
+
+[profile.coverage.junit]
+path = "target/nextest/coverage-junit.xml"

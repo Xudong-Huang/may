@@ -220,7 +220,7 @@ mod tests {
         // Test that methods can be chained
         let _result = cfg
             .set_workers(2)
-            .set_pool_capacity(100)
+            .set_pool_capacity(200)
             .set_stack_size(4096)
             .set_worker_pin(false);
         
@@ -229,9 +229,15 @@ mod tests {
         
         // Verify values were set
         assert_eq!(cfg.get_workers(), 2);
-        assert_eq!(cfg.get_pool_capacity(), 100);
+        assert_eq!(cfg.get_pool_capacity(), 200);
         assert_eq!(cfg.get_stack_size(), 4096);
         assert_eq!(cfg.get_worker_pin(), false);
+        
+        // Reset to reasonable defaults for other tests
+        cfg.set_workers(num_cpus::get());
+        cfg.set_pool_capacity(DEFAULT_POOL_CAPACITY);
+        cfg.set_stack_size(DEFAULT_STACK_SIZE);
+        cfg.set_worker_pin(true);
     }
 
     #[test]
@@ -314,4 +320,6 @@ mod tests {
         cfg.set_stack_size(1024 * 1024); // 1MB
         assert_eq!(cfg.get_stack_size(), 1024 * 1024);
     }
+
+
 }
