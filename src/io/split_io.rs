@@ -4,6 +4,8 @@
 use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, RawFd};
+#[cfg(windows)]
+use std::os::windows::io::{AsRawHandle, RawHandle};
 
 use super::AsIoData;
 
@@ -81,6 +83,26 @@ where
     }
 }
 
+#[cfg(windows)]
+impl<T> AsRawHandle for SplitReader<T>
+where
+    T: AsRawHandle,
+{
+    fn as_raw_handle(&self) -> RawHandle {
+        self.inner.as_raw_handle()
+    }
+}
+
+#[cfg(windows)]
+impl<T> AsRawHandle for SplitWriter<T>
+where
+    T: AsRawHandle,
+{
+    fn as_raw_handle(&self) -> RawHandle {
+        self.inner.as_raw_handle()
+    }
+}
+
 impl<T: Read> Read for SplitReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
@@ -154,16 +176,32 @@ mod tests {
     impl AsIoData for MockIo {
         fn as_io_data(&self) -> &IoData {
             // For testing purposes, we'll use a dummy file descriptor
-            use std::os::fd::AsRawFd;
-            struct DummyFd;
-            impl AsRawFd for DummyFd {
-                fn as_raw_fd(&self) -> std::os::fd::RawFd {
-                    0 // stdin as a dummy fd
+            #[cfg(unix)]
+            {
+                use std::os::fd::AsRawFd;
+                struct DummyFd;
+                impl AsRawFd for DummyFd {
+                    fn as_raw_fd(&self) -> std::os::fd::RawFd {
+                        0 // stdin as a dummy fd
+                    }
                 }
+                static DUMMY_FD: DummyFd = DummyFd;
+                static IO_DATA: std::sync::OnceLock<IoData> = std::sync::OnceLock::new();
+                IO_DATA.get_or_init(|| IoData::new(&DUMMY_FD))
             }
-            static DUMMY_FD: DummyFd = DummyFd;
-            static IO_DATA: std::sync::OnceLock<IoData> = std::sync::OnceLock::new();
-            IO_DATA.get_or_init(|| IoData::new(&DUMMY_FD))
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                struct DummyHandle;
+                impl AsRawHandle for DummyHandle {
+                    fn as_raw_handle(&self) -> std::os::windows::io::RawHandle {
+                        std::ptr::null_mut() // dummy handle
+                    }
+                }
+                static DUMMY_HANDLE: DummyHandle = DummyHandle;
+                static IO_DATA: std::sync::OnceLock<IoData> = std::sync::OnceLock::new();
+                IO_DATA.get_or_init(|| IoData::new(&DUMMY_HANDLE))
+            }
         }
     }
     
