@@ -121,6 +121,69 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    
+    // Test utilities for configuration isolation
+    mod test_utils {
+        use super::*;
+        use std::sync::{Mutex, OnceLock};
+        
+        static CONFIG_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+        
+        fn get_config_mutex() -> &'static Mutex<()> {
+            CONFIG_TEST_MUTEX.get_or_init(|| Mutex::new(()))
+        }
+        
+        pub struct ConfigTestGuard {
+            _guard: std::sync::MutexGuard<'static, ()>,
+            original_state: ConfigState,
+        }
+        
+        struct ConfigState {
+            workers: usize,
+            stack_size: usize,
+            pool_capacity: usize,
+            pin_workers: bool,
+            #[cfg(feature = "io_timeout")]
+            poll_timeout_ns: u64,
+        }
+        
+        impl ConfigTestGuard {
+            pub fn new() -> Self {
+                let guard = get_config_mutex().lock().unwrap();
+                let cfg = config();
+                
+                let original_state = ConfigState {
+                    workers: cfg.get_workers(),
+                    stack_size: cfg.get_stack_size(),
+                    pool_capacity: cfg.get_pool_capacity(),
+                    pin_workers: cfg.get_worker_pin(),
+                    #[cfg(feature = "io_timeout")]
+                    poll_timeout_ns: cfg.get_timeout_ns(),
+                };
+                
+                Self {
+                    _guard: guard,
+                    original_state,
+                }
+            }
+            
+            pub fn config(&self) -> Config {
+                config()
+            }
+        }
+        
+        impl Drop for ConfigTestGuard {
+            fn drop(&mut self) {
+                let cfg = config();
+                cfg.set_workers(self.original_state.workers);
+                cfg.set_stack_size(self.original_state.stack_size);
+                cfg.set_pool_capacity(self.original_state.pool_capacity);
+                cfg.set_worker_pin(self.original_state.pin_workers);
+                #[cfg(feature = "io_timeout")]
+                cfg.set_timeout_ns(self.original_state.poll_timeout_ns);
+            }
+        }
+    }
 
     #[test]
     fn test_config_creation() {
@@ -147,7 +210,8 @@ mod tests {
 
     #[test]
     fn test_set_and_get_pool_capacity() {
-        let cfg = config();
+        let guard = test_utils::ConfigTestGuard::new();
+        let cfg = guard.config();
         
         // Test setting pool capacity
         cfg.set_pool_capacity(500);
@@ -156,23 +220,24 @@ mod tests {
         // Test setting to 0 (should use default)
         cfg.set_pool_capacity(0);
         assert_eq!(cfg.get_pool_capacity(), DEFAULT_POOL_CAPACITY);
+        
+        // Automatic cleanup via Drop trait
     }
 
     #[test]
     fn test_set_and_get_stack_size() {
-        let cfg = config();
+        let guard = test_utils::ConfigTestGuard::new();
+        let cfg = guard.config();
         
         // Test setting stack size
         cfg.set_stack_size(8192);
         assert_eq!(cfg.get_stack_size(), 8192);
         
         // Test setting to 0 (should use previous value since we don't reset)
-        let current_size = cfg.get_stack_size();
         cfg.set_stack_size(0);
         assert_eq!(cfg.get_stack_size(), 0);
         
-        // Reset to a valid value
-        cfg.set_stack_size(current_size);
+        // Automatic cleanup via Drop trait
     }
 
     #[test]
@@ -215,7 +280,8 @@ mod tests {
 
     #[test]
     fn test_method_chaining() {
-        let cfg = config();
+        let guard = test_utils::ConfigTestGuard::new();
+        let cfg = guard.config();
         
         // Test that methods can be chained
         let _result = cfg
@@ -233,20 +299,17 @@ mod tests {
         assert_eq!(cfg.get_stack_size(), 4096);
         assert_eq!(cfg.get_worker_pin(), false);
         
-        // Reset to reasonable defaults for other tests
-        cfg.set_workers(num_cpus::get());
-        cfg.set_pool_capacity(DEFAULT_POOL_CAPACITY);
-        cfg.set_stack_size(DEFAULT_STACK_SIZE);
-        cfg.set_worker_pin(true);
+        // Automatic cleanup via Drop trait
     }
 
     #[test]
     fn test_default_constants() {
+        let guard = test_utils::ConfigTestGuard::new();
+        let cfg = guard.config();
+        
         // Test that default constants have expected values
         assert_eq!(DEFAULT_POOL_CAPACITY, 1000);
         assert_eq!(DEFAULT_STACK_SIZE, 0x1000); // 4096
-        
-        let cfg = config();
         
         // Test setting and getting specific values
         cfg.set_pool_capacity(42);
@@ -269,6 +332,8 @@ mod tests {
         // Test setting specific worker count
         cfg.set_workers(5);
         assert_eq!(cfg.get_workers(), 5);
+        
+        // Automatic cleanup via Drop trait
     }
 
     #[test]
