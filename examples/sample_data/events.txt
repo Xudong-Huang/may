@@ -1,0 +1,51 @@
+2024-01-20T10:30:15.123Z INFO [auth] User login successful: user_id=1, ip=192.168.1.100, user_agent=Mozilla/5.0
+2024-01-20T10:30:16.456Z DEBUG [database] Query executed: SELECT * FROM users WHERE id = 1, duration=2.3ms
+2024-01-20T10:30:17.789Z INFO [api] GET /api/v1/profile/1 - 200 OK, response_time=15ms
+2024-01-20T10:30:18.012Z WARN [cache] Cache miss for key: user_profile_1, fetching from database
+2024-01-20T10:30:19.345Z INFO [payment] Payment processed: transaction_id=txn_001, amount=29.99, status=completed
+2024-01-20T10:30:20.678Z ERROR [email] Failed to send notification email: user_id=1, error=SMTP timeout
+2024-01-20T10:30:21.901Z INFO [audit] User action logged: user_id=1, action=purchase, resource=book_123
+2024-01-20T10:30:22.234Z DEBUG [security] Rate limit check: user_id=1, requests=5, limit=100, window=1h
+2024-01-20T10:30:23.567Z INFO [auth] User login successful: user_id=2, ip=10.0.0.50, user_agent=Chrome/120.0
+2024-01-20T10:30:24.890Z INFO [api] POST /api/v1/transactions - 201 Created, response_time=45ms
+2024-01-20T10:30:25.123Z WARN [database] Connection pool exhausted, waiting for available connection
+2024-01-20T10:30:26.456Z INFO [cache] Cache updated: key=user_profile_2, ttl=3600s
+2024-01-20T10:30:27.789Z DEBUG [middleware] Request validation passed: endpoint=/api/v1/transactions
+2024-01-20T10:30:28.012Z ERROR [payment] Payment failed: transaction_id=txn_002, amount=15.50, error=insufficient_funds
+2024-01-20T10:30:29.345Z INFO [notification] Push notification sent: user_id=2, type=payment_failed
+2024-01-20T10:30:30.678Z INFO [auth] User logout: user_id=1, session_duration=5m23s
+2024-01-20T10:30:31.901Z DEBUG [cleanup] Session cleanup: expired_sessions=3, active_sessions=127
+2024-01-20T10:30:32.234Z WARN [api] High response time detected: endpoint=/api/v1/search, response_time=1250ms
+2024-01-20T10:30:33.567Z INFO [auth] User login successful: user_id=3, ip=172.16.0.25, user_agent=Safari/17.0
+2024-01-20T10:30:34.890Z INFO [database] Connection established: host=db-primary, pool_size=20
+2024-01-20T10:30:35.123Z ERROR [external_api] Third-party API call failed: service=payment_gateway, error=timeout
+2024-01-20T10:30:36.456Z INFO [retry] Retrying failed operation: attempt=2/3, operation=payment_gateway_call
+2024-01-20T10:30:37.789Z DEBUG [metrics] System metrics collected: cpu=45%, memory=67%, disk=23%
+2024-01-20T10:30:38.012Z INFO [payment] Payment processed: transaction_id=txn_003, amount=125.00, status=pending
+2024-01-20T10:30:39.345Z WARN [fraud] Suspicious activity detected: user_id=4, reason=unusual_location
+2024-01-20T10:30:40.678Z INFO [security] Account locked: user_id=4, reason=multiple_failed_attempts
+2024-01-20T10:30:41.901Z DEBUG [background] Background job started: job_id=bg_001, type=data_cleanup
+2024-01-20T10:30:42.234Z INFO [api] GET /api/v1/transactions/history - 200 OK, response_time=89ms
+2024-01-20T10:30:43.567Z ERROR [storage] Disk space low: partition=/var/log, available=2.1GB, threshold=5GB
+2024-01-20T10:30:44.890Z INFO [backup] Database backup completed: size=2.5GB, duration=15m32s
+2024-01-20T10:30:45.123Z WARN [monitoring] Service health check failed: service=recommendation_engine, status=unhealthy
+2024-01-20T10:30:46.456Z INFO [scaling] Auto-scaling triggered: current_instances=3, target_instances=5
+2024-01-20T10:30:47.789Z DEBUG [load_balancer] Traffic distribution: server1=35%, server2=32%, server3=33%
+2024-01-20T10:30:48.012Z INFO [auth] Password reset requested: user_id=5, method=email
+2024-01-20T10:30:49.345Z ERROR [integration] Webhook delivery failed: url=https://partner.com/webhook, status=503
+2024-01-20T10:30:50.678Z INFO [cache] Cache eviction: evicted_keys=150, reason=memory_pressure
+2024-01-20T10:30:51.901Z DEBUG [scheduler] Cron job executed: job=daily_report, duration=2.3s, status=success
+2024-01-20T10:30:52.234Z WARN [performance] Memory usage high: current=85%, threshold=80%
+2024-01-20T10:30:53.567Z INFO [api] DELETE /api/v1/sessions/abc123 - 204 No Content, response_time=12ms
+2024-01-20T10:30:54.890Z INFO [audit] Admin action logged: admin_id=admin_001, action=user_unlock, target_user=4
+2024-01-20T10:30:55.123Z ERROR [network] Connection timeout: host=external-service.com, timeout=30s
+2024-01-20T10:30:56.456Z INFO [feature_flag] Feature flag updated: flag=new_checkout_flow, enabled=true, rollout=25%
+2024-01-20T10:30:57.789Z DEBUG [validation] Input validation: field=email, value=valid, rule=email_format
+2024-01-20T10:30:58.012Z INFO [search] Search query executed: query="premium subscriptions", results=156, duration=45ms
+2024-01-20T10:30:59.345Z WARN [quota] API quota exceeded: user_id=6, current=1001, limit=1000, window=1h
+2024-01-20T10:31:00.678Z INFO [deployment] Application deployed: version=v2.1.5, environment=production
+2024-01-20T10:31:01.901Z DEBUG [garbage_collector] Memory cleanup: freed=256MB, duration=1.2s
+2024-01-20T10:31:02.234Z ERROR [config] Configuration validation failed: missing_key=database.max_connections
+2024-01-20T10:31:03.567Z INFO [health] Health check passed: all_services=healthy, response_time=250ms
+2024-01-20T10:31:04.890Z INFO [analytics] Event tracked: event=page_view, user_id=7, page=/dashboard
+2024-01-20T10:31:05.123Z WARN [security] SSL certificate expires soon: domain=api.example.com, days_remaining=30 

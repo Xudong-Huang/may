@@ -18,29 +18,74 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly
           override: true
           components: rustfmt, clippy
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: cargo fmt --check
         uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
-      - name: Run cargo clippy
+      - name: Run cargo clippy (strict)
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -- -D warnings
-      - name: Run cargo clippy no default features
+          args: --all-targets --all-features -- -D warnings -D clippy::correctness -D clippy::suspicious -D clippy::complexity -D clippy::perf -D clippy::style
+      - name: Run cargo clippy no default features (strict)
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --no-default-features -- -D warnings
+          args: --no-default-features --all-targets -- -D warnings -D clippy::correctness -D clippy::suspicious -D clippy::complexity -D clippy::perf -D clippy::style
+      - name: Run cargo clippy with selected pedantic lints
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --all-features -- -D warnings -D clippy::cast_lossless -D clippy::redundant_closure_for_method_calls -D clippy::uninlined_format_args -D clippy::manual_is_multiple_of -D clippy::needless_continue -D clippy::needless_for_each
+
+  security:
+    name: Security audit and additional checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-security-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run cargo check with strict flags
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets --all-features
+      - name: Check documentation
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --all-features --no-deps
+
   test:
     name: Test ${{ matrix.rust }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -55,13 +100,21 @@ jobs:
           - macOS-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install Rust (${{ matrix.rust }})
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Run cargo test
         uses: actions-rs/cargo@v1
         with:

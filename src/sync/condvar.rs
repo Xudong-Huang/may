@@ -294,7 +294,7 @@ mod tests {
             c2.notify_one();
         });
         let (g, timeout_res) = c
-            .wait_timeout(g, Duration::from_millis(u32::MAX as u64))
+            .wait_timeout(g, Duration::from_millis(u64::from(u32::MAX)))
             .unwrap();
         assert!(!timeout_res.timed_out());
         drop(g);
