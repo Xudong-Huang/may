@@ -29,7 +29,7 @@ impl<'a, T> Park<'a, T> {
         }
     }
 
-    fn delay_drop(&self) -> DropGuard<T> {
+    fn delay_drop(&self) -> DropGuard<'_, '_, T> {
         DropGuard(self)
     }
 }
@@ -296,11 +296,11 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter { rx: self }
     }
 
-    pub fn try_iter(&self) -> TryIter<T> {
+    pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { rx: self }
     }
 }
