@@ -531,7 +531,7 @@ impl UnixListener {
     ///     }
     /// }
     /// ```
-    pub fn incoming(&self) -> Incoming {
+    pub fn incoming(&self) -> Incoming<'_> {
         Incoming { listener: self }
     }
 }
