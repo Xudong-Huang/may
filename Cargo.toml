@@ -33,7 +33,7 @@ generator = "0.8.7"
 crossbeam = "0.8"
 parking_lot = "0.12"
 core_affinity = "0.8"
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 fastrand = { version = "2.0", optional = true }
 may_queue = { version = "0.1", path = "may_queue" }
 
@@ -42,7 +42,7 @@ nix = { version = "0.30", features = ["event", "socket"] }
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
-version = "0.59"
+version = "0.61"
 features = [
     "Win32_Foundation",
     "Win32_Networking_WinSock",
@@ -62,7 +62,7 @@ docopt = "1.0"
 httparse = "1.1"
 tempfile = "3"
 native-tls = "0.2"
-tungstenite = "0.26"
+tungstenite = "0.28"
 serde_derive = "1.0"
 
 [features]
