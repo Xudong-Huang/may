@@ -260,6 +260,7 @@ fn park_timeout() {
             coroutine::park_timeout(Duration::from_millis(100));
             // this test may fail if the scheduler is a little bit slow
             // assert!(now.elapsed() < Duration::from_millis(100));
+            assert_eq!(a, 5);
             a = 10;
         });
 
