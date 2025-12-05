@@ -736,7 +736,7 @@ mod tests {
 
         thread::spawn(move || {
             for i in 0..stress {
-                if i % 2 == 0 {
+                if i.is_multiple_of(2) {
                     thread::sleep(timeout * 2);
                 }
                 tx.send(1usize).unwrap();
@@ -750,7 +750,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
@@ -794,7 +794,7 @@ mod tests {
                     assert_eq!(n, 1usize);
                     recv_count += 1;
                 }
-                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }

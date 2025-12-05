@@ -60,17 +60,32 @@ fn init_scheduler() {
         s.timer_thread.run(&timer_event_handler);
     });
 
-    let core_ids = core_affinity::get_core_ids().unwrap();
-    let pin_cores = config().get_worker_pin();
+    let core_ids = core_affinity::get_core_ids();
+    let pin_cores = config().get_worker_pin() && core_ids.is_some();
+    
+    if pin_cores && core_ids.is_none() {
+        eprintln!("[may] Warning: Core affinity not available on this system, worker pinning disabled");
+    }
+    
     // io event loop thread
-    for (id, core) in (0..workers).zip(core_ids.into_iter().cycle()) {
-        thread::spawn(move || {
-            if pin_cores {
-                core_affinity::set_for_current(core);
-            }
-            let s = unsafe { &*SCHED };
-            s.event_loop.run(id);
-        });
+    if let Some(cores) = core_ids {
+        for (id, core) in (0..workers).zip(cores.into_iter().cycle()) {
+            thread::spawn(move || {
+                if pin_cores {
+                    core_affinity::set_for_current(core);
+                }
+                let s = unsafe { &*SCHED };
+                s.event_loop.run(id);
+            });
+        }
+    } else {
+        // Fallback: spawn workers without core pinning
+        for id in 0..workers {
+            thread::spawn(move || {
+                let s = unsafe { &*SCHED };
+                s.event_loop.run(id);
+            });
+        }
     }
 }
 

@@ -28,7 +28,7 @@ impl<'a> UnixSendTo<'a> {
             socket: socket.0.inner(),
             path,
             #[cfg(feature = "io_timeout")]
-            timeout: socket.write_timeout().unwrap(),
+            timeout: socket.write_timeout()?,
             is_coroutine: is_coroutine(),
         })
     }

@@ -28,7 +28,7 @@ impl<'a, A: ToSocketAddrs> UdpSendTo<'a, A> {
             socket: socket.inner(),
             addr,
             #[cfg(feature = "io_timeout")]
-            timeout: socket.write_timeout().unwrap(),
+            timeout: socket.write_timeout()?,
             is_coroutine: is_coroutine(),
         })
     }

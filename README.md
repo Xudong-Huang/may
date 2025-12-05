@@ -29,6 +29,7 @@ May is a high-performance library for programming stackful coroutines with which
 ----------
 
 ## Features
+* **Safe coroutine spawning** with compile-time and runtime safety guarantees (no unsafe blocks required);
 * The stackful coroutine implementation is based on [generator][generator];
 * Support schedule on a configurable number of threads for multi-core systems;
 * Support coroutine version of a local storage ([CLS][cls]);
@@ -39,6 +40,7 @@ May is a high-performance library for programming stackful coroutines with which
 * Support graceful panic handling that will not affect other coroutines;
 * Support scoped coroutine creation;
 * Support general selection for all the coroutine API;
+* **Comprehensive safety infrastructure** with TLS safety and stack overflow protection;
 * All the coroutine API are compatible with the standard library semantics;
 * All the coroutine API can be safely called in multi-threaded context;
 * Both stable, beta, and nightly channels are supported;
@@ -47,7 +49,61 @@ May is a high-performance library for programming stackful coroutines with which
 ----------
 
 ## Usage
-A naive echo server implemented with May:
+
+### Safe Coroutine Spawning (Recommended)
+The new safe API eliminates the need for unsafe blocks and provides comprehensive safety guarantees:
+
+```rust
+use may::coroutine::{spawn_safe, SafeBuilder, SafetyLevel};
+use may::net::TcpListener;
+use std::io::{Read, Write};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind("127.0.0.1:8000")?;
+    
+    while let Ok((mut stream, _)) = listener.accept() {
+        // Safe coroutine spawning - no unsafe blocks required!
+        spawn_safe(move || -> Result<(), std::io::Error> {
+            let mut buf = vec![0; 1024 * 16];
+            while let Ok(n) = stream.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                stream.write_all(&buf[0..n])?;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+```
+
+### Advanced Configuration
+For fine-tuned control over safety and performance:
+
+```rust
+use may::coroutine::{SafeBuilder, SafetyLevel};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Configure coroutine with specific safety level
+    let handle = SafeBuilder::new()
+        .safety_level(SafetyLevel::Strict)
+        .stack_size(1024 * 1024)
+        .name("worker-coroutine")
+        .spawn_safe(|| {
+            println!("Safe coroutine with custom configuration!");
+            42
+        })?;
+    
+    let result = handle.join()?;
+    println!("Result: {}", result);
+    Ok(())
+}
+```
+
+### Traditional API (Still Supported)
+The traditional `go!` macro is still available for backward compatibility:
+
 ```rust
 #[macro_use]
 extern crate may;
@@ -59,7 +115,7 @@ fn main() {
     let listener = TcpListener::bind("127.0.0.1:8000").unwrap();
     while let Ok((mut stream, _)) = listener.accept() {
         go!(move || {
-            let mut buf = vec![0; 1024 * 16]; // alloc in heap!
+            let mut buf = vec![0; 1024 * 16];
             while let Ok(n) = stream.read(&mut buf) {
                 if n == 0 {
                     break;
@@ -69,7 +125,6 @@ fn main() {
         });
     }
 }
-
 ```
 
 ----------
@@ -87,6 +142,9 @@ fn main() {
 * [A simple HTTPS][https_sever]
 * [WebSockets][websocket]
 
+### Safety Examples
+* [Safe coroutine spawning][safe_spawn] - Demonstrates the new safe APIs
+
 
 ----------
 
@@ -95,25 +153,65 @@ You can refer to https://tfb-status.techempower.com/ to get the latest [may_mini
 
 ----------
 
+## Safety Features
+
+May now includes comprehensive safety infrastructure to help you write safer coroutine code:
+
+### Safety Levels
+- **Strict**: Maximum safety with runtime validation and TLS monitoring
+- **Balanced**: Good safety with minimal performance overhead (recommended)
+- **Permissive**: Basic safety for performance-critical code
+- **Development**: Enhanced debugging and validation for development
+
+### Automatic Safety Checks
+```rust
+use may::coroutine::{spawn_safe, SafetyLevel, SafeBuilder};
+
+// The safe API automatically handles:
+// - TLS access validation
+// - Stack overflow detection
+// - Blocking operation monitoring
+// - Configuration validation
+
+let handle = SafeBuilder::new()
+    .safety_level(SafetyLevel::Strict)
+    .spawn_safe(|| {
+        // Your code here is automatically monitored for safety violations
+        println!("Safe coroutine execution!");
+        42
+    })?;
+```
+
+### Safety Violation Handling
+The safety system provides detailed error reporting:
+```rust
+use may::safety::SafetyViolation;
+
+match spawn_safe(|| { /* your code */ }) {
+    Ok(handle) => { /* success */ }
+    Err(SafetyViolation::TlsAccess { description, .. }) => {
+        eprintln!("TLS safety violation: {}", description);
+    }
+    Err(SafetyViolation::StackOverflow { current_usage, max_size, .. }) => {
+        eprintln!("Stack overflow risk: {}/{} bytes", current_usage, max_size);
+    }
+    // ... other safety violations
+}
+```
+
 ## Caveat
-There is a detailed [document][caveat] that describes May's main restrictions. In general, there are four things you should follow when writing programs that use coroutines:
+There is a detailed [document][caveat] that describes May's main restrictions. With the new safe APIs, many of these concerns are automatically handled:
+
+### Traditional Concerns (Automatically Handled by Safe APIs)
+* ✅ **TLS Safety**: The safe API automatically detects and prevents unsafe TLS access patterns
+* ✅ **Stack Overflow**: Runtime monitoring helps detect potential stack overflow conditions
+
+### Still Important to Consider
 * Don't call thread-blocking API (It will hurt the performance);
-* Carefully use Thread Local Storage (access TLS in coroutine might trigger undefined behavior).
-
-> It's considered **unsafe** with the following pattern:
-> ```rust
-> set_tls();
-> // Or another coroutine API that would cause scheduling:
-> coroutine::yield_now(); 
-> use_tls();
-> ```
-> but it's **safe** if your code is not sensitive about the previous state of TLS. Or there is no coroutines scheduling between **set** TLS and **use** TLS.
-
 * Don't run CPU bound tasks for long time, but it's ok if you don't care about fairness;
-* Don't exceed the coroutine stack. There is a guard page for each coroutine stack. When stack overflow occurs, it will trigger segment fault error.
 
 **Note:**
-> The first three rules are common when using cooperative asynchronous libraries in Rust. Even using a futures-based system also have these limitations. So what you should really focus on is a coroutine stack size, make sure it's big enough for your applications. 
+> When using the new `spawn_safe` API with appropriate safety levels, most traditional coroutine safety concerns are automatically monitored and reported. For maximum safety, use `SafetyLevel::Strict` during development and testing. 
 
 ----------
 
@@ -143,3 +241,4 @@ May is licensed under either of the following, at your option:
 [caveat]:docs/may_caveat.md
 [stack]:docs/tune_stack_size.md
 [may_minihttp]:https://github.com/Xudong-Huang/may_minihttp
+[safe_spawn]:examples/safe_spawn.rs

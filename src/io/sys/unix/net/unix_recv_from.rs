@@ -22,15 +22,15 @@ pub struct UnixRecvFrom<'a> {
 }
 
 impl<'a> UnixRecvFrom<'a> {
-    pub fn new(socket: &'a UnixDatagram, buf: &'a mut [u8]) -> Self {
-        UnixRecvFrom {
+    pub fn new(socket: &'a UnixDatagram, buf: &'a mut [u8]) -> io::Result<Self> {
+        Ok(UnixRecvFrom {
             io_data: socket.0.as_io_data(),
             buf,
             socket: socket.0.inner(),
             #[cfg(feature = "io_timeout")]
-            timeout: socket.0.read_timeout().unwrap(),
+            timeout: socket.0.read_timeout()?,
             is_coroutine: is_coroutine(),
-        }
+        })
     }
 
     pub fn done(&mut self) -> io::Result<(usize, SocketAddr)> {

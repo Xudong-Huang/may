@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sensor_readings>
+    <reading>
+        <id>sensor_001</id>
+        <timestamp>2024-01-20T10:00:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>3</floor>
+            <room>Conference Room 301</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">22.5</temperature>
+            <humidity unit="percent">45.2</humidity>
+            <pressure unit="hpa">1013.25</pressure>
+            <light unit="lux">450</light>
+            <co2 unit="ppm">420</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_002</id>
+        <timestamp>2024-01-20T10:05:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>2</floor>
+            <room>Office 205</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">23.1</temperature>
+            <humidity unit="percent">38.7</humidity>
+            <pressure unit="hpa">1012.98</pressure>
+            <light unit="lux">650</light>
+            <co2 unit="ppm">380</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_003</id>
+        <timestamp>2024-01-20T10:10:00Z</timestamp>
+        <location>
+            <building>Building B</building>
+            <floor>1</floor>
+            <room>Lobby</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">21.8</temperature>
+            <humidity unit="percent">52.3</humidity>
+            <pressure unit="hpa">1014.12</pressure>
+            <light unit="lux">800</light>
+            <co2 unit="ppm">450</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_004</id>
+        <timestamp>2024-01-20T10:15:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>4</floor>
+            <room>Server Room</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">18.2</temperature>
+            <humidity unit="percent">35.1</humidity>
+            <pressure unit="hpa">1013.45</pressure>
+            <light unit="lux">200</light>
+            <co2 unit="ppm">390</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_005</id>
+        <timestamp>2024-01-20T10:20:00Z</timestamp>
+        <location>
+            <building>Building C</building>
+            <floor>2</floor>
+            <room>Lab 201</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">25.7</temperature>
+            <humidity unit="percent">42.9</humidity>
+            <pressure unit="hpa">1011.85</pressure>
+            <light unit="lux">950</light>
+            <co2 unit="ppm">520</co2>
+        </measurements>
+        <status>warning</status>
+    </reading>
+    <reading>
+        <id>sensor_006</id>
+        <timestamp>2024-01-20T10:25:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>1</floor>
+            <room>Cafeteria</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">24.3</temperature>
+            <humidity unit="percent">48.6</humidity>
+            <pressure unit="hpa">1012.67</pressure>
+            <light unit="lux">700</light>
+            <co2 unit="ppm">580</co2>
+        </measurements>
+        <status>warning</status>
+    </reading>
+    <reading>
+        <id>sensor_007</id>
+        <timestamp>2024-01-20T10:30:00Z</timestamp>
+        <location>
+            <building>Building B</building>
+            <floor>3</floor>
+            <room>Meeting Room 302</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">22.9</temperature>
+            <humidity unit="percent">41.2</humidity>
+            <pressure unit="hpa">1013.78</pressure>
+            <light unit="lux">520</light>
+            <co2 unit="ppm">410</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_008</id>
+        <timestamp>2024-01-20T10:35:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>5</floor>
+            <room>Executive Office</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">23.5</temperature>
+            <humidity unit="percent">44.8</humidity>
+            <pressure unit="hpa">1012.34</pressure>
+            <light unit="lux">600</light>
+            <co2 unit="ppm">400</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_009</id>
+        <timestamp>2024-01-20T10:40:00Z</timestamp>
+        <location>
+            <building>Building C</building>
+            <floor>1</floor>
+            <room>Storage Room</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">19.6</temperature>
+            <humidity unit="percent">55.7</humidity>
+            <pressure unit="hpa">1014.56</pressure>
+            <light unit="lux">150</light>
+            <co2 unit="ppm">480</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_010</id>
+        <timestamp>2024-01-20T10:45:00Z</timestamp>
+        <location>
+            <building>Building B</building>
+            <floor>4</floor>
+            <room>Data Center</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">16.8</temperature>
+            <humidity unit="percent">32.4</humidity>
+            <pressure unit="hpa">1013.91</pressure>
+            <light unit="lux">300</light>
+            <co2 unit="ppm">350</co2>
+        </measurements>
+        <status>normal</status>
+    </reading>
+    <reading>
+        <id>sensor_011</id>
+        <timestamp>2024-01-20T10:50:00Z</timestamp>
+        <location>
+            <building>Building A</building>
+            <floor>2</floor>
+            <room>Break Room</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">26.2</temperature>
+            <humidity unit="percent">49.3</humidity>
+            <pressure unit="hpa">1011.78</pressure>
+            <light unit="lux">750</light>
+            <co2 unit="ppm">620</co2>
+        </measurements>
+        <status>critical</status>
+    </reading>
+    <reading>
+        <id>sensor_012</id>
+        <timestamp>2024-01-20T10:55:00Z</timestamp>
+        <location>
+            <building>Building C</building>
+            <floor>3</floor>
+            <room>Research Lab</room>
+        </location>
+        <measurements>
+            <temperature unit="celsius">24.7</temperature>
+            <humidity unit="percent">46.1</humidity>
+            <pressure unit="hpa">1012.89</pressure>
+            <light unit="lux">850</light>
+            <co2 unit="ppm">510</co2>
+        </measurements>
+        <status>warning</status>
+    </reading>
+</sensor_readings> 

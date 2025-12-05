@@ -28,17 +28,17 @@ pub struct UdpRecvFrom<'a> {
 }
 
 impl<'a> UdpRecvFrom<'a> {
-    pub fn new(socket: &'a UdpSocket, buf: &'a mut [u8]) -> Self {
-        UdpRecvFrom {
+    pub fn new(socket: &'a UdpSocket, buf: &'a mut [u8]) -> io::Result<Self> {
+        Ok(UdpRecvFrom {
             io_data: EventData::new(socket.as_raw_socket() as HANDLE),
             buf,
             socket: socket.inner(),
             addr: SocketAddrBuf::new(),
             #[cfg(feature = "io_timeout")]
-            timeout: socket.read_timeout().unwrap(),
+            timeout: socket.read_timeout()?,
             can_drop: DelayDrop::new(),
             is_coroutine: is_coroutine(),
-        }
+        })
     }
 
     pub fn done(&mut self) -> io::Result<(usize, SocketAddr)> {
