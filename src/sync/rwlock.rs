@@ -142,7 +142,7 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    pub fn read(&self) -> LockResult<RwLockReadGuard<T>> {
+    pub fn read(&self) -> LockResult<RwLockReadGuard<'_, T>> {
         let mut r = self.rlock.lock().expect("rwlock read");
         if *r == 0 {
             if let Err(ParkError::Canceled) = self.lock() {
@@ -159,7 +159,7 @@ impl<T: ?Sized> RwLock<T> {
         RwLockReadGuard::new(self)
     }
 
-    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<T>> {
+    pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
         let mut r = match self.rlock.try_lock() {
             Ok(r) => r,
             Err(TryLockError::Poisoned(_)) => {
@@ -190,7 +190,7 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    pub fn write(&self) -> LockResult<RwLockWriteGuard<T>> {
+    pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, T>> {
         if let Err(ParkError::Canceled) = self.lock() {
             // now we can safely go with the cancel panic
             trigger_cancel_panic();
@@ -198,7 +198,7 @@ impl<T: ?Sized> RwLock<T> {
         RwLockWriteGuard::new(self)
     }
 
-    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<T>> {
+    pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<'_, T>> {
         if let Err(TryLockError::WouldBlock) = self.try_lock() {
             return Err(TryLockError::WouldBlock);
         }

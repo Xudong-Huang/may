@@ -51,7 +51,7 @@ impl<T> Mutex<T> {
 }
 
 impl<T: ?Sized> Mutex<T> {
-    pub fn lock(&self) -> LockResult<MutexGuard<T>> {
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, T>> {
         // try lock first
         match self.try_lock() {
             Ok(g) => return Ok(g),
@@ -113,7 +113,7 @@ impl<T: ?Sized> Mutex<T> {
         MutexGuard::new(self)
     }
 
-    pub fn try_lock(&self) -> TryLockResult<MutexGuard<T>> {
+    pub fn try_lock(&self) -> TryLockResult<MutexGuard<'_, T>> {
         match self
             .cnt
             .compare_exchange(0, 1, Ordering::SeqCst, Ordering::Relaxed)
