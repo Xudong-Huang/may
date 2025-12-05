@@ -1,43 +1,49 @@
-/// # Producer-Consumer Example
-///
-/// ## Description
-/// This example demonstrates the producer-consumer pattern using May coroutines.
-/// Multiple producers generate data at different rates while multiple consumers process it,
-/// with proper coordination and comprehensive metrics.
-///
-/// ## Architecture
-/// ```text
-/// [Producer 1] ┐
-/// [Producer 2] ├─→ [Channel] ─→ [Consumer 1] ┐
-/// [Producer 3] ┘                [Consumer 2] ├─→ [Results]
-///                                [Consumer 3] ┘
-/// ```
-///
-/// ## Key Features
-/// - Multiple producers with different production rates
-/// - Multiple consumers with different processing speeds
-/// - Comprehensive metrics and monitoring
-/// - Graceful shutdown coordination
-/// - Error handling and recovery
-///
-/// ## Use Cases
-/// - Stream processing systems
-/// - Load balancing between producers and consumers
-/// - Multi-stage data processing pipelines
-/// - Event-driven architectures
-///
-/// ## Usage
-/// ```bash
-/// cargo run --example producer_consumer_bounded
-/// cargo run --example producer_consumer_bounded -- --producers 3 --consumers 2
-/// ```
+// Example code - allow some clippy lints for demonstration clarity
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::redundant_pattern_matching)]
+#![allow(clippy::manual_is_multiple_of)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+//! # Producer-Consumer Example
+//!
+//! ## Description
+//! This example demonstrates the producer-consumer pattern using May coroutines.
+//! Multiple producers generate data at different rates while multiple consumers process it,
+//! with proper coordination and comprehensive metrics.
+//!
+//! ## Architecture
+//! ```text
+//! [Producer 1] ┐
+//! [Producer 2] ├─→ [Channel] ─→ [Consumer 1] ┐
+//! [Producer 3] ┘                [Consumer 2] ├─→ [Results]
+//!                                [Consumer 3] ┘
+//! ```
+//!
+//! ## Key Features
+//! - Multiple producers with different production rates
+//! - Multiple consumers with different processing speeds
+//! - Comprehensive metrics and monitoring
+//! - Graceful shutdown coordination
+//! - Error handling and recovery
+//!
+//! ## Use Cases
+//! - Stream processing systems
+//! - Load balancing between producers and consumers
+//! - Multi-stage data processing pipelines
+//! - Event-driven architectures
+//!
+//! ## Usage
+//! ```bash
+//! cargo run --example producer_consumer_bounded
+//! cargo run --example producer_consumer_bounded -- --producers 3 --consumers 2
+//! ```
 
 #[macro_use]
 extern crate may;
 
 use may::coroutine;
 use may::sync::mpsc;
-use rand;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -209,8 +215,7 @@ impl SystemMetrics {
                 0
             };
 
-            println!("Producer {:2} | Produced: {:>6} | Failed: {:>4} | Rate: {:>6.1}/s | Backpressure: {:>4} | Avg: {:>4}ms",
-                     i, processed, failed, rate, backpressure, avg_time);
+            println!("Producer {i:2} | Produced: {processed:>6} | Failed: {failed:>4} | Rate: {rate:>6.1}/s | Backpressure: {backpressure:>4} | Avg: {avg_time:>4}ms");
         }
 
         // Consumer statistics
@@ -235,8 +240,7 @@ impl SystemMetrics {
                 0.0
             };
 
-            println!("Consumer {:2} | Consumed: {:>6} | Failed: {:>4} | Rate: {:>6.1}/s | Util: {:>5.1}% | Avg: {:>4}ms",
-                     i, processed, failed, rate, utilization, avg_time);
+            println!("Consumer {i:2} | Consumed: {processed:>6} | Failed: {failed:>4} | Rate: {rate:>6.1}/s | Util: {utilization:>5.1}% | Avg: {avg_time:>4}ms");
         }
 
         // Buffer statistics
@@ -245,8 +249,7 @@ impl SystemMetrics {
 
         println!("\nBuffer Statistics:");
         println!(
-            "Operations: {} | Failed: {} | Backpressure Events: {}",
-            buffer_ops, buffer_failed, buffer_backpressure
+            "Operations: {buffer_ops} | Failed: {buffer_failed} | Backpressure Events: {buffer_backpressure}"
         );
 
         // System-wide metrics
@@ -270,7 +273,7 @@ impl SystemMetrics {
         );
 
         let overall_throughput = total_consumed as f64 / total_time.as_secs_f64();
-        println!("Overall Throughput: {:.2} items/second", overall_throughput);
+        println!("Overall Throughput: {overall_throughput:.2} items/second");
     }
 }
 
@@ -281,7 +284,7 @@ fn producer(
     buffer_tx: mpsc::Sender<DataItem>,
     metrics: Arc<SystemMetrics>,
 ) {
-    println!("🔄 Starting Producer {}...", producer_id);
+    println!("🔄 Starting Producer {producer_id}...");
 
     let producer_stats = &metrics.producer_stats[producer_id];
     let target_rate = config
@@ -323,7 +326,7 @@ fn producer(
         let mut metadata = HashMap::new();
         metadata.insert("producer_id".to_string(), producer_id.to_string());
         metadata.insert("sequence".to_string(), produced_count.to_string());
-        metadata.insert("priority".to_string(), format!("{:?}", priority));
+        metadata.insert("priority".to_string(), format!("{priority:?}"));
         metadata.insert("data_size".to_string(), data_size.to_string());
 
         let data_item = DataItem {
@@ -336,8 +339,8 @@ fn producer(
         };
 
         // Send item
-        if let Err(_) = buffer_tx.send(data_item) {
-            println!("❌ Producer {}: Buffer channel disconnected", producer_id);
+        if buffer_tx.send(data_item).is_err() {
+            println!("❌ Producer {producer_id}: Buffer channel disconnected");
             producer_stats.increment_failed();
             return;
         }
@@ -350,18 +353,14 @@ fn producer(
         next_production_time = Instant::now() + production_interval;
 
         // Progress reporting
-        if produced_count % (items_per_producer / 10).max(1) == 0 {
+        if produced_count.is_multiple_of((items_per_producer / 10).max(1)) {
             println!(
-                "📤 Producer {}: Produced {}/{} items",
-                producer_id, produced_count, items_per_producer
+                "📤 Producer {producer_id}: Produced {produced_count}/{items_per_producer} items"
             );
         }
     }
 
-    println!(
-        "✅ Producer {} completed - {} items produced",
-        producer_id, produced_count
-    );
+    println!("✅ Producer {producer_id} completed - {produced_count} items produced");
 }
 
 /// Consumer coroutine - processes data items
@@ -372,7 +371,7 @@ fn consumer(
     result_tx: mpsc::Sender<ProcessedItem>,
     metrics: Arc<SystemMetrics>,
 ) {
-    println!("🔄 Starting Consumer {}...", consumer_id);
+    println!("🔄 Starting Consumer {consumer_id}...");
 
     let consumer_stats = &metrics.consumer_stats[consumer_id];
     let target_rate = config
@@ -391,7 +390,7 @@ fn consumer(
         let data_item = match buffer_rx.recv() {
             Ok(item) => item,
             Err(_) => {
-                println!("✅ Consumer {}: Buffer channel closed", consumer_id);
+                println!("✅ Consumer {consumer_id}: Buffer channel closed");
                 break;
             }
         };
@@ -452,8 +451,8 @@ fn consumer(
         };
 
         // Send result
-        if let Err(_) = result_tx.send(processed_item) {
-            println!("❌ Consumer {}: Result channel disconnected", consumer_id);
+        if result_tx.send(processed_item).is_err() {
+            println!("❌ Consumer {consumer_id}: Result channel disconnected");
             consumer_stats.increment_failed();
             return;
         }
@@ -464,17 +463,11 @@ fn consumer(
 
         // Progress reporting
         if consumed_count % 100 == 0 {
-            println!(
-                "📥 Consumer {}: Processed {} items",
-                consumer_id, consumed_count
-            );
+            println!("📥 Consumer {consumer_id}: Processed {consumed_count} items");
         }
     }
 
-    println!(
-        "✅ Consumer {} completed - {} items processed",
-        consumer_id, consumed_count
-    );
+    println!("✅ Consumer {consumer_id} completed - {consumed_count} items processed");
 }
 
 /// Result collector - aggregates processed results
@@ -509,7 +502,10 @@ fn result_collector(
         results.push(result);
 
         // Progress reporting
-        if results.len() % (config.total_items / 10).max(1) == 0 {
+        if results
+            .len()
+            .is_multiple_of((config.total_items / 10).max(1))
+        {
             println!(
                 "📊 Collector: Collected {}/{} results",
                 results.len(),
@@ -526,17 +522,14 @@ fn result_collector(
     println!("\nPriority Distribution:");
     for (priority, count) in priority_counts.iter() {
         let percentage = (*count as f64 / results.len() as f64) * 100.0;
-        println!("{}: {} ({:.1}%)", priority, count, percentage);
+        println!("{priority}: {count} ({percentage:.1}%)");
     }
 
     // Producer-Consumer matrix
     println!("\nProducer-Consumer Processing Matrix:");
     for ((producer_id, consumer_id), count) in producer_consumer_matrix.iter() {
         let percentage = (*count as f64 / results.len() as f64) * 100.0;
-        println!(
-            "Producer {} → Consumer {}: {} ({:.1}%)",
-            producer_id, consumer_id, count, percentage
-        );
+        println!("Producer {producer_id} → Consumer {consumer_id}: {count} ({percentage:.1}%)");
     }
 
     // Timing analysis
@@ -625,7 +618,7 @@ fn main() {
     let config = parse_args();
 
     println!("🚀 Starting Producer-Consumer Example");
-    println!("Configuration: {:?}", config);
+    println!("Configuration: {config:?}");
 
     // Configure May runtime
     may::config().set_workers((config.num_producers + config.num_consumers).max(2));
@@ -672,7 +665,7 @@ fn main() {
             let mut next_consumer = 0;
             while let Ok(item) = buffer_rx.recv() {
                 let target_consumer = next_consumer % config.num_consumers;
-                if let Err(_) = buffer_receivers[target_consumer].send(item) {
+                if buffer_receivers[target_consumer].send(item).is_err() {
                     break;
                 }
                 next_consumer += 1;
@@ -729,8 +722,7 @@ fn main() {
 
                 let rate = (total_consumed - last_total) as f64 / 3.0;
                 println!(
-                    "📊 System: Produced: {} | Consumed: {} | Rate: {:.1}/s",
-                    total_produced, total_consumed, rate
+                    "📊 System: Produced: {total_produced} | Consumed: {total_consumed} | Rate: {rate:.1}/s"
                 );
                 last_total = total_consumed;
             }

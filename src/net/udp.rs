@@ -402,7 +402,7 @@ mod tests {
         let test_data = b"Hello, UDP!";
 
         // Send data
-        let sent = sender.send_to(test_data, &receiver_addr).unwrap();
+        let sent = sender.send_to(test_data, receiver_addr).unwrap();
         assert_eq!(sent, test_data.len());
 
         // Receive data
@@ -422,8 +422,8 @@ mod tests {
         let sender_addr = sender.local_addr().unwrap();
 
         // Connect both sockets
-        sender.connect(&receiver_addr).unwrap();
-        receiver.connect(&sender_addr).unwrap();
+        sender.connect(receiver_addr).unwrap();
+        receiver.connect(sender_addr).unwrap();
 
         let test_data = b"Connected UDP";
 
@@ -623,7 +623,7 @@ mod tests {
         let test_data = vec![0x42u8; 1024]; // 1KB of data
 
         // Send large data
-        let sent = sender.send_to(&test_data, &receiver_addr).unwrap();
+        let sent = sender.send_to(&test_data, receiver_addr).unwrap();
         assert_eq!(sent, test_data.len());
 
         // Receive large data
@@ -643,7 +643,7 @@ mod tests {
         let test_data = b""; // Empty data
 
         // Send empty data
-        let sent = sender.send_to(test_data, &receiver_addr).unwrap();
+        let sent = sender.send_to(test_data, receiver_addr).unwrap();
         assert_eq!(sent, 0);
 
         // Receive empty data
@@ -740,7 +740,7 @@ mod tests {
     #[test]
     fn test_udp_debug_format() {
         let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let debug_str = format!("{:?}", socket);
+        let debug_str = format!("{socket:?}");
         assert!(debug_str.contains("UdpSocket"));
     }
 
@@ -773,11 +773,11 @@ mod tests {
         let test_data2 = b"Message 2";
 
         // Send to first receiver
-        let sent1 = sender.send_to(test_data1, &addr1).unwrap();
+        let sent1 = sender.send_to(test_data1, addr1).unwrap();
         assert_eq!(sent1, test_data1.len());
 
         // Send to second receiver
-        let sent2 = sender.send_to(test_data2, &addr2).unwrap();
+        let sent2 = sender.send_to(test_data2, addr2).unwrap();
         assert_eq!(sent2, test_data2.len());
 
         // Receive from both

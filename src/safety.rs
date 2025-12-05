@@ -612,7 +612,7 @@ mod tests {
             access_time: Instant::now(),
             description: "Test TLS access".to_string(),
         };
-        let display_str = format!("{}", tls_violation);
+        let display_str = format!("{tls_violation}");
         assert!(display_str.contains("TLS access violation"));
         assert!(display_str.contains("Test TLS access"));
 
@@ -622,7 +622,7 @@ mod tests {
             max_size: 4096,
             function_name: Some("test_function".to_string()),
         };
-        let display_str = format!("{}", stack_violation);
+        let display_str = format!("{stack_violation}");
         assert!(display_str.contains("Stack overflow risk"));
         assert!(display_str.contains("8192/4096"));
         assert!(display_str.contains("test_function"));
@@ -632,7 +632,7 @@ mod tests {
             operation: "sleep".to_string(),
             duration: Duration::from_millis(100),
         };
-        let display_str = format!("{}", blocking_violation);
+        let display_str = format!("{blocking_violation}");
         assert!(display_str.contains("Blocking operation"));
         assert!(display_str.contains("sleep"));
 
@@ -642,7 +642,7 @@ mod tests {
             value: "1024".to_string(),
             reason: "Too small".to_string(),
         };
-        let display_str = format!("{}", config_violation);
+        let display_str = format!("{config_violation}");
         assert!(display_str.contains("Invalid configuration"));
         assert!(display_str.contains("stack_size"));
         assert!(display_str.contains("1024"));

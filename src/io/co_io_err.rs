@@ -77,7 +77,7 @@ mod tests {
         let error = Error::new(io_err, data);
 
         // Test Display trait implementation
-        let display_str = format!("{}", error);
+        let display_str = format!("{error}");
         assert!(display_str.contains("connection refused"));
     }
 
@@ -88,7 +88,7 @@ mod tests {
         let error = Error::new(io_err, data);
 
         // Test Debug trait implementation
-        let debug_str = format!("{:?}", error);
+        let debug_str = format!("{error:?}");
         assert!(debug_str.contains("operation timed out"));
     }
 
@@ -121,13 +121,13 @@ mod tests {
     #[test]
     fn test_error_with_different_data_types() {
         // Test with String data
-        let io_err = IoError::new(ErrorKind::Other, "generic error");
+        let io_err = IoError::other("generic error");
         let string_data = String::from("string data");
         let string_error = Error::new(io_err, string_data.clone());
         assert_eq!(string_error.into_data(), string_data);
 
         // Test with numeric data
-        let io_err = IoError::new(ErrorKind::Other, "numeric error");
+        let io_err = IoError::other("numeric error");
         let numeric_data = 123i64;
         let numeric_error = Error::new(io_err, numeric_data);
         assert_eq!(numeric_error.into_data(), 123i64);
@@ -143,7 +143,7 @@ mod tests {
             field1: "test".to_string(),
             field2: 456,
         };
-        let io_err = IoError::new(ErrorKind::Other, "custom error");
+        let io_err = IoError::other("custom error");
         let custom_error = Error::new(io_err, custom_data.clone());
         assert_eq!(custom_error.into_data(), custom_data);
     }

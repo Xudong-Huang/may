@@ -4,7 +4,6 @@
 /// directory but are designed for automated testing with proper setup,
 /// teardown, and assertions. The original examples remain as user-facing
 /// documentation and demonstrations.
-
 #[macro_use]
 extern crate may;
 
@@ -32,12 +31,13 @@ fn find_available_port() -> u16 {
 }
 
 /// Helper function to wait for server to be ready
+#[allow(dead_code)] // Available for future server tests
 fn wait_for_server_ready(port: u16, timeout_ms: u64) -> bool {
     use std::net::TcpStream as StdTcpStream;
 
     let start = std::time::Instant::now();
     while start.elapsed().as_millis() < timeout_ms as u128 {
-        if StdTcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+        if StdTcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
             return true;
         }
         thread::sleep(Duration::from_millis(10));
@@ -63,7 +63,7 @@ mod integration_tests {
                 let counter_clone = counter.clone();
 
                 let handle = spawn_safe(move || {
-                    for i in 0..5 {
+                    for _i in 0..5 {
                         counter_clone.fetch_add(1, Ordering::SeqCst);
                         may::coroutine::yield_now();
                     }
@@ -89,7 +89,7 @@ mod integration_tests {
                     .spawn(move || {
                         let current_coroutine = may::coroutine::current();
                         let name = current_coroutine.name();
-                        assert_eq!(name.as_deref(), Some("test-coroutine"));
+                        assert_eq!(name, Some("test-coroutine"));
                         42
                     })
                     .expect("Failed to spawn configured coroutine");
@@ -112,9 +112,7 @@ mod integration_tests {
                 drop(tx);
                 let producer = spawn_safe(move || {
                     for i in 1..=message_count {
-                        tx_clone
-                            .send(format!("Message {}", i))
-                            .expect("Send failed");
+                        tx_clone.send(format!("Message {i}")).expect("Send failed");
                         may::coroutine::yield_now();
                     }
                     drop(tx_clone);
@@ -223,11 +221,11 @@ mod integration_tests {
             let counter_clone = counter.clone();
 
             may::coroutine::scope(|outer_scope| {
-                for i in 0..3 {
+                for _i in 0..3 {
                     let counter_ref = counter_clone.clone();
                     go!(outer_scope, move || {
                         may::coroutine::scope(|inner_scope| {
-                            for j in 0..2 {
+                            for _j in 0..2 {
                                 let counter_inner = counter_ref.clone();
                                 go!(inner_scope, move || {
                                     counter_inner.fetch_add(1, Ordering::SeqCst);
@@ -371,7 +369,7 @@ mod integration_tests {
                         let mut client = TcpStream::connect(("127.0.0.1", port))
                             .expect("Failed to connect to echo server");
 
-                        let test_data = format!("Hello from client {}", i);
+                        let test_data = format!("Hello from client {i}");
                         client
                             .write_all(test_data.as_bytes())
                             .expect("Failed to write to server");
@@ -560,7 +558,7 @@ mod integration_tests {
                         let client =
                             UdpSocket::bind("127.0.0.1:0").expect("Failed to bind client socket");
 
-                        let test_data = format!("UDP client {}", i);
+                        let test_data = format!("UDP client {i}");
                         client
                             .send_to(test_data.as_bytes(), ("127.0.0.1", port))
                             .expect("Failed to send UDP message");
@@ -764,7 +762,7 @@ mod integration_tests {
                             .expect("Failed to connect to HTTP server");
 
                         let request =
-                            format!("GET /?client={} HTTP/1.1\r\nHost: localhost\r\n\r\n", i);
+                            format!("GET /?client={i} HTTP/1.1\r\nHost: localhost\r\n\r\n");
                         client
                             .write_all(request.as_bytes())
                             .expect("Failed to send HTTP request");

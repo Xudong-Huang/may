@@ -29,13 +29,11 @@
 /// cargo run --example fan_out_fan_in
 /// cargo run --example fan_out_fan_in -- --workers 8 --tasks 1000 --work-complexity 100
 /// ```
-
 #[macro_use]
 extern crate may;
 
 use may::coroutine;
 use may::sync::mpsc;
-use rand;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -82,6 +80,7 @@ struct WorkItem {
 
 /// Result of processing a work item
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields used in demo/analysis code
 struct WorkResult {
     id: u64,
     worker_id: usize,
@@ -114,6 +113,7 @@ impl WorkerStats {
             .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)] // Available for future use in worker tracking
     fn add_idle_time(&self, duration: Duration) {
         self.idle_time
             .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
@@ -178,8 +178,7 @@ impl SystemMetrics {
             };
 
             println!(
-                "Worker {:2} | Processed: {:>6} | Failed: {:>4} | Avg: {:>4}ms | Util: {:>5.1}%",
-                i, processed, failed, avg_time, utilization
+                "Worker {i:2} | Processed: {processed:>6} | Failed: {failed:>4} | Avg: {avg_time:>4}ms | Util: {utilization:>5.1}%"
             );
         }
 
@@ -189,12 +188,10 @@ impl SystemMetrics {
 
         println!("\nSystem Statistics:");
         println!(
-            "Distributor   | Processed: {:>6} | Failed: {:>4} | Total Time: {:>6}ms",
-            dist_processed, dist_failed, dist_time
+            "Distributor   | Processed: {dist_processed:>6} | Failed: {dist_failed:>4} | Total Time: {dist_time:>6}ms"
         );
         println!(
-            "Aggregator    | Processed: {:>6} | Failed: {:>4} | Total Time: {:>6}ms",
-            agg_processed, agg_failed, agg_time
+            "Aggregator    | Processed: {agg_processed:>6} | Failed: {agg_failed:>4} | Total Time: {agg_time:>6}ms"
         );
 
         // Overall metrics
@@ -213,8 +210,7 @@ impl SystemMetrics {
 
         println!("\nOverall Performance:");
         println!(
-            "Success Rate: {:.2}% | Throughput: {:.2} tasks/sec | Avg Processing: {}ms",
-            success_rate, throughput, avg_worker_time
+            "Success Rate: {success_rate:.2}% | Throughput: {throughput:.2} tasks/sec | Avg Processing: {avg_worker_time}ms"
         );
     }
 }
@@ -227,8 +223,8 @@ fn work_distributor(
 ) {
     println!("🔄 Starting Work Distributor...");
 
-    let mut next_worker = 0;
-    let mut work_count = 0;
+    let mut next_worker: usize = 0;
+    let mut work_count: usize = 0;
 
     // Create work items
     for i in 0..config.num_tasks {
@@ -256,8 +252,8 @@ fn work_distributor(
         };
 
         // Send work to selected worker
-        if let Err(_) = work_senders[target_worker].send(work_item) {
-            println!("❌ Distributor: Worker {} disconnected", target_worker);
+        if work_senders[target_worker].send(work_item).is_err() {
+            println!("❌ Distributor: Worker {target_worker} disconnected");
             metrics.distributor_stats.increment_failed();
             continue;
         }
@@ -269,10 +265,10 @@ fn work_distributor(
             .add_processing_time(start_time.elapsed());
 
         // Progress reporting
-        if work_count % (config.num_tasks / 10).max(1) == 0 {
+        if work_count.is_multiple_of((config.num_tasks / 10).max(1)) {
             println!(
-                "📤 Distributor: Sent {}/{} work items",
-                work_count, config.num_tasks
+                "📤 Distributor: Sent {work_count}/{} work items",
+                config.num_tasks
             );
         }
     }
@@ -282,10 +278,7 @@ fn work_distributor(
         drop(sender);
     }
 
-    println!(
-        "✅ Work Distributor completed - {} items distributed",
-        work_count
-    );
+    println!("✅ Work Distributor completed - {work_count} items distributed");
 }
 
 /// Worker coroutine - processes work items
@@ -296,10 +289,10 @@ fn worker(
     result_tx: mpsc::Sender<WorkResult>,
     metrics: Arc<SystemMetrics>,
 ) {
-    println!("🔄 Starting Worker {}...", worker_id);
+    println!("🔄 Starting Worker {worker_id}...");
 
     let worker_stats = &metrics.worker_stats[worker_id];
-    let mut processed_count = 0;
+    let mut processed_count: usize = 0;
 
     while let Ok(work_item) = work_rx.recv() {
         let processing_start = Instant::now();
@@ -311,8 +304,8 @@ fn worker(
         // Simulate processing failures
         if config.enable_failures && rand::random::<f64>() < config.failure_rate {
             println!(
-                "⚠️  Worker {}: Failed to process item {}",
-                worker_id, work_item.id
+                "⚠️  Worker {worker_id}: Failed to process item {}",
+                work_item.id
             );
             worker_stats.increment_failed();
             continue;
@@ -347,8 +340,8 @@ fn worker(
         };
 
         // Send result
-        if let Err(_) = result_tx.send(work_result) {
-            println!("❌ Worker {}: Result channel disconnected", worker_id);
+        if result_tx.send(work_result).is_err() {
+            println!("❌ Worker {worker_id}: Result channel disconnected");
             worker_stats.increment_failed();
             return;
         }
@@ -358,18 +351,12 @@ fn worker(
         worker_stats.add_processing_time(processing_start.elapsed());
 
         // Periodic progress reporting
-        if processed_count % 50 == 0 {
-            println!(
-                "�� Worker {}: Processed {} items",
-                worker_id, processed_count
-            );
+        if processed_count.is_multiple_of(50) {
+            println!("📊 Worker {worker_id}: Processed {processed_count} items");
         }
     }
 
-    println!(
-        "✅ Worker {} completed - {} items processed",
-        worker_id, processed_count
-    );
+    println!("✅ Worker {worker_id} completed - {processed_count} items processed");
 }
 
 /// Result aggregator - fans in results from all workers
@@ -402,12 +389,10 @@ fn result_aggregator(
             .add_processing_time(start_time.elapsed());
 
         // Progress reporting
-        if results.len() % (config.num_tasks / 10).max(1) == 0 {
-            println!(
-                "📥 Aggregator: Collected {}/{} results",
-                results.len(),
-                config.num_tasks
-            );
+        if results.len().is_multiple_of((config.num_tasks / 10).max(1)) {
+            let len = results.len();
+            let num_tasks = config.num_tasks;
+            println!("📥 Aggregator: Collected {len}/{num_tasks} results");
         }
     }
 
@@ -419,7 +404,7 @@ fn result_aggregator(
     println!("\nWork Distribution:");
     for (worker_id, count) in worker_counts.iter() {
         let percentage = (*count as f64 / results.len() as f64) * 100.0;
-        println!("Worker {}: {} tasks ({:.1}%)", worker_id, count, percentage);
+        println!("Worker {worker_id}: {count} tasks ({percentage:.1}%)");
     }
 
     // Timing analysis
@@ -533,7 +518,7 @@ fn main() {
     let config = parse_args();
 
     println!("🚀 Starting Fan-Out/Fan-In Pattern Example");
-    println!("Configuration: {:?}", config);
+    println!("Configuration: {config:?}");
 
     // Configure May runtime
     may::config().set_workers(config.num_workers.max(2));

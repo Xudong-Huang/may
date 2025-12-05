@@ -187,9 +187,9 @@ mod tests {
 
     #[test]
     fn test_config_creation() {
-        let _cfg = config();
-        // Just verify we can create a config instance
-        assert!(true); // Config is a unit struct, so just verify it works
+        let cfg = config();
+        // Verify we can create a config instance and it has valid defaults
+        assert!(cfg.get_workers() > 0);
     }
 
     #[test]
@@ -246,10 +246,10 @@ mod tests {
 
         // Test setting worker pinning
         cfg.set_worker_pin(false);
-        assert_eq!(cfg.get_worker_pin(), false);
+        assert!(!cfg.get_worker_pin());
 
         cfg.set_worker_pin(true);
-        assert_eq!(cfg.get_worker_pin(), true);
+        assert!(cfg.get_worker_pin());
     }
 
     #[test]
@@ -284,8 +284,7 @@ mod tests {
         let cfg = guard.config();
 
         // Test that methods can be chained
-        let _result = cfg
-            .set_workers(2)
+        cfg.set_workers(2)
             .set_pool_capacity(200)
             .set_stack_size(4096)
             .set_worker_pin(false);
@@ -297,7 +296,7 @@ mod tests {
         assert_eq!(cfg.get_workers(), 2);
         assert_eq!(cfg.get_pool_capacity(), 200);
         assert_eq!(cfg.get_stack_size(), 4096);
-        assert_eq!(cfg.get_worker_pin(), false);
+        assert!(!cfg.get_worker_pin());
 
         // Automatic cleanup via Drop trait
     }
@@ -319,10 +318,10 @@ mod tests {
         assert_eq!(cfg.get_stack_size(), 8192);
 
         cfg.set_worker_pin(false);
-        assert_eq!(cfg.get_worker_pin(), false);
+        assert!(!cfg.get_worker_pin());
 
         cfg.set_worker_pin(true);
-        assert_eq!(cfg.get_worker_pin(), true);
+        assert!(cfg.get_worker_pin());
 
         // Test that workers resolves to num_cpus when set to 0
         cfg.set_workers(0);
@@ -351,7 +350,7 @@ mod tests {
                 cfg_clone.set_workers(i + 1);
                 cfg_clone.set_pool_capacity((i + 1) * 100);
                 cfg_clone.set_stack_size((i + 1) * 1024);
-                cfg_clone.set_worker_pin(i % 2 == 0);
+                cfg_clone.set_worker_pin(i.is_multiple_of(2));
 
                 // Read values back
                 let _workers = cfg_clone.get_workers();
@@ -366,9 +365,7 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
-
-        // Just verify no panics occurred
-        assert!(true);
+        // Test passes if all threads completed without panicking
     }
 
     #[test]

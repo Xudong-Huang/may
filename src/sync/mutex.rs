@@ -521,8 +521,7 @@ mod tests {
         let final_value = *g;
         assert!(
             final_value == 1 || final_value == 2,
-            "Mutex state inconsistent: {}",
-            final_value
+            "Mutex state inconsistent: {final_value}"
         );
 
         // Verify h2 always completed (this is the important invariant)

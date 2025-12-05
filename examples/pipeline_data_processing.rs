@@ -1,42 +1,45 @@
-/// # Pipeline Data Processing Example
-///
-/// ## Description
-/// This example demonstrates a multi-stage data processing pipeline using May coroutines.
-/// Data flows through multiple transformation stages: Reader → Parser → Transformer → Validator → Writer.
-/// Each stage runs concurrently with proper coordination and error handling.
-///
-/// ## Architecture
-/// ```text
-/// [Data Source] → [Reader] → [Parser] → [Transformer] → [Validator] → [Writer] → [Output]
-///                     ↓         ↓           ↓            ↓          ↓
-///                 [Channel]  [Channel]   [Channel]    [Channel]   [Channel]
-/// ```
-///
-/// ## Performance Characteristics
-/// - Concurrent processing across all pipeline stages
-/// - Proper coordination between stages
-/// - Error propagation with graceful degradation
-/// - Comprehensive metrics and monitoring
-///
-/// ## Usage
-/// ```bash
-/// cargo run --example pipeline_data_processing
-/// cargo run --example pipeline_data_processing -- --input-size 10000
-/// ```
+// Example code - allow some clippy lints for demonstration clarity
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::redundant_pattern_matching)]
+#![allow(clippy::manual_is_multiple_of)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+//! # Pipeline Data Processing Example
+//!
+//! ## Description
+//! This example demonstrates a multi-stage data processing pipeline using May coroutines.
+//! Data flows through multiple transformation stages: Reader → Parser → Transformer → Validator → Writer.
+//! Each stage runs concurrently with proper coordination and error handling.
+//!
+//! ## Architecture
+//! ```text
+//! [Data Source] → [Reader] → [Parser] → [Transformer] → [Validator] → [Writer] → [Output]
+//!                     ↓         ↓           ↓            ↓          ↓
+//!                 [Channel]  [Channel]   [Channel]    [Channel]   [Channel]
+//! ```
+//!
+//! ## Performance Characteristics
+//! - Concurrent processing across all pipeline stages
+//! - Proper coordination between stages
+//! - Error propagation with graceful degradation
+//! - Comprehensive metrics and monitoring
+//!
+//! ## Usage
+//! ```bash
+//! cargo run --example pipeline_data_processing
+//! cargo run --example pipeline_data_processing -- --input-size 10000
+//! ```
 
 #[macro_use]
 extern crate may;
 
-use csv;
 use may::coroutine;
 use may::sync::mpsc;
-use rand;
-use serde_json;
 use std::collections::HashMap;
-use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -112,6 +115,7 @@ struct TransformedData {
 
 /// Validated data ready for output
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields are part of the data model
 struct ValidatedData {
     id: u64,
     final_data: HashMap<String, String>,
@@ -431,7 +435,7 @@ fn read_generated_data(
     let start_time = Instant::now();
 
     // No artificial delay - let the pipeline run at maximum speed
-    let target_delay = Duration::from_nanos(0); // No throttling
+    let _target_delay = Duration::from_nanos(0); // No throttling (available for rate limiting)
 
     for i in 0..config.input_size {
         let record_start = Instant::now();
