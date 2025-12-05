@@ -112,7 +112,9 @@ mod integration_tests {
                 drop(tx);
                 let producer = spawn_safe(move || {
                     for i in 1..=message_count {
-                        tx_clone.send(format!("Message {i}")).expect("Send failed");
+                        tx_clone
+                            .send(format!("Message {i}"))
+                            .expect("Send failed");
                         may::coroutine::yield_now();
                     }
                     drop(tx_clone);
