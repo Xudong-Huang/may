@@ -140,10 +140,10 @@ mod tests {
         let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         let io_data = IoData::new(&socket);
         let test_data = TestIoData { io_data };
-        
+
         // Test that we can call as_io_data
         let io_ref = test_data.as_io_data();
-        
+
         // Just verify we get a valid reference
         assert!(!std::ptr::eq(io_ref as *const _, std::ptr::null()));
     }
@@ -151,13 +151,13 @@ mod tests {
     #[test]
     fn test_option_cell_multiple_operations() {
         let cell = OptionCell::new(vec![1, 2, 3]);
-        
+
         // Test multiple derefs
         assert_eq!(cell.len(), 3);
         assert_eq!(cell[0], 1);
         assert_eq!(cell[1], 2);
         assert_eq!(cell[2], 3);
-        
+
         // Test that we can still deref after multiple operations
         assert_eq!(cell.len(), 3);
     }

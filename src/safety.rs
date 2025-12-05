@@ -656,7 +656,7 @@ mod tests {
             access_time: Instant::now(),
             description: "Test error".to_string(),
         };
-        
+
         // Test that it implements Error trait
         let _error: &dyn std::error::Error = &violation;
         assert!(std::error::Error::source(&violation).is_none());
@@ -666,9 +666,13 @@ mod tests {
     fn test_safety_violation_from_io_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Test error");
         let safety_violation = SafetyViolation::from(io_error);
-        
+
         match safety_violation {
-            SafetyViolation::InvalidConfiguration { parameter, value, reason } => {
+            SafetyViolation::InvalidConfiguration {
+                parameter,
+                value,
+                reason,
+            } => {
                 assert_eq!(parameter, "io_error");
                 assert!(value.contains("Test error"));
                 assert_eq!(reason, "I/O error during coroutine spawn");
@@ -680,14 +684,14 @@ mod tests {
     #[test]
     fn test_tls_access_detector() {
         let detector = get_tls_detector();
-        
+
         // Test initial state
         assert!(detector.is_enabled());
-        
+
         // Test disabling
         detector.set_enabled(false);
         assert!(!detector.is_enabled());
-        
+
         // Test violation recording when disabled
         let violation = SafetyViolation::TlsAccess {
             thread_id: std::thread::current().id(),
@@ -697,13 +701,13 @@ mod tests {
         detector.record_violation(violation.clone());
         let violations = detector.get_violations();
         assert!(violations.is_empty()); // Should be empty when disabled
-        
+
         // Test enabling and recording
         detector.set_enabled(true);
         detector.record_violation(violation);
         let violations = detector.get_violations();
         assert_eq!(violations.len(), 1);
-        
+
         // Test clearing violations
         detector.clear_violations();
         let violations = detector.get_violations();
@@ -719,7 +723,7 @@ mod tests {
             .tls_check(false)
             .stack_monitoring(false)
             .safety_level(SafetyLevel::Strict);
-            
+
         // Test that builder methods work (we can't easily test the internal state
         // without making fields public, but we can test the methods don't panic)
         assert!(builder.validate().is_ok());
@@ -760,15 +764,15 @@ mod tests {
     fn test_safety_wrapper() {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
-        
+
         let wrapper = SafetyWrapper::new(
             move || {
                 counter_clone.fetch_add(1, Ordering::SeqCst);
                 42
             },
-            SafetyLevel::Balanced
+            SafetyLevel::Balanced,
         );
-        
+
         let result = wrapper.call();
         assert_eq!(result, 42);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -778,10 +782,10 @@ mod tests {
     fn test_safety_monitor() {
         // Test monitor creation
         let monitor = SafetyMonitor::new(SafetyLevel::Development);
-        
+
         // Test thread migration check (should not panic in same thread)
         monitor.check_thread_migration();
-        
+
         // Test drop behavior
         drop(monitor);
     }
@@ -799,7 +803,7 @@ mod tests {
     #[test]
     fn test_configure_safety() {
         let original_config = get_safety_config();
-        
+
         let new_config = SafetyConfig {
             tls_detection_enabled: false,
             stack_monitoring_enabled: false,
@@ -807,16 +811,28 @@ mod tests {
             max_stack_size: 8 * 1024 * 1024,
             default_guard_size: 8192,
         };
-        
+
         configure_safety(new_config.clone());
         let current_config = get_safety_config();
-        
-        assert_eq!(current_config.tls_detection_enabled, new_config.tls_detection_enabled);
-        assert_eq!(current_config.stack_monitoring_enabled, new_config.stack_monitoring_enabled);
-        assert!(matches!(current_config.default_safety_level, SafetyLevel::Permissive));
+
+        assert_eq!(
+            current_config.tls_detection_enabled,
+            new_config.tls_detection_enabled
+        );
+        assert_eq!(
+            current_config.stack_monitoring_enabled,
+            new_config.stack_monitoring_enabled
+        );
+        assert!(matches!(
+            current_config.default_safety_level,
+            SafetyLevel::Permissive
+        ));
         assert_eq!(current_config.max_stack_size, new_config.max_stack_size);
-        assert_eq!(current_config.default_guard_size, new_config.default_guard_size);
-        
+        assert_eq!(
+            current_config.default_guard_size,
+            new_config.default_guard_size
+        );
+
         // Restore original config
         configure_safety(original_config);
     }
@@ -835,16 +851,16 @@ mod tests {
         // Test TlsSafe implementations for collections
         let option_val: Option<i32> = Some(42);
         assert!(option_val.validate_safety().is_ok());
-        
+
         let result_val: Result<i32, String> = Ok(42);
         assert!(result_val.validate_safety().is_ok());
-        
+
         let vec_val = vec![1, 2, 3];
         assert!(vec_val.validate_safety().is_ok());
-        
+
         let box_val = Box::new(42);
         assert!(box_val.validate_safety().is_ok());
-        
+
         let arc_val = Arc::new(42);
         assert!(arc_val.validate_safety().is_ok());
     }
@@ -876,7 +892,7 @@ mod tests {
     fn test_safe_builder_default() {
         let builder = SafeBuilder::default();
         assert!(builder.validate().is_ok());
-        
+
         // Test that default is equivalent to new
         let builder2 = SafeBuilder::new();
         // We can't directly compare builders, but we can validate both work
@@ -890,13 +906,13 @@ mod tests {
         // the full coroutine runtime, but we can test the function signature
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
-        
+
         // This tests that the function compiles and the types are correct
         let result = spawn_safe(move || {
             counter_clone.fetch_add(1, Ordering::SeqCst);
             42
         });
-        
+
         // The result should be Ok since we're just testing the wrapper
         assert!(result.is_ok());
     }
@@ -905,13 +921,13 @@ mod tests {
     fn test_get_safety_config_fallback() {
         // Test the fallback behavior by setting an invalid value
         // and checking that it falls back to Balanced
-        
+
         // Temporarily set an invalid safety level
         DEFAULT_SAFETY_LEVEL.store(255, Ordering::Release);
-        
+
         let config = get_safety_config();
         assert!(matches!(config.default_safety_level, SafetyLevel::Balanced));
-        
+
         // Restore valid value
         DEFAULT_SAFETY_LEVEL.store(SafetyLevel::Balanced as u8, Ordering::Release);
     }

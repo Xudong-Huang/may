@@ -755,7 +755,7 @@ mod tests {
             let h = go!(move || {
                 // Signal that we started
                 tx.send(format!("start_{}", i)).unwrap();
-                
+
                 // Try to get the write lock
                 match rwlock.write() {
                     Ok(_guard) => {
@@ -786,7 +786,7 @@ mod tests {
         let mut messages = Vec::new();
         let timeout = std::time::Duration::from_millis(2000);
         let start_time = std::time::Instant::now();
-        
+
         while start_time.elapsed() < timeout {
             match rx.recv_timeout(std::time::Duration::from_millis(100)) {
                 Ok(msg) => {
@@ -813,7 +813,8 @@ mod tests {
         );
 
         // Count successful acquisitions
-        let acquired_count = messages.iter()
+        let acquired_count = messages
+            .iter()
             .filter(|msg| msg.starts_with("acquired_"))
             .count();
 
@@ -827,6 +828,9 @@ mod tests {
         );
 
         // Verify the rwlock is still functional after the test
-        assert!(rwlock.write().is_ok(), "RwLock should still be functional after cancellation test");
+        assert!(
+            rwlock.write().is_ok(),
+            "RwLock should still be functional after cancellation test"
+        );
     }
 }

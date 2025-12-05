@@ -54,7 +54,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::NotFound, "file not found");
         let data = "test data";
         let error = Error::new(io_err, data);
-        
+
         // Verify the error was created correctly
         assert_eq!(error.into_data(), "test data");
     }
@@ -64,7 +64,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::PermissionDenied, "access denied");
         let data = vec![1, 2, 3, 4, 5];
         let error = Error::new(io_err, data.clone());
-        
+
         // Test that we can extract the original data
         let extracted_data = error.into_data();
         assert_eq!(extracted_data, vec![1, 2, 3, 4, 5]);
@@ -75,7 +75,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::ConnectionRefused, "connection refused");
         let data = "network data";
         let error = Error::new(io_err, data);
-        
+
         // Test Display trait implementation
         let display_str = format!("{}", error);
         assert!(display_str.contains("connection refused"));
@@ -86,7 +86,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::TimedOut, "operation timed out");
         let data = 42u32;
         let error = Error::new(io_err, data);
-        
+
         // Test Debug trait implementation
         let debug_str = format!("{:?}", error);
         assert!(debug_str.contains("operation timed out"));
@@ -97,7 +97,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::Interrupted, "operation interrupted");
         let data = "some data";
         let error = Error::new(io_err, data);
-        
+
         // Test conversion from Error<T> to io::Error
         let converted: IoError = error.into();
         assert_eq!(converted.kind(), ErrorKind::Interrupted);
@@ -109,10 +109,10 @@ mod tests {
         let io_err = IoError::new(ErrorKind::InvalidData, "invalid data format");
         let data = "corrupted data";
         let error = Error::new(io_err, data);
-        
+
         // Test that it implements std::error::Error
         let std_error: &dyn StdError = &error;
-        
+
         // Test cause/source method
         let _cause = std_error.source();
         // Just verify it doesn't panic
@@ -138,7 +138,7 @@ mod tests {
             field1: String,
             field2: u32,
         }
-        
+
         let custom_data = CustomData {
             field1: "test".to_string(),
             field2: 456,
@@ -154,7 +154,7 @@ mod tests {
         let io_err = IoError::new(ErrorKind::BrokenPipe, "broken pipe");
         let data = "pipe data";
         let error = Error::new(io_err, data);
-        
+
         // Convert to io::Error and verify the chain is preserved
         let converted_error: IoError = error.into();
         assert_eq!(converted_error.kind(), ErrorKind::BrokenPipe);
