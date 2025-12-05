@@ -1,23 +1,23 @@
 /// # Pipeline Data Processing Example
-/// 
+///
 /// ## Description
 /// This example demonstrates a multi-stage data processing pipeline using May coroutines.
 /// Data flows through multiple transformation stages: Reader → Parser → Transformer → Validator → Writer.
 /// Each stage runs concurrently with proper coordination and error handling.
-/// 
+///
 /// ## Architecture
 /// ```text
 /// [Data Source] → [Reader] → [Parser] → [Transformer] → [Validator] → [Writer] → [Output]
 ///                     ↓         ↓           ↓            ↓          ↓
 ///                 [Channel]  [Channel]   [Channel]    [Channel]   [Channel]
 /// ```
-/// 
+///
 /// ## Performance Characteristics
 /// - Concurrent processing across all pipeline stages
 /// - Proper coordination between stages
 /// - Error propagation with graceful degradation
 /// - Comprehensive metrics and monitoring
-/// 
+///
 /// ## Usage
 /// ```bash
 /// cargo run --example pipeline_data_processing
@@ -27,19 +27,19 @@
 #[macro_use]
 extern crate may;
 
-use may::sync::mpsc;
+use csv;
 use may::coroutine;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use may::sync::mpsc;
+use rand;
+use serde_json;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use serde_json;
-use csv;
-use rand;
-use std::env;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 struct UserRecord {
@@ -132,15 +132,16 @@ impl StageMetrics {
     fn increment_processed(&self) {
         self.processed.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn increment_errors(&self) {
         self.errors.fetch_add(1, Ordering::Relaxed);
     }
-    
+
     fn add_processing_time(&self, duration: Duration) {
-        self.processing_time_ms.fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
+        self.processing_time_ms
+            .fetch_add(duration.as_millis() as u64, Ordering::Relaxed);
     }
-    
+
     fn get_stats(&self) -> (u64, u64, u64) {
         (
             self.processed.load(Ordering::Relaxed),
@@ -170,10 +171,10 @@ impl PipelineMetrics {
             writer: StageMetrics::default(),
         }
     }
-    
+
     fn print_summary(&self) {
         println!("\n=== Pipeline Processing Summary ===");
-        
+
         let stages = [
             ("Reader", &self.reader),
             ("Parser", &self.parser),
@@ -181,25 +182,42 @@ impl PipelineMetrics {
             ("Validator", &self.validator),
             ("Writer", &self.writer),
         ];
-        
+
         for (name, metrics) in stages.iter() {
             let (processed, errors, time_ms) = metrics.get_stats();
-            let avg_time = if processed > 0 { time_ms / processed } else { 0 };
-            println!("{:<12} | Processed: {:>6} | Errors: {:>4} | Avg Time: {:>4}ms", 
-                     name, processed, errors, avg_time);
+            let avg_time = if processed > 0 {
+                time_ms / processed
+            } else {
+                0
+            };
+            println!(
+                "{:<12} | Processed: {:>6} | Errors: {:>4} | Avg Time: {:>4}ms",
+                name, processed, errors, avg_time
+            );
         }
-        
+
         let total_processed = self.writer.processed.load(Ordering::Relaxed);
-        let total_errors: u64 = [&self.reader, &self.parser, &self.transformer, &self.validator, &self.writer]
-            .iter()
-            .map(|m| m.errors.load(Ordering::Relaxed))
-            .sum();
-        
-        println!("Total Processed: {} | Total Errors: {} | Success Rate: {:.2}%",
-                 total_processed, total_errors,
-                 if total_processed > 0 { 
-                     (total_processed as f64 / (total_processed + total_errors) as f64) * 100.0 
-                 } else { 0.0 });
+        let total_errors: u64 = [
+            &self.reader,
+            &self.parser,
+            &self.transformer,
+            &self.validator,
+            &self.writer,
+        ]
+        .iter()
+        .map(|m| m.errors.load(Ordering::Relaxed))
+        .sum();
+
+        println!(
+            "Total Processed: {} | Total Errors: {} | Success Rate: {:.2}%",
+            total_processed,
+            total_errors,
+            if total_processed > 0 {
+                (total_processed as f64 / (total_processed + total_errors) as f64) * 100.0
+            } else {
+                0.0
+            }
+        );
     }
 }
 
@@ -217,28 +235,116 @@ impl RecordGenerator {
         Self {
             count: 0,
             first_names: vec![
-                "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry", "Ivy", "Jack",
-                "Kate", "Liam", "Mia", "Noah", "Olivia", "Paul", "Quinn", "Rachel", "Sam", "Tina",
-                "Uma", "Victor", "Wendy", "Xavier", "Yuki", "Zoe", "Alex", "Beth", "Chris", "Dana",
-                "Eli", "Fiona", "George", "Hannah", "Ian", "Julia", "Kevin", "Luna", "Max", "Nina",
-                "Oscar", "Penny", "Quincy", "Rose", "Steve", "Tara", "Uri", "Vera", "Will", "Xara",
+                "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry", "Ivy",
+                "Jack", "Kate", "Liam", "Mia", "Noah", "Olivia", "Paul", "Quinn", "Rachel", "Sam",
+                "Tina", "Uma", "Victor", "Wendy", "Xavier", "Yuki", "Zoe", "Alex", "Beth", "Chris",
+                "Dana", "Eli", "Fiona", "George", "Hannah", "Ian", "Julia", "Kevin", "Luna", "Max",
+                "Nina", "Oscar", "Penny", "Quincy", "Rose", "Steve", "Tara", "Uri", "Vera", "Will",
+                "Xara",
             ],
             last_names: vec![
-                "Johnson", "Smith", "Brown", "Prince", "Wilson", "Miller", "Lee", "Davis", "Chen",
-                "Taylor", "White", "Garcia", "Rodriguez", "Martinez", "Anderson", "Thomas", "Jackson",
-                "Moore", "Martin", "Thompson", "Harris", "Clark", "Lewis", "Robinson", "Walker",
-                "Hall", "Allen", "Young", "King", "Wright", "Lopez", "Hill", "Scott", "Green",
-                "Adams", "Baker", "Gonzalez", "Nelson", "Carter", "Mitchell", "Perez", "Roberts",
-                "Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards", "Collins", "Stewart",
+                "Johnson",
+                "Smith",
+                "Brown",
+                "Prince",
+                "Wilson",
+                "Miller",
+                "Lee",
+                "Davis",
+                "Chen",
+                "Taylor",
+                "White",
+                "Garcia",
+                "Rodriguez",
+                "Martinez",
+                "Anderson",
+                "Thomas",
+                "Jackson",
+                "Moore",
+                "Martin",
+                "Thompson",
+                "Harris",
+                "Clark",
+                "Lewis",
+                "Robinson",
+                "Walker",
+                "Hall",
+                "Allen",
+                "Young",
+                "King",
+                "Wright",
+                "Lopez",
+                "Hill",
+                "Scott",
+                "Green",
+                "Adams",
+                "Baker",
+                "Gonzalez",
+                "Nelson",
+                "Carter",
+                "Mitchell",
+                "Perez",
+                "Roberts",
+                "Turner",
+                "Phillips",
+                "Campbell",
+                "Parker",
+                "Evans",
+                "Edwards",
+                "Collins",
+                "Stewart",
             ],
             countries: vec![
-                "USA", "Canada", "UK", "Australia", "Germany", "France", "Japan", "Brazil", "China",
-                "India", "Russia", "Spain", "Mexico", "Italy", "Netherlands", "Sweden", "Norway",
-                "Denmark", "Finland", "Belgium", "Switzerland", "Austria", "Poland", "Czech Republic",
-                "Hungary", "Portugal", "Greece", "Ireland", "New Zealand", "South Korea", "Singapore",
-                "Malaysia", "Thailand", "Vietnam", "Philippines", "Indonesia", "Turkey", "Israel",
-                "South Africa", "Egypt", "Nigeria", "Kenya", "Morocco", "Argentina", "Chile",
-                "Colombia", "Peru", "Uruguay", "Venezuela", "Ecuador",
+                "USA",
+                "Canada",
+                "UK",
+                "Australia",
+                "Germany",
+                "France",
+                "Japan",
+                "Brazil",
+                "China",
+                "India",
+                "Russia",
+                "Spain",
+                "Mexico",
+                "Italy",
+                "Netherlands",
+                "Sweden",
+                "Norway",
+                "Denmark",
+                "Finland",
+                "Belgium",
+                "Switzerland",
+                "Austria",
+                "Poland",
+                "Czech Republic",
+                "Hungary",
+                "Portugal",
+                "Greece",
+                "Ireland",
+                "New Zealand",
+                "South Korea",
+                "Singapore",
+                "Malaysia",
+                "Thailand",
+                "Vietnam",
+                "Philippines",
+                "Indonesia",
+                "Turkey",
+                "Israel",
+                "South Africa",
+                "Egypt",
+                "Nigeria",
+                "Kenya",
+                "Morocco",
+                "Argentina",
+                "Chile",
+                "Colombia",
+                "Peru",
+                "Uruguay",
+                "Venezuela",
+                "Ecuador",
             ],
             subscription_types: vec!["Basic", "Premium", "Enterprise"],
         }
@@ -247,23 +353,28 @@ impl RecordGenerator {
     fn generate_record(&mut self) -> UserRecord {
         self.count += 1;
         let id = self.count;
-        
+
         // Use simple pseudo-random based on ID for deterministic results
         let first_idx = (id * 17) % self.first_names.len() as u64;
         let last_idx = (id * 23) % self.last_names.len() as u64;
         let country_idx = (id * 31) % self.countries.len() as u64;
         let sub_idx = (id * 7) % self.subscription_types.len() as u64;
-        
+
         let first_name = self.first_names[first_idx as usize];
         let last_name = self.last_names[last_idx as usize];
         let country = self.countries[country_idx as usize];
         let subscription_type = self.subscription_types[sub_idx as usize];
-        
+
         let name = format!("{} {}", first_name, last_name);
-        let email = format!("{}.{}{}@email.com", first_name.to_lowercase(), last_name.to_lowercase(), id);
+        let email = format!(
+            "{}.{}{}@email.com",
+            first_name.to_lowercase(),
+            last_name.to_lowercase(),
+            id
+        );
         let age = 18 + ((id * 11) % 48) as u32; // Age between 18-65
         let last_login = format!("2024-01-{:02}", 1 + (id % 30)); // Random day in January
-        
+
         let credits = match subscription_type {
             "Basic" => 100 + ((id * 13) % 900) as u32,
             "Premium" => 1000 + ((id * 19) % 2000) as u32,
@@ -291,7 +402,7 @@ fn data_reader_stage(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("🔄 Starting Data Reader stage...");
-    
+
     match config.data_source.clone() {
         DataSource::Generated => {
             read_generated_data(config, output_tx, metrics);
@@ -306,7 +417,7 @@ fn data_reader_stage(
             read_text_data(file_path, config, output_tx, metrics);
         }
     }
-    
+
     println!("✅ Data Reader stage completed");
 }
 
@@ -318,16 +429,16 @@ fn read_generated_data(
 ) {
     let mut generator = RecordGenerator::new();
     let start_time = Instant::now();
-    
+
     // No artificial delay - let the pipeline run at maximum speed
     let target_delay = Duration::from_nanos(0); // No throttling
-    
+
     for i in 0..config.input_size {
         let record_start = Instant::now();
-        
+
         // Generate dynamic user record
         let user_record = generator.generate_record();
-        
+
         // Convert UserRecord to JSON string for pipeline processing
         let content = format!(
             "{{\"id\":{},\"name\":\"{}\",\"email\":\"{}\",\"age\":{},\"country\":\"{}\",\"subscription_type\":\"{}\",\"last_login\":\"{}\",\"credits\":{}}}",
@@ -340,39 +451,47 @@ fn read_generated_data(
             user_record.last_login,
             user_record.credits
         );
-        
+
         let raw_data = RawData {
             id: i as u64,
             content,
             timestamp: record_start.elapsed().as_millis() as u64,
         };
-        
+
         // Send data to next stage
         if let Err(_) = output_tx.send(raw_data) {
             println!("❌ Reader: Output channel disconnected");
             metrics.reader.increment_errors();
             return;
         }
-        
+
         metrics.reader.increment_processed();
         metrics.reader.add_processing_time(record_start.elapsed());
-        
+
         // No artificial throttling - run at maximum speed
         // (removed sleep for performance testing)
-        
+
         // Periodic progress reporting
         if i % (config.input_size / 10).max(1) == 0 {
             let current_throughput = (i + 1) as f64 / start_time.elapsed().as_secs_f64();
-            println!("📖 Reader: Processed {}/{} items ({:.0} records/sec)", 
-                     i + 1, config.input_size, current_throughput);
+            println!(
+                "📖 Reader: Processed {}/{} items ({:.0} records/sec)",
+                i + 1,
+                config.input_size,
+                current_throughput
+            );
         }
     }
-    
+
     let total_elapsed = start_time.elapsed();
     let final_throughput = config.input_size as f64 / total_elapsed.as_secs_f64();
-    println!("📊 Reader: Generated {} records in {:.2}s ({:.0} records/sec)", 
-             config.input_size, total_elapsed.as_secs_f64(), final_throughput);
-    
+    println!(
+        "📊 Reader: Generated {} records in {:.2}s ({:.0} records/sec)",
+        config.input_size,
+        total_elapsed.as_secs_f64(),
+        final_throughput
+    );
+
     // Close the channel to signal completion
     drop(output_tx);
 }
@@ -385,7 +504,7 @@ fn read_csv_data(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("📖 Reading CSV file: {}", file_path);
-    
+
     let file = match File::open(&file_path) {
         Ok(f) => f,
         Err(e) => {
@@ -394,13 +513,13 @@ fn read_csv_data(
             return;
         }
     };
-    
+
     let mut reader = csv::Reader::from_reader(file);
     let mut count = 0;
-    
+
     for result in reader.records() {
         let start_time = Instant::now();
-        
+
         let record = match result {
             Ok(r) => r,
             Err(e) => {
@@ -409,7 +528,7 @@ fn read_csv_data(
                 continue;
             }
         };
-        
+
         // Convert CSV record to raw data
         let content = record.iter().collect::<Vec<_>>().join(",");
         let raw_data = RawData {
@@ -417,29 +536,29 @@ fn read_csv_data(
             content,
             timestamp: start_time.elapsed().as_millis() as u64,
         };
-        
+
         // Send data to next stage
         if let Err(_) = output_tx.send(raw_data) {
             println!("❌ Reader: Output channel disconnected");
             metrics.reader.increment_errors();
             return;
         }
-        
+
         count += 1;
         metrics.reader.increment_processed();
         metrics.reader.add_processing_time(start_time.elapsed());
-        
+
         // Simulate processing delay
         if config.processing_delay_ms > 0 {
             coroutine::sleep(Duration::from_millis(config.processing_delay_ms));
         }
-        
+
         // Periodic progress reporting
         if count % 10 == 0 {
             println!("📖 Reader: Processed {} CSV records", count);
         }
     }
-    
+
     println!("📖 Reader: Completed reading {} CSV records", count);
     drop(output_tx);
 }
@@ -452,7 +571,7 @@ fn read_json_data(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("📖 Reading JSON file: {}", file_path);
-    
+
     let file = match File::open(&file_path) {
         Ok(f) => f,
         Err(e) => {
@@ -461,7 +580,7 @@ fn read_json_data(
             return;
         }
     };
-    
+
     let reader = BufReader::new(file);
     let json_value: serde_json::Value = match serde_json::from_reader(reader) {
         Ok(v) => v,
@@ -471,9 +590,9 @@ fn read_json_data(
             return;
         }
     };
-    
+
     let mut count = 0;
-    
+
     // Handle both single objects and arrays
     let items: Vec<&serde_json::Value> = if json_value.is_array() {
         json_value.as_array().unwrap().iter().collect()
@@ -481,39 +600,39 @@ fn read_json_data(
         // Single object, wrap in array
         vec![&json_value]
     };
-    
+
     for item in items {
         let start_time = Instant::now();
-        
+
         let content = item.to_string();
         let raw_data = RawData {
             id: count,
             content,
             timestamp: start_time.elapsed().as_millis() as u64,
         };
-        
+
         // Send data to next stage
         if let Err(_) = output_tx.send(raw_data) {
             println!("❌ Reader: Output channel disconnected");
             metrics.reader.increment_errors();
             return;
         }
-        
+
         count += 1;
         metrics.reader.increment_processed();
         metrics.reader.add_processing_time(start_time.elapsed());
-        
+
         // Simulate processing delay
         if config.processing_delay_ms > 0 {
             coroutine::sleep(Duration::from_millis(config.processing_delay_ms));
         }
-        
+
         // Periodic progress reporting
         if count % 10 == 0 {
             println!("📖 Reader: Processed {} JSON records", count);
         }
     }
-    
+
     println!("📖 Reader: Completed reading {} JSON records", count);
     drop(output_tx);
 }
@@ -526,7 +645,7 @@ fn read_text_data(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("📖 Reading text file: {}", file_path);
-    
+
     let file = match File::open(&file_path) {
         Ok(f) => f,
         Err(e) => {
@@ -535,13 +654,13 @@ fn read_text_data(
             return;
         }
     };
-    
+
     let reader = BufReader::new(file);
     let mut count = 0;
-    
+
     for line in reader.lines() {
         let start_time = Instant::now();
-        
+
         let content = match line {
             Ok(l) => l,
             Err(e) => {
@@ -550,40 +669,40 @@ fn read_text_data(
                 continue;
             }
         };
-        
+
         // Skip empty lines
         if content.trim().is_empty() {
             continue;
         }
-        
+
         let raw_data = RawData {
             id: count,
             content,
             timestamp: start_time.elapsed().as_millis() as u64,
         };
-        
+
         // Send data to next stage
         if let Err(_) = output_tx.send(raw_data) {
             println!("❌ Reader: Output channel disconnected");
             metrics.reader.increment_errors();
             return;
         }
-        
+
         count += 1;
         metrics.reader.increment_processed();
         metrics.reader.add_processing_time(start_time.elapsed());
-        
+
         // Simulate processing delay
         if config.processing_delay_ms > 0 {
             coroutine::sleep(Duration::from_millis(config.processing_delay_ms));
         }
-        
+
         // Periodic progress reporting
         if count % 10 == 0 {
             println!("📖 Reader: Processed {} text lines", count);
         }
     }
-    
+
     println!("📖 Reader: Completed reading {} text lines", count);
     drop(output_tx);
 }
@@ -596,45 +715,45 @@ fn parser_stage(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("🔄 Starting Parser stage...");
-    
+
     while let Ok(raw_data) = input_rx.recv() {
         let start_time = Instant::now();
-        
+
         // Simulate parsing work
         if config.processing_delay_ms > 0 {
             coroutine::sleep(Duration::from_millis(config.processing_delay_ms));
         }
-        
+
         // Simulate parsing errors
         if config.enable_errors && rand::random::<f64>() < config.error_rate {
             println!("⚠️  Parser: Error processing item {}", raw_data.id);
             metrics.parser.increment_errors();
             continue;
         }
-        
+
         // Parse the raw data into structured format
         let mut fields = HashMap::new();
         fields.insert("original_content".to_string(), raw_data.content);
         fields.insert("processing_stage".to_string(), "parsed".to_string());
         fields.insert("item_type".to_string(), "data_item".to_string());
-        
+
         let parsed_data = ParsedData {
             id: raw_data.id,
             fields,
             timestamp: raw_data.timestamp,
         };
-        
+
         // Send to next stage
         if let Err(_) = output_tx.send(parsed_data) {
             println!("❌ Parser: Output channel disconnected");
             metrics.parser.increment_errors();
             return;
         }
-        
+
         metrics.parser.increment_processed();
         metrics.parser.add_processing_time(start_time.elapsed());
     }
-    
+
     drop(output_tx);
     println!("✅ Parser stage completed");
 }
@@ -647,20 +766,20 @@ fn transformer_stage(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("🔄 Starting Transformer stage...");
-    
+
     while let Ok(parsed_data) = input_rx.recv() {
         let start_time = Instant::now();
-        
+
         // Simulate transformation work (optimized for performance testing)
         // (removed sleep for maximum throughput testing)
-        
+
         // Simulate transformation errors
         if config.enable_errors && rand::random::<f64>() < config.error_rate {
             println!("⚠️  Transformer: Error processing item {}", parsed_data.id);
             metrics.transformer.increment_errors();
             continue;
         }
-        
+
         // Apply business logic transformations
         let mut processed_fields = HashMap::new();
         for (key, value) in parsed_data.fields.iter() {
@@ -669,29 +788,35 @@ fn transformer_stage(
                 format!("processed_{}", value),
             );
         }
-        processed_fields.insert("transformation_time".to_string(), start_time.elapsed().as_millis().to_string());
-        
+        processed_fields.insert(
+            "transformation_time".to_string(),
+            start_time.elapsed().as_millis().to_string(),
+        );
+
         // Calculate a score based on processing time and data characteristics
-        let score = (parsed_data.id as f64 * 0.1) + (start_time.elapsed().as_millis() as f64 * 0.001);
-        
+        let score =
+            (parsed_data.id as f64 * 0.1) + (start_time.elapsed().as_millis() as f64 * 0.001);
+
         let transformed_data = TransformedData {
             id: parsed_data.id,
             processed_fields,
             score,
             timestamp: parsed_data.timestamp,
         };
-        
+
         // Send to next stage
         if let Err(_) = output_tx.send(transformed_data) {
             println!("❌ Transformer: Output channel disconnected");
             metrics.transformer.increment_errors();
             return;
         }
-        
+
         metrics.transformer.increment_processed();
-        metrics.transformer.add_processing_time(start_time.elapsed());
+        metrics
+            .transformer
+            .add_processing_time(start_time.elapsed());
     }
-    
+
     drop(output_tx);
     println!("✅ Transformer stage completed");
 }
@@ -704,20 +829,23 @@ fn validator_stage(
     metrics: Arc<PipelineMetrics>,
 ) {
     println!("🔄 Starting Validator stage...");
-    
+
     while let Ok(transformed_data) = input_rx.recv() {
         let start_time = Instant::now();
-        
+
         // Simulate validation work (optimized for performance testing)
         // (removed sleep for maximum throughput testing)
-        
+
         // Simulate validation errors
         if config.enable_errors && rand::random::<f64>() < config.error_rate {
-            println!("⚠️  Validator: Validation failed for item {}", transformed_data.id);
+            println!(
+                "⚠️  Validator: Validation failed for item {}",
+                transformed_data.id
+            );
             metrics.validator.increment_errors();
             continue;
         }
-        
+
         // Validate the transformed data
         let validation_status = if transformed_data.score > 50.0 {
             "high_quality"
@@ -726,11 +854,17 @@ fn validator_stage(
         } else {
             "low_quality"
         };
-        
+
         let mut final_data = transformed_data.processed_fields.clone();
-        final_data.insert("validation_status".to_string(), validation_status.to_string());
-        final_data.insert("validation_time".to_string(), start_time.elapsed().as_millis().to_string());
-        
+        final_data.insert(
+            "validation_status".to_string(),
+            validation_status.to_string(),
+        );
+        final_data.insert(
+            "validation_time".to_string(),
+            start_time.elapsed().as_millis().to_string(),
+        );
+
         let validated_data = ValidatedData {
             id: transformed_data.id,
             final_data,
@@ -738,18 +872,18 @@ fn validator_stage(
             timestamp: transformed_data.timestamp,
             validation_status: validation_status.to_string(),
         };
-        
+
         // Send to next stage
         if let Err(_) = output_tx.send(validated_data) {
             println!("❌ Validator: Output channel disconnected");
             metrics.validator.increment_errors();
             return;
         }
-        
+
         metrics.validator.increment_processed();
         metrics.validator.add_processing_time(start_time.elapsed());
     }
-    
+
     drop(output_tx);
     println!("✅ Validator stage completed");
 }
@@ -762,39 +896,44 @@ fn writer_stage(
 ) {
     println!("🔄 Starting Writer stage...");
     let mut output_count = 0;
-    
+
     while let Ok(validated_data) = input_rx.recv() {
         let start_time = Instant::now();
-        
+
         // Simulate writing work (optimized for performance testing)
         // (removed sleep for maximum throughput testing)
-        
+
         // Simulate writing errors
         if config.enable_errors && rand::random::<f64>() < config.error_rate {
             println!("⚠️  Writer: Error writing item {}", validated_data.id);
             metrics.writer.increment_errors();
             continue;
         }
-        
+
         // Write the final data (simulate by printing summary)
         output_count += 1;
         if output_count % (config.input_size / 10).max(1) == 0 {
-            println!("💾 Writer: Processed item {} - Score: {:.2} - Status: {}", 
-                     validated_data.id, validated_data.score, validated_data.validation_status);
+            println!(
+                "💾 Writer: Processed item {} - Score: {:.2} - Status: {}",
+                validated_data.id, validated_data.score, validated_data.validation_status
+            );
         }
-        
+
         metrics.writer.increment_processed();
         metrics.writer.add_processing_time(start_time.elapsed());
     }
-    
-    println!("✅ Writer stage completed - Total items written: {}", output_count);
+
+    println!(
+        "✅ Writer stage completed - Total items written: {}",
+        output_count
+    );
 }
 
 /// Parse command line arguments
 fn parse_args() -> PipelineConfig {
     let args: Vec<String> = std::env::args().collect();
     let mut config = PipelineConfig::default();
-    
+
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -806,7 +945,8 @@ fn parse_args() -> PipelineConfig {
             }
             "--delay" => {
                 if i + 1 < args.len() {
-                    config.processing_delay_ms = args[i + 1].parse().unwrap_or(config.processing_delay_ms);
+                    config.processing_delay_ms =
+                        args[i + 1].parse().unwrap_or(config.processing_delay_ms);
                     i += 1;
                 }
             }
@@ -823,7 +963,7 @@ fn parse_args() -> PipelineConfig {
                 if i + 1 < args.len() {
                     let file_path = args[i + 1].clone();
                     config.input_file = Some(file_path.clone());
-                    
+
                     // Determine data source based on file extension
                     config.data_source = if file_path.ends_with(".csv") {
                         DataSource::CsvFile(file_path)
@@ -851,22 +991,22 @@ fn parse_args() -> PipelineConfig {
         }
         i += 1;
     }
-    
+
     config
 }
 
 fn main() {
     let config = parse_args();
-    
+
     println!("🚀 Starting Pipeline Data Processing Example");
     println!("Configuration: {:?}", config);
-    
+
     // Configure May runtime
     may::config().set_workers(num_cpus::get());
-    
+
     let start_time = Instant::now();
     let metrics = Arc::new(PipelineMetrics::new());
-    
+
     // Run the pipeline within a coroutine scope
     may::coroutine::scope(|scope| {
         // Create channels between pipeline stages
@@ -874,49 +1014,49 @@ fn main() {
         let (parser_tx, parser_rx) = mpsc::channel();
         let (transformer_tx, transformer_rx) = mpsc::channel();
         let (validator_tx, validator_rx) = mpsc::channel();
-        
+
         // Spawn pipeline stages as coroutines
         let config_clone = config.clone();
         let metrics_clone = metrics.clone();
         go!(scope, move || {
             data_reader_stage(config_clone, reader_tx, metrics_clone);
         });
-        
+
         let config_clone = config.clone();
         let metrics_clone = metrics.clone();
         go!(scope, move || {
             parser_stage(config_clone, reader_rx, parser_tx, metrics_clone);
         });
-        
+
         let config_clone = config.clone();
         let metrics_clone = metrics.clone();
         go!(scope, move || {
             transformer_stage(config_clone, parser_rx, transformer_tx, metrics_clone);
         });
-        
+
         let config_clone = config.clone();
         let metrics_clone = metrics.clone();
         go!(scope, move || {
             validator_stage(config_clone, transformer_rx, validator_tx, metrics_clone);
         });
-        
+
         let config_clone = config.clone();
         let metrics_clone = metrics.clone();
         go!(scope, move || {
             writer_stage(config_clone, validator_rx, metrics_clone);
         });
-        
+
         // Monitor progress
         let metrics_clone = metrics.clone();
         let config_clone = config.clone();
         go!(scope, move || {
             let mut last_processed = 0;
             let mut stable_count = 0;
-            
+
             loop {
                 coroutine::sleep(Duration::from_millis(500)); // Check more frequently
                 let total_processed = metrics_clone.writer.processed.load(Ordering::Relaxed);
-                
+
                 // For file input, we don't know the exact count ahead of time
                 // So we detect when processing has stopped
                 if total_processed == last_processed {
@@ -928,14 +1068,17 @@ fn main() {
                 } else {
                     stable_count = 0;
                     last_processed = total_processed;
-                    
+
                     // Only print progress updates when there's actual progress
                     if matches!(config_clone.data_source, DataSource::Generated) {
                         if total_processed >= config_clone.input_size as u64 {
                             break;
                         }
                         if total_processed % 10 == 0 || total_processed == 1 {
-                            println!("📊 Progress: {}/{} items completed", total_processed, config_clone.input_size);
+                            println!(
+                                "📊 Progress: {}/{} items completed",
+                                total_processed, config_clone.input_size
+                            );
                         }
                     } else {
                         if total_processed % 5 == 0 || total_processed == 1 {
@@ -946,21 +1089,27 @@ fn main() {
             }
         });
     });
-    
+
     let total_time = start_time.elapsed();
-    
+
     // Print final metrics
     metrics.print_summary();
-    println!("\n⏱️  Total Processing Time: {:.2}s", total_time.as_secs_f64());
-    println!("🚀 Throughput: {:.2} items/second", config.input_size as f64 / total_time.as_secs_f64());
-    
+    println!(
+        "\n⏱️  Total Processing Time: {:.2}s",
+        total_time.as_secs_f64()
+    );
+    println!(
+        "🚀 Throughput: {:.2} items/second",
+        config.input_size as f64 / total_time.as_secs_f64()
+    );
+
     println!("\n✨ Pipeline Data Processing Example completed successfully!");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_pipeline_config_default() {
         let config = PipelineConfig::default();
@@ -969,26 +1118,26 @@ mod tests {
         assert!(!config.enable_errors);
         assert_eq!(config.error_rate, 0.05);
     }
-    
+
     #[test]
     fn test_stage_metrics() {
         let metrics = StageMetrics::default();
-        
+
         metrics.increment_processed();
         metrics.increment_processed();
         metrics.increment_errors();
         metrics.add_processing_time(Duration::from_millis(100));
-        
+
         let (processed, errors, time_ms) = metrics.get_stats();
         assert_eq!(processed, 2);
         assert_eq!(errors, 1);
         assert_eq!(time_ms, 100);
     }
-    
+
     #[test]
     fn test_small_pipeline() {
         may::config().set_workers(2);
-        
+
         let config = PipelineConfig {
             input_size: 10,
             processing_delay_ms: 0,
@@ -997,61 +1146,61 @@ mod tests {
             input_file: None,
             data_source: DataSource::Generated,
         };
-        
+
         let metrics = Arc::new(PipelineMetrics::new());
-        
+
         may::coroutine::scope(|scope| {
             let (reader_tx, reader_rx) = mpsc::channel();
             let (parser_tx, parser_rx) = mpsc::channel();
             let (transformer_tx, transformer_rx) = mpsc::channel();
             let (validator_tx, validator_rx) = mpsc::channel();
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 data_reader_stage(config.clone(), reader_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 parser_stage(config.clone(), reader_rx, parser_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 transformer_stage(config.clone(), parser_rx, transformer_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 validator_stage(config.clone(), transformer_rx, validator_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 writer_stage(config.clone(), validator_rx, metrics_clone);
             });
         });
-        
+
         // Verify all items were processed
         let (processed, errors, _) = metrics.writer.get_stats();
         assert_eq!(processed, 10);
         assert_eq!(errors, 0);
     }
-    
+
     #[test]
     fn test_csv_file_input() {
         use std::fs;
         use std::io::Write;
-        
+
         may::config().set_workers(2);
-        
+
         // Create a temporary CSV file
         let temp_file = "test_data.csv";
         let mut file = fs::File::create(temp_file).unwrap();
         writeln!(file, "id,name,value").unwrap();
         writeln!(file, "1,test1,100").unwrap();
         writeln!(file, "2,test2,200").unwrap();
-        
+
         let config = PipelineConfig {
             input_size: 1000, // This will be ignored for file input
             processing_delay_ms: 0,
@@ -1060,47 +1209,47 @@ mod tests {
             input_file: Some(temp_file.to_string()),
             data_source: DataSource::CsvFile(temp_file.to_string()),
         };
-        
+
         let metrics = Arc::new(PipelineMetrics::new());
-        
+
         may::coroutine::scope(|scope| {
             let (reader_tx, reader_rx) = mpsc::channel();
             let (parser_tx, parser_rx) = mpsc::channel();
             let (transformer_tx, transformer_rx) = mpsc::channel();
             let (validator_tx, validator_rx) = mpsc::channel();
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 data_reader_stage(config.clone(), reader_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 parser_stage(config.clone(), reader_rx, parser_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 transformer_stage(config.clone(), parser_rx, transformer_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 validator_stage(config.clone(), transformer_rx, validator_tx, metrics_clone);
             });
-            
+
             let metrics_clone = metrics.clone();
             go!(scope, move || {
                 writer_stage(config.clone(), validator_rx, metrics_clone);
             });
         });
-        
+
         // Verify CSV records were processed (header + 2 data rows = 3 total)
         let (processed, errors, _) = metrics.writer.get_stats();
         assert_eq!(processed, 3);
         assert_eq!(errors, 0);
-        
+
         // Clean up
         let _ = fs::remove_file(temp_file);
     }
-} 
+}
