@@ -58,9 +58,9 @@ impl UdpSocket {
     pub fn try_clone(&self) -> io::Result<UdpSocket> {
         let s = self.sys.try_clone().and_then(UdpSocket::new)?;
         #[cfg(feature = "io_timeout")]
-        s.set_read_timeout(self.read_timeout.get()).unwrap();
+        s.set_read_timeout(self.read_timeout.get())?;
         #[cfg(feature = "io_timeout")]
-        s.set_write_timeout(self.write_timeout.get()).unwrap();
+        s.set_write_timeout(self.write_timeout.get())?;
         Ok(s)
     }
 
@@ -123,7 +123,7 @@ impl UdpSocket {
             }
         }
 
-        let mut reader = net_impl::UdpRecvFrom::new(self, buf);
+        let mut reader = net_impl::UdpRecvFrom::new(self, buf)?;
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }

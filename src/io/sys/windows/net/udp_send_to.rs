@@ -27,18 +27,23 @@ impl<'a> UdpSendTo<'a> {
         buf: &'a [u8],
         addr: A,
     ) -> io::Result<Self> {
-        addr.to_socket_addrs()?
+        let resolved_addr = addr
+            .to_socket_addrs()?
             .next()
-            .ok_or_else(|| io::Error::other("no socket addresses resolved"))
-            .map(|addr| UdpSendTo {
-                io_data: EventData::new(socket.as_raw_socket() as HANDLE),
-                buf,
-                socket: socket.inner(),
-                addr,
-                #[cfg(feature = "io_timeout")]
-                timeout: socket.write_timeout().unwrap(),
-                is_coroutine: is_coroutine(),
-            })
+            .ok_or_else(|| io::Error::other("no socket addresses resolved"))?;
+        
+        #[cfg(feature = "io_timeout")]
+        let timeout = socket.write_timeout()?;
+        
+        Ok(UdpSendTo {
+            io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+            buf,
+            socket: socket.inner(),
+            addr: resolved_addr,
+            #[cfg(feature = "io_timeout")]
+            timeout,
+            is_coroutine: is_coroutine(),
+        })
     }
 
     pub fn done(&mut self) -> io::Result<usize> {

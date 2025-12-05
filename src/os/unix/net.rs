@@ -819,7 +819,7 @@ impl UnixDatagram {
             }
         }
 
-        let mut reader = net_impl::UnixRecvFrom::new(self, buf);
+        let mut reader = net_impl::UnixRecvFrom::new(self, buf)?;
         yield_with_io(&reader, reader.is_coroutine);
         reader.done()
     }
