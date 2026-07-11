@@ -589,7 +589,14 @@ pub fn connect_complete(socket: RawSocket) -> io::Result<()> {
     if result == 0 {
         Ok(())
     } else {
-        Err(io::Error::last_os_error())
+        let err = io::Error::last_os_error();
+        // WSAECONNREFUSED (10061) is not mapped to ConnectionRefused by
+        // Rust's std::io::ErrorKind on Windows — remap it explicitly.
+        if err.raw_os_error() == Some(10061) {
+            Err(io::Error::new(io::ErrorKind::ConnectionRefused, err))
+        } else {
+            Err(err)
+        }
     }
 }
 
