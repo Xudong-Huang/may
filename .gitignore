@@ -11,3 +11,9 @@
 /target/
 .vscode/
 Cargo.lock
+
+# Local analysis docs (not for upstream)
+/AI_USAGE_GUIDE.md
+/MAY_IMPROVEMENT_ANALYSIS.md
+/MAY_MESSAGE_PASSING_IMPROVEMENTS.md
+/tasks/tasks.md
