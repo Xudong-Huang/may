@@ -23,13 +23,6 @@ struct Slot<T> {
     value: UnsafeCell<MaybeUninit<T>>,
 }
 
-impl<T> Slot<T> {
-    #[allow(clippy::declare_interior_mutable_const)]
-    const UNINIT: Self = Self {
-        value: UnsafeCell::new(MaybeUninit::uninit()),
-    };
-}
-
 /// a block node contains a bunch of items stored in a array
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
@@ -45,15 +38,31 @@ struct BlockNode<T> {
 /// the queue is responsible to drop all the items
 /// and would call its get() method for the dropping
 impl<T> BlockNode<T> {
-    /// create a new BlockNode with uninitialized data
-    #[inline]
+    /// Allocate the block directly on the heap.
+    ///
+    /// `Box::new(BlockNode { .. })` first materialises the whole node -
+    /// BLOCK_SIZE slots of `T` - on the caller's stack and then moves it to
+    /// the heap. With a large `T` on a small coroutine stack that is a
+    /// guard-page hit at an arbitrary push, and a coroutine killed by stack
+    /// overflow does not unwind, so the queue is left corrupted mid-push
+    /// and every later consumer blocks forever.
+    ///
+    /// `alloc_zeroed` never touches the stack: zeroed memory is a valid
+    /// state for every field here (atomics at 0 / null, `MaybeUninit`
+    /// slots), and any non-zero field is written through a raw pointer, so
+    /// no `BlockNode` value ever exists on the stack. Blocks are freed with
+    /// `Box::from_raw`, which pairs with the global allocator used here.
     fn new(index: usize) -> *mut BlockNode<T> {
-        Box::into_raw(Box::new(BlockNode {
-            next: AtomicPtr::new(ptr::null_mut()),
-            used: AtomicUsize::new(BLOCK_SIZE),
-            data: [Slot::UNINIT; BLOCK_SIZE],
-            start: AtomicUsize::new(index),
-        }))
+        unsafe {
+            let layout = std::alloc::Layout::new::<BlockNode<T>>();
+            let ptr = std::alloc::alloc_zeroed(layout).cast::<BlockNode<T>>();
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            ptr::addr_of_mut!((*ptr).used).write(AtomicUsize::new(BLOCK_SIZE));
+            ptr::addr_of_mut!((*ptr).start).write(AtomicUsize::new(index));
+            ptr
+        }
     }
 
     /// write index with data
@@ -451,8 +460,11 @@ impl<T> Default for Queue<T> {
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        //  pop all the element to make sure the queue is empty
-        while !self.bulk_pop().is_empty() {}
+        // Drain one item at a time. bulk_pop() returns
+        // SmallVec<[T; BLOCK_SIZE]>, which reserves BLOCK_SIZE payloads
+        // INLINE on the dropping stack - for a large T that alone can
+        // overflow a small coroutine stack. pop() moves one T at a time.
+        while self.pop().is_some() {}
         let head = self.head.0.load(Ordering::Acquire);
         let (block, _id) = BlockPtr::unpack(head);
         let tail = self.tail.block.load(Ordering::Acquire);
