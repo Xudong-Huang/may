@@ -26,14 +26,6 @@ struct Slot<T> {
 
 impl<T> std::panic::RefUnwindSafe for Slot<T> {}
 
-impl<T> Slot<T> {
-    #[allow(clippy::declare_interior_mutable_const)]
-    const UNINIT: Self = Self {
-        value: UnsafeCell::new(MaybeUninit::uninit()),
-        ready: AtomicUsize::new(0),
-    };
-}
-
 /// a block node contains a bunch of items stored in a array
 /// this could make the malloc/free not that frequent, also
 /// the array could speed up list operations
@@ -48,19 +40,29 @@ struct BlockNode<T> {
 /// the queue is responsible to drop all the items
 /// and would call its get() method for the dropping
 impl<T> BlockNode<T> {
-    /// create a new BlockNode with uninitialized data
-    #[inline]
+    /// Allocate the block directly on the heap.
+    ///
+    /// `Box::new(BlockNode { .. })` first materialises the whole node -
+    /// BLOCK_SIZE slots of `T` - on the caller's stack and then moves it to
+    /// the heap. With a large `T` on a small coroutine stack that is a
+    /// guard-page hit at an arbitrary push, and a coroutine killed by stack
+    /// overflow does not unwind, so the queue is left corrupted mid-push
+    /// and every later consumer blocks forever.
+    ///
+    /// `alloc_zeroed` never touches the stack: zeroed memory is a valid
+    /// state for every field here (atomics at 0 / null, `MaybeUninit`
+    /// slots), and any non-zero field is written through a raw pointer, so
+    /// no `BlockNode` value ever exists on the stack. Blocks are freed with
+    /// `Box::from_raw`, which pairs with the global allocator used here.
     fn new_box(index: usize) -> *mut BlockNode<T> {
-        Box::into_raw(Box::new(BlockNode::new(index)))
-    }
-
-    /// create a new BlockNode with uninitialized data
-    #[inline]
-    fn new(index: usize) -> BlockNode<T> {
-        BlockNode {
-            next: AtomicPtr::new(ptr::null_mut()),
-            data: [Slot::UNINIT; BLOCK_SIZE],
-            start: index,
+        unsafe {
+            let layout = std::alloc::Layout::new::<BlockNode<T>>();
+            let ptr = std::alloc::alloc_zeroed(layout).cast::<BlockNode<T>>();
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            ptr::addr_of_mut!((*ptr).start).write(index);
+            ptr
         }
     }
 
