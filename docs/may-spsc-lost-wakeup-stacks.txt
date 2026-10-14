@@ -1,0 +1,795 @@
+[New LWP 1182426]
+[New LWP 1182419]
+[New LWP 1182417]
+[New LWP 1182331]
+[New LWP 1182330]
+[New LWP 1182329]
+[New LWP 1182328]
+[New LWP 1182327]
+[New LWP 1182326]
+[New LWP 1182325]
+[New LWP 1182324]
+[New LWP 1182323]
+[New LWP 1182322]
+[New LWP 1182321]
+[New LWP 1182320]
+[New LWP 1182319]
+[New LWP 1182318]
+[New LWP 1182317]
+[New LWP 1182316]
+[New LWP 1182315]
+[New LWP 1182314]
+[New LWP 1182313]
+[New LWP 1182312]
+[New LWP 1182311]
+[New LWP 1182310]
+[New LWP 1182309]
+[New LWP 1182308]
+[New LWP 1182307]
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib/x86_64-linux-gnu/libthread_db.so.1".
+syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+
+warning: 38	../sysdeps/unix/sysv/linux/x86_64/syscall.S: No such file or directory
+warning: Missing auto-load script at offset 0 in section .debug_gdb_scripts
+of file /home/casibbald/Workspace/microscaler/hauliage/microservices/target/debug/deps/main_bdd-5cb1d94ddb8b4a9f.
+Use `info auto-load python-scripts [REGEXP]' to list them.
+
+Thread 29 (Thread 0x7433fbab06c0 (LWP 1182307) "bdd::dashboard:"):
+#0  syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+#1  0x0000561f2c119db7 in std::sys::pal::unix::futex::futex_wait () at library/std/src/sys/pal/unix/futex.rs:73
+#2  std::sys::sync::thread_parking::futex::Parker::park () at library/std/src/sys/sync/thread_parking/futex.rs:55
+#3  std::thread::thread::Thread::park () at library/std/src/thread/thread.rs:121
+#4  std::thread::functions::park () at library/std/src/thread/functions.rs:533
+#5  0x0000561f2c0a734f in <may::timeout_list::TimerThread<alloc::sync::Arc<may::sync::atomic_option::AtomicOption<generator::gen_impl::GeneratorObj<std::io::error::Error, may::coroutine_impl::EventSubscriber, false>>>>>::run::<may::scheduler::init_scheduler::{closure#0}::{closure#0}> () at src/timeout_list.rs:298
+#6  0x0000561f2c09e857 in may::scheduler::init_scheduler::{closure#0} () at src/scheduler.rs:60
+#7  0x0000561f2c08f0b6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#0}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#8  0x0000561f2c0a923e in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#0}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#9  0x0000561f2c06c6c2 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#0}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#10 0x0000561f2c08f102 in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#0}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#11 0x0000561f2c0acffb in __rust_try ()
+#12 0x0000561f2c0a8b8e in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#0}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#13 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#0}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#14 {closure#1}<may::scheduler::init_scheduler::{closure_env#0}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#15 0x0000561f2c08f397 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#16 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#17 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#18 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#19 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 28 (Thread 0x7433fb8af6c0 (LWP 1182308) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 27 (Thread 0x7433fb6ae6c0 (LWP 1182309) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 26 (Thread 0x7433fb4ad6c0 (LWP 1182310) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 25 (Thread 0x7433fb2ac6c0 (LWP 1182311) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 24 (Thread 0x7433fb0ab6c0 (LWP 1182312) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 23 (Thread 0x7433faea76c0 (LWP 1182313) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 22 (Thread 0x7433faca66c0 (LWP 1182314) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 21 (Thread 0x7433faa9c6c0 (LWP 1182315) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 20 (Thread 0x7433fa8986c0 (LWP 1182316) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 19 (Thread 0x7433fa6946c0 (LWP 1182317) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 18 (Thread 0x7433fa48d6c0 (LWP 1182318) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 17 (Thread 0x7433fa28c6c0 (LWP 1182319) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 16 (Thread 0x7433fa0886c0 (LWP 1182320) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 15 (Thread 0x7433f9e816c0 (LWP 1182321) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 14 (Thread 0x7433f9c806c0 (LWP 1182322) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 13 (Thread 0x7433f9a7c6c0 (LWP 1182323) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 12 (Thread 0x7433f98756c0 (LWP 1182324) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 11 (Thread 0x7433f96716c0 (LWP 1182325) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 10 (Thread 0x7433f946d6c0 (LWP 1182326) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 9 (Thread 0x7433f92696c0 (LWP 1182327) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 8 (Thread 0x7433f90656c0 (LWP 1182328) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 7 (Thread 0x7433f8e616c0 (LWP 1182329) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 6 (Thread 0x7433f8c5d6c0 (LWP 1182330) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 5 (Thread 0x7433f8a596c0 (LWP 1182331) "bdd::dashboard:"):
+#0  __syscall_cancel_arch () at ../sysdeps/unix/sysv/linux/x86_64/syscall_cancel.S:56
+#1  0x000074340207a13c in __internal_syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=0, a6=0, nr=232) at ./nptl/cancellation.c:49
+#2  __syscall_cancel (a1=<optimized out>, a2=<optimized out>, a3=<optimized out>, a4=<optimized out>, a5=a5@entry=0, a6=a6@entry=0, nr=232) at ./nptl/cancellation.c:75
+#3  0x00007434021116d5 in epoll_wait (epfd=<optimized out>, events=<optimized out>, maxevents=<optimized out>, timeout=<optimized out>) at ../sysdeps/unix/sysv/linux/epoll_wait.c:30
+#4  0x0000561f2c07188f in wait<nix::poll_timeout::PollTimeout> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.30.1/src/sys/epoll.rs:151
+#5  0x0000561f2c09c53b in select () at src/io/sys/unix/epoll.rs:93
+#6  0x0000561f2c0a3543 in run () at src/io/event_loop.rs:34
+#7  0x0000561f2c09e90f in may::scheduler::init_scheduler::{closure#1} () at src/scheduler.rs:72
+#8  0x0000561f2c08f0c6 in __rust_begin_short_backtrace<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#9  0x0000561f2c0a93f2 in std::thread::lifecycle::spawn_unchecked::<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#10 0x0000561f2c06c6f1 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#11 0x0000561f2c08f12d in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#12 0x0000561f2c0acffb in __rust_try ()
+#13 0x0000561f2c0a8ef2 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#14 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<may::scheduler::init_scheduler::{closure_env#1}, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#15 {closure#1}<may::scheduler::init_scheduler::{closure_env#1}, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#16 0x0000561f2c08f3a7 in <std::thread::lifecycle::spawn_unchecked<may::scheduler::init_scheduler::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#17 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#18 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#19 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#20 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 4 (Thread 0x7433f86fe6c0 (LWP 1182417) "lifeguard-pool-"):
+#0  syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+#1  0x0000561f2c119db7 in std::sys::pal::unix::futex::futex_wait () at library/std/src/sys/pal/unix/futex.rs:73
+#2  std::sys::sync::thread_parking::futex::Parker::park () at library/std/src/sys/sync/thread_parking/futex.rs:55
+#3  std::thread::thread::Thread::park () at library/std/src/thread/thread.rs:121
+#4  std::thread::functions::park () at library/std/src/thread/functions.rs:533
+#5  0x0000561f2b73a5f4 in <crossbeam_channel::context::Context>::wait_until () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:162
+#6  0x0000561f2b73c7b9 in {closure#1}<lifeguard::pool::pooled::WorkerJob> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/flavors/array.rs:432
+#7  0x0000561f2b74e6cc in {closure#0}<crossbeam_channel::flavors::array::{impl#1}::recv::{closure_env#1}<lifeguard::pool::pooled::WorkerJob>, ()> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:52
+#8  0x0000561f2b74e83f in <crossbeam_channel::context::Context>::with::<<crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv::{closure#1}, ()>::{closure#1} () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:60
+#9  0x0000561f2b73a303 in try_with<core::cell::Cell<core::option::Option<crossbeam_channel::context::Context>>, crossbeam_channel::context::{impl#0}::with::{closure_env#1}<crossbeam_channel::flavors::array::{impl#1}::recv::{closure_env#1}<lifeguard::pool::pooled::WorkerJob>, ()>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462
+#10 0x0000561f2b74dd84 in <crossbeam_channel::context::Context>::with::<<crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv::{closure#1}, ()> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:56
+#11 0x0000561f2b73d770 in <crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/flavors/array.rs:421
+#12 0x0000561f2b76a517 in <crossbeam_channel::channel::Receiver<lifeguard::pool::pooled::WorkerJob>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/channel.rs:814
+#13 0x0000561f2b76a64f in <crossbeam_channel::channel::Iter<lifeguard::pool::pooled::WorkerJob> as core::iter::traits::iterator::Iterator>::next () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/channel.rs:1242
+#14 0x0000561f2b750e0d in lifeguard::pool::pooled::run_worker () at src/pool/pooled.rs:859
+#15 0x0000561f2b75e455 in <lifeguard::pool::pooled::WorkerPool>::new::<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1} () at src/pool/pooled.rs:123
+#16 0x0000561f2b736316 in __rust_begin_short_backtrace<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#17 0x0000561f2b735b2f in std::thread::lifecycle::spawn_unchecked::<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#18 0x0000561f2b749774 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#19 0x0000561f2b736090 in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#20 0x0000561f2b73601b in __rust_try ()
+#21 0x0000561f2b7350f1 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#22 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#23 {closure#1}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#24 0x0000561f2b7232a7 in <std::thread::lifecycle::spawn_unchecked<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#25 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#26 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#27 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#28 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 3 (Thread 0x7433f84fa6c0 (LWP 1182419) "lifeguard-pool-"):
+#0  syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+#1  0x0000561f2c119db7 in std::sys::pal::unix::futex::futex_wait () at library/std/src/sys/pal/unix/futex.rs:73
+#2  std::sys::sync::thread_parking::futex::Parker::park () at library/std/src/sys/sync/thread_parking/futex.rs:55
+#3  std::thread::thread::Thread::park () at library/std/src/thread/thread.rs:121
+#4  std::thread::functions::park () at library/std/src/thread/functions.rs:533
+#5  0x0000561f2b73a5f4 in <crossbeam_channel::context::Context>::wait_until () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:162
+#6  0x0000561f2b73c7b9 in {closure#1}<lifeguard::pool::pooled::WorkerJob> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/flavors/array.rs:432
+#7  0x0000561f2b74e6cc in {closure#0}<crossbeam_channel::flavors::array::{impl#1}::recv::{closure_env#1}<lifeguard::pool::pooled::WorkerJob>, ()> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:52
+#8  0x0000561f2b74e83f in <crossbeam_channel::context::Context>::with::<<crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv::{closure#1}, ()>::{closure#1} () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:60
+#9  0x0000561f2b73a303 in try_with<core::cell::Cell<core::option::Option<crossbeam_channel::context::Context>>, crossbeam_channel::context::{impl#0}::with::{closure_env#1}<crossbeam_channel::flavors::array::{impl#1}::recv::{closure_env#1}<lifeguard::pool::pooled::WorkerJob>, ()>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/local.rs:462
+#10 0x0000561f2b74dd84 in <crossbeam_channel::context::Context>::with::<<crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv::{closure#1}, ()> () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/context.rs:56
+#11 0x0000561f2b73d770 in <crossbeam_channel::flavors::array::Channel<lifeguard::pool::pooled::WorkerJob>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/flavors/array.rs:421
+#12 0x0000561f2b76a517 in <crossbeam_channel::channel::Receiver<lifeguard::pool::pooled::WorkerJob>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/channel.rs:814
+#13 0x0000561f2b76a64f in <crossbeam_channel::channel::Iter<lifeguard::pool::pooled::WorkerJob> as core::iter::traits::iterator::Iterator>::next () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/crossbeam-channel-0.5.15/src/channel.rs:1242
+#14 0x0000561f2b750e0d in lifeguard::pool::pooled::run_worker () at src/pool/pooled.rs:859
+#15 0x0000561f2b75e455 in <lifeguard::pool::pooled::WorkerPool>::new::<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1} () at src/pool/pooled.rs:123
+#16 0x0000561f2b736316 in __rust_begin_short_backtrace<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#17 0x0000561f2b735b2f in std::thread::lifecycle::spawn_unchecked::<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1}::{closure#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:70
+#18 0x0000561f2b749774 in <core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1}::{closure#0}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#19 0x0000561f2b736090 in do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#20 0x0000561f2b73601b in __rust_try ()
+#21 0x0000561f2b7350f1 in catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#22 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()>>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#23 {closure#1}<lifeguard::pool::pooled::{impl#0}::new::{closure_env#1}<lifeguard::pool::pooled::{impl#1}::new_with_settings::{closure_env#0}>, ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/thread/lifecycle.rs:68
+#24 0x0000561f2b7232a7 in <std::thread::lifecycle::spawn_unchecked<<lifeguard::pool::pooled::WorkerPool>::new<<lifeguard::pool::pooled::LifeguardPool>::new_with_settings::{closure#0}>::{closure#1}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0} () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#25 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#26 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#27 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#28 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 2 (Thread 0x743401fd56c0 (LWP 1182426) "bdd::list_jobs:"):
+#0  syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+#1  0x0000561f2c119db7 in std::sys::pal::unix::futex::futex_wait () at library/std/src/sys/pal/unix/futex.rs:73
+#2  std::sys::sync::thread_parking::futex::Parker::park () at library/std/src/sys/sync/thread_parking/futex.rs:55
+#3  std::thread::thread::Thread::park () at library/std/src/thread/thread.rs:121
+#4  std::thread::functions::park () at library/std/src/thread/functions.rs:533
+#5  0x0000561f2b806e76 in <may::sync::spsc::InnerQueue<may_postgres::codec::BackendMessages>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/may-0.3.51/src/sync/spsc.rs:173
+#6  0x0000561f2b807514 in <may::sync::spsc::Receiver<may_postgres::codec::BackendMessages>>::recv () at /home/casibbald/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/may-0.3.51/src/sync/spsc.rs:292
+#7  0x0000561f2b7f819d in next () at src/client.rs:38
+#8  0x0000561f2b82b01e in prepare () at src/prepare.rs:61
+#9  0x0000561f2b7f90d6 in <may_postgres::client::Client>::prepare_typed () at src/client.rs:224
+#10 0x0000561f2b7f9ab4 in <may_postgres::client::Client>::prepare () at src/client.rs:216
+#11 0x0000561f2b8016df in <may_postgres::to_statement::private::ToStatementType>::into_statement () at src/to_statement.rs:18
+#12 0x0000561f2b72c3b3 in <may_postgres::client::Client>::execute_raw::<str> () at /home/casibbald/Workspace/microscaler/may_postgres/src/client.rs:371
+#13 0x0000561f2b72c56a in <may_postgres::client::Client>::execute::<str> () at /home/casibbald/Workspace/microscaler/may_postgres/src/client.rs:350
+#14 0x0000561f2b3c6108 in insert_consignment () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:51
+#15 0x0000561f2b3c6689 in main_bdd::bdd::list_jobs::given_5_mixed_status () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:317
+#16 0x0000561f2b39b2c6 in main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure#2} () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:297
+#17 0x0000561f2b378fea in <main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure#2} as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#18 0x0000561f2b335b91 in <core::panic::unwind_safe::AssertUnwindSafe<main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure#2}> as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:275
+#19 0x0000561f2b3c28f6 in do_call<core::panic::unwind_safe::AssertUnwindSafe<main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure_env#2}>, core::result::Result<core::option::Option<alloc::boxed::Box<dyn core::any::Any, alloc::alloc::Global>>, alloc::string::String>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:581
+#20 0x0000561f2b365f6b in __rust_try ()
+#21 0x0000561f2b3652ab in catch_unwind<core::result::Result<core::option::Option<alloc::boxed::Box<dyn core::any::Any, alloc::alloc::Global>>, alloc::string::String>, core::panic::unwind_safe::AssertUnwindSafe<main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure_env#2}>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panicking.rs:544
+#22 catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<main_bdd::bdd::list_jobs::__rstest_bdd_wrapper_given_5_mixed_status_36::{closure_env#2}>, core::result::Result<core::option::Option<alloc::boxed::Box<dyn core::any::Any, alloc::alloc::Global>>, alloc::string::String>> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/panic.rs:359
+#23 0x0000561f2b3cb507 in __rstest_bdd_wrapper_given_5_mixed_status_36 () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:297
+#24 0x0000561f2b580ad6 in rstest_bdd::execution::execute_step () at src/execution/mod.rs:335
+#25 0x0000561f2b3df7fa in main_bdd::bdd::list_jobs::list_jobs_applies_status_filter::list_jobs_applies_status_filter::list_jobs_applies_status_filter::__rstest_bdd_execute_single_step () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:100
+#26 0x0000561f2b3d9829 in list_jobs_applies_status_filter () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:100
+#27 0x0000561f2b3d626e in main_bdd::bdd::list_jobs::list_jobs_applies_status_filter::list_jobs_applies_status_filter () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:100
+#28 0x0000561f2b3d6206 in main_bdd::bdd::list_jobs::list_jobs_applies_status_filter () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:101
+#29 0x0000561f2b39a6a3 in main_bdd::bdd::list_jobs::list_jobs_applies_status_filter::{closure#0} () at loadlinker/consignments/impl/tests/bdd/list_jobs.rs:100
+#30 0x0000561f2b378e66 in <main_bdd::bdd::list_jobs::list_jobs_applies_status_filter::{closure#0} as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#31 0x0000561f2b63401b in core::ops::function::FnOnce::call_once<fn() -> core::result::Result<(), alloc::string::String>, ()> () at library/core/src/ops/function.rs:250
+#32 test::__rust_begin_short_backtrace<core::result::Result<(), alloc::string::String>, fn() -> core::result::Result<(), alloc::string::String>> () at library/test/src/lib.rs:724
+#33 0x0000561f2b641895 in test::run_test_in_process::{closure#0} () at library/test/src/lib.rs:747
+#34 core::panic::unwind_safe::{impl#23}::call_once<core::result::Result<(), alloc::string::String>, test::run_test_in_process::{closure_env#0}> () at library/core/src/panic/unwind_safe.rs:275
+#35 std::panicking::catch_unwind::do_call<core::panic::unwind_safe::AssertUnwindSafe<test::run_test_in_process::{closure_env#0}>, core::result::Result<(), alloc::string::String>> () at library/std/src/panicking.rs:581
+#36 std::panicking::catch_unwind<core::result::Result<(), alloc::string::String>, core::panic::unwind_safe::AssertUnwindSafe<test::run_test_in_process::{closure_env#0}>> () at library/std/src/panicking.rs:544
+#37 std::panic::catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<test::run_test_in_process::{closure_env#0}>, core::result::Result<(), alloc::string::String>> () at library/std/src/panic.rs:359
+#38 test::run_test_in_process () at library/test/src/lib.rs:747
+#39 test::run_test::{closure#0} () at library/test/src/lib.rs:668
+#40 0x0000561f2b63c3f4 in test::run_test::{closure#1} () at library/test/src/lib.rs:698
+#41 std::sys::backtrace::__rust_begin_short_backtrace<test::run_test::{closure_env#1}, ()> () at library/std/src/sys/backtrace.rs:166
+#42 0x0000561f2b644912 in std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure#0}<test::run_test::{closure_env#1}, ()> () at library/std/src/thread/lifecycle.rs:70
+#43 core::panic::unwind_safe::{impl#23}::call_once<(), std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<test::run_test::{closure_env#1}, ()>> () at library/core/src/panic/unwind_safe.rs:275
+#44 std::panicking::catch_unwind::do_call<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<test::run_test::{closure_env#1}, ()>>, ()> () at library/std/src/panicking.rs:581
+#45 std::panicking::catch_unwind<(), core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<test::run_test::{closure_env#1}, ()>>> () at library/std/src/panicking.rs:544
+#46 std::panic::catch_unwind<core::panic::unwind_safe::AssertUnwindSafe<std::thread::lifecycle::spawn_unchecked::{closure#1}::{closure_env#0}<test::run_test::{closure_env#1}, ()>>, ()> () at library/std/src/panic.rs:359
+#47 std::thread::lifecycle::spawn_unchecked::{closure#1}<test::run_test::{closure_env#1}, ()> () at library/std/src/thread/lifecycle.rs:68
+#48 core::ops::function::FnOnce::call_once<std::thread::lifecycle::spawn_unchecked::{closure_env#1}<test::run_test::{closure_env#1}, ()>, ()> () at library/core/src/ops/function.rs:250
+#49 0x0000561f2c11ed3f in alloc::boxed::{impl#31}::call_once<(), (dyn core::ops::function::FnOnce<(), Output=()> + core::marker::Send), alloc::alloc::Global> () at library/alloc/src/boxed.rs:2275
+#50 std::sys::thread::unix::{impl#2}::new::thread_start () at library/std/src/sys/thread/unix.rs:118
+#51 0x000074340207dd64 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:448
+#52 0x00007434021113fc in __GI___clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:78
+
+Thread 1 (Thread 0x743401fd9600 (LWP 1182174) "main_bdd-5cb1d9"):
+#0  syscall () at ../sysdeps/unix/sysv/linux/x86_64/syscall.S:38
+#1  0x0000561f2c10a0f6 in std::sys::pal::unix::futex::futex_wait () at library/std/src/sys/pal/unix/futex.rs:73
+#2  std::sys::sync::thread_parking::futex::Parker::park () at library/std/src/sys/sync/thread_parking/futex.rs:55
+#3  std::thread::thread::Thread::park () at library/std/src/thread/thread.rs:121
+#4  0x0000561f2b642675 in std::sync::mpmc::context::Context::wait_until () at library/std/src/sync/mpmc/context.rs:143
+#5  std::sync::mpmc::list::{impl#3}::recv::{closure#1}<test::event::CompletedTest> () at library/std/src/sync/mpmc/list.rs:453
+#6  0x0000561f2b64d759 in std::sync::mpmc::context::{impl#0}::with::{closure#0}<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()> () at library/std/src/sync/mpmc/context.rs:49
+#7  std::sync::mpmc::context::{impl#0}::with::{closure#1}<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()> () at library/std/src/sync/mpmc/context.rs:57
+#8  std::thread::local::LocalKey::try_with<core::cell::Cell<core::option::Option<std::sync::mpmc::context::Context>>, std::sync::mpmc::context::{impl#0}::with::{closure_env#1}<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()>, ()> () at library/std/src/thread/local.rs:462
+#9  std::sync::mpmc::context::Context::with<std::sync::mpmc::list::{impl#3}::recv::{closure_env#1}<test::event::CompletedTest>, ()> () at library/std/src/sync/mpmc/context.rs:53
+#10 std::sync::mpmc::list::Channel::recv<test::event::CompletedTest> () at library/std/src/sync/mpmc/list.rs:442
+#11 0x0000561f2b65a134 in std::sync::mpmc::Receiver::recv<test::event::CompletedTest> () at library/std/src/sync/mpmc/mod.rs:1014
+#12 std::sync::mpsc::Receiver::recv<test::event::CompletedTest> () at library/std/src/sync/mpsc.rs:873
+#13 test::run_tests<test::console::run_tests_console::{closure_env#2}> () at library/test/src/lib.rs:436
+#14 test::console::run_tests_console () at library/test/src/console.rs:328
+#15 0x0000561f2b646118 in test::test_main_inner<test::test_main_static::{closure_env#0}> () at library/test/src/lib.rs:170
+#16 test::test_main_static () at library/test/src/lib.rs:195
+#17 0x0000561f2b3c56a3 in main_bdd::main () at loadlinker/consignments/impl/tests/main_bdd.rs:1
+#18 0x0000561f2b377b33 in <fn() as core::ops::function::FnOnce<()>>::call_once () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/ops/function.rs:250
+#19 0x0000561f2b368c06 in __rust_begin_short_backtrace<fn(), ()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166
+#20 0x0000561f2b3ebe29 in {closure#0}<()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/rt.rs:206
+#21 0x0000561f2c115bd7 in core::ops::function::impls::{impl#2}::call_once<(), (dyn core::ops::function::Fn<(), Output=i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe)> () at library/core/src/ops/function.rs:287
+#22 std::panicking::catch_unwind::do_call<&(dyn core::ops::function::Fn<(), Output=i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe), i32> () at library/std/src/panicking.rs:581
+#23 std::panicking::catch_unwind<i32, &(dyn core::ops::function::Fn<(), Output=i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe)> () at library/std/src/panicking.rs:544
+#24 std::panic::catch_unwind<&(dyn core::ops::function::Fn<(), Output=i32> + core::marker::Sync + core::panic::unwind_safe::RefUnwindSafe), i32> () at library/std/src/panic.rs:359
+#25 std::rt::lang_start_internal::{closure#0} () at library/std/src/rt.rs:175
+#26 std::panicking::catch_unwind::do_call<std::rt::lang_start_internal::{closure_env#0}, isize> () at library/std/src/panicking.rs:581
+#27 std::panicking::catch_unwind<isize, std::rt::lang_start_internal::{closure_env#0}> () at library/std/src/panicking.rs:544
+#28 std::panic::catch_unwind<std::rt::lang_start_internal::{closure_env#0}, isize> () at library/std/src/panic.rs:359
+#29 std::rt::lang_start_internal () at library/std/src/rt.rs:171
+#30 0x0000561f2b3ebe11 in std::rt::lang_start::<()> () at /home/casibbald/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std/src/rt.rs:205
+#31 0x0000561f2b3c56ce in main ()
+[Inferior 1 (process 1182174) detached]
+
+================================================================================
+INVESTIGATION LOG (2026-07-21, continued)
+================================================================================
+
+Falsified hypothesis 1 — lazy scheduler init: pre-warming the may runtime
+(spawn+join a no-op coroutine in TEST_DB init) does NOT prevent the hang.
+
+Falsified hypothesis 2 — consumer-side spsc lost wakeup: hardening
+InnerQueue::recv's native-thread path (SeqCst fence between blocker store and
+queue re-check, re-register + re-check loop, 10ms bounded park) on the fork
+branch fix/spsc-lost-wakeup does NOT prevent the hang either. With a bounded
+park the consumer re-polls the queue every 10ms and STILL never sees data.
+
+Conclusion: the item is never PUSHED. The producer — may_postgres's connection
+driver coroutine (reads the socket, pushes BackendMessages) — is not running,
+even though Postgres has already written the response bytes. Current prime
+suspect: may SCHEDULER wakeup for coroutines spawned/unblocked from native
+threads (worker parked, run-queue entry not observed), not the spsc channel.
+
+Reproducer (deterministic): un-ignore any quarantined list_jobs /
+triangulated_routing scenario in hauliage_consignments and run:
+  cargo test -p hauliage_consignments --test main_bdd <name> -- --ignored --test-threads=1
+First such scenario in the process hangs. Postgres (hack/test-deps) shows all
+connections idle mid-hang.
+
+Next session: instrument may's scheduler (worker park/unpark + run-queue push
+from non-coroutine context); capture a stack dump of ALL threads mid-hang with
+the fix branch's may (driver coroutine's generator state); check
+IoEventLoop/selector thread liveness in the test process.
+
+Branch state: microscaler/may fix/spsc-lost-wakeup carries the recv hardening
+(sound regardless; keeps any future consumer-side race bounded at 10ms).

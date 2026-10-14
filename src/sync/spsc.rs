@@ -165,16 +165,41 @@ impl<T> InnerQueue<T> {
                     let park = Park::new(self);
                     yield_with(&park);
                 } else {
-                    let blocker = Blocker::new_thread(std::thread::current());
-                    self.wait_co.store(blocker);
-                    match self.try_recv() {
-                        Err(TryRecvError::Empty) => {
-                            // no data, wait for it
-                            std::thread::park();
+                    // Native-thread consumer. The naive
+                    // store-blocker / check-queue / park() sequence loses
+                    // wakeups: the producer's push -> take can interleave so
+                    // that it sees no waiter while our re-check misses the
+                    // pushed item (Dekker store/load race), leaving this
+                    // thread parked forever with data in the queue. Observed
+                    // deterministically via may_postgres::Client::prepare on
+                    // plain test threads.
+                    //
+                    // Hardened: (a) SeqCst fence between announcing the
+                    // waiter and re-checking the queue, pairing with the
+                    // producer's push -> take RMW; (b) re-register and
+                    // re-check in a loop, so spurious park returns and stale
+                    // park tokens are absorbed; (c) bounded park as a
+                    // last-resort backstop — a residual lost wakeup costs one
+                    // interval, not a hang.
+                    loop {
+                        let blocker = Blocker::new_thread(std::thread::current());
+                        self.wait_co.store(blocker);
+                        std::sync::atomic::fence(Ordering::SeqCst);
+                        match self.try_recv() {
+                            Err(TryRecvError::Empty) => {
+                                std::thread::park_timeout(std::time::Duration::from_millis(10));
+                            }
+                            data => {
+                                self.wait_co.clear();
+                                return data;
+                            }
                         }
-                        data => {
-                            self.wait_co.clear();
-                            return data;
+                        match self.try_recv() {
+                            Err(TryRecvError::Empty) => continue,
+                            data => {
+                                self.wait_co.clear();
+                                return data;
+                            }
                         }
                     }
                 }
@@ -182,7 +207,7 @@ impl<T> InnerQueue<T> {
             data => return data,
         }
 
-        // after come back try recv again
+        // after come back try recv again (coroutine path)
         self.try_recv()
     }
 
