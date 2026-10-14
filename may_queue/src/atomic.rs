@@ -63,7 +63,8 @@ impl AtomicUsize {
     /// All mutations must have happened before the unsynchronized load.
     /// Additionally, there must be no concurrent mutations.
     pub(crate) unsafe fn unsync_load(&self) -> usize {
-        *(*self.inner.get()).get_mut()
+        // don't use `get_mut`, it would create a `&mut` that conflicts with concurrent atomic loads
+        (*self.inner.get()).as_ptr().read()
     }
 }
 
@@ -103,7 +104,8 @@ impl<T> AtomicPtr<T> {
     /// All mutations must have happened before the unsynchronized load.
     /// Additionally, there must be no concurrent mutations.
     pub(crate) unsafe fn unsync_load(&self) -> *mut T {
-        *(*self.inner.get()).get_mut()
+        // don't use `get_mut`, it would create a `&mut` that conflicts with concurrent atomic loads
+        (*self.inner.get()).as_ptr().read()
     }
 }
 

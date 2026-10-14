@@ -162,20 +162,21 @@ impl<T> Queue<T> {
     #[inline]
     #[cfg(feature = "inner_cache")]
     fn alloc_node(&self) -> *mut BlockNode<T> {
-        let first = unsafe { &mut *self.first.unsync_load() };
-        let mut last_head = unsafe { &mut *self.last_head.unsync_load() };
+        let first = unsafe { self.first.unsync_load() };
+        let mut last_head = unsafe { self.last_head.unsync_load() };
         if !ptr::eq(first, last_head) {
-            let next = unsafe { first.next.unsync_load() };
+            let next = unsafe { (*first).next.unsync_load() };
             self.first.store(next, Ordering::Relaxed);
             // first.next.store(ptr::null_mut(), Ordering::Relaxed);
             return first;
         }
 
-        last_head = unsafe { &mut *self.head.block.unsync_load() };
+        // the consumer updates the head concurrently, and has finished reading the blocks before it
+        last_head = self.head.block.load(Ordering::Acquire);
         self.last_head.store(last_head, Ordering::Relaxed);
 
         if !ptr::eq(first, last_head) {
-            let next = unsafe { first.next.unsync_load() };
+            let next = unsafe { (*first).next.unsync_load() };
             self.first.store(next, Ordering::Relaxed);
             // first.next.store(ptr::null_mut(), Ordering::Relaxed);
             first
@@ -186,7 +187,7 @@ impl<T> Queue<T> {
 
     /// push a value to the queue
     pub fn push(&self, v: T) {
-        let tail = unsafe { &mut *self.tail.block.unsync_load() };
+        let tail = unsafe { &*self.tail.block.unsync_load() };
         let push_index = unsafe { self.tail.index.unsync_load() };
         // store the data
         tail.set(push_index, v);
@@ -217,7 +218,7 @@ impl<T> Queue<T> {
             return None;
         }
 
-        let head = &mut *self.head.block.unsync_load();
+        let head = &*self.head.block.unsync_load();
         Some(head.peek(index))
     }
 
@@ -229,7 +230,8 @@ impl<T> Queue<T> {
             return None;
         }
 
-        let head = unsafe { &mut *self.head.block.unsync_load() };
+        let head_ptr = unsafe { self.head.block.unsync_load() };
+        let head = unsafe { &*head_ptr };
         // get the data
         let v = head.get(index & BLOCK_MASK);
 
@@ -239,8 +241,8 @@ impl<T> Queue<T> {
             let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
             #[cfg(not(feature = "inner_cache"))]
-            let _unused_head = unsafe { Box::from_raw(head) };
-            self.head.block.store(new_head, Ordering::Relaxed);
+            let _unused_head = unsafe { Box::from_raw(head_ptr) };
+            self.head.block.store(new_head, Ordering::Release);
         }
 
         // commit the pop
@@ -272,7 +274,8 @@ impl<T> Queue<T> {
             return SmallVec::new();
         }
 
-        let head = unsafe { &mut *self.head.block.unsync_load() };
+        let head_ptr = unsafe { self.head.block.unsync_load() };
+        let head = unsafe { &*head_ptr };
 
         // only pop within a block
         let end = bulk_end(index, push_index);
@@ -285,8 +288,8 @@ impl<T> Queue<T> {
             let new_head = head.next.load(Ordering::Relaxed);
             // assert!(!new_head.is_null());
             #[cfg(not(feature = "inner_cache"))]
-            let _unused_head = unsafe { Box::from_raw(head) };
-            self.head.block.store(new_head, Ordering::Relaxed);
+            let _unused_head = unsafe { Box::from_raw(head_ptr) };
+            self.head.block.store(new_head, Ordering::Release);
         }
 
         // commit the pop
@@ -499,7 +502,7 @@ mod bench {
     fn bulk_pop_1p1c_bench(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -535,7 +538,7 @@ mod bench {
     fn multi_1p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100

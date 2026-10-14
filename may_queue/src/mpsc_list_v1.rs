@@ -1,6 +1,5 @@
-use std::cell::UnsafeCell;
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use crossbeam_utils::{Backoff, CachePadded};
 
@@ -8,7 +7,7 @@ struct Node<T> {
     prev: *mut Node<T>,
     next: AtomicPtr<Node<T>>,
     value: Option<T>,
-    refs: usize,
+    refs: AtomicUsize,
 }
 // linked bit is MSB, ref count is 2 for handle and list
 const REF_INIT: usize = 0x1000_0002;
@@ -20,7 +19,7 @@ impl<T> Node<T> {
             prev: ptr::null_mut(),
             next: AtomicPtr::new(ptr::null_mut()),
             value: v,
-            refs: REF_INIT,
+            refs: AtomicUsize::new(REF_INIT),
         }))
     }
 }
@@ -39,16 +38,18 @@ impl<T> Entry<T> {
     where
         F: FnOnce(&mut T),
     {
-        let node = &mut *self.0.as_ptr();
-        let data = node.value.as_mut().expect("Node value is None");
+        let data = (*self.0.as_ptr())
+            .value
+            .as_mut()
+            .expect("Node value is None");
         f(data);
     }
 
     /// judge if the node is still linked in the list
     #[inline]
     pub fn is_link(&self) -> bool {
-        let node = unsafe { &mut *self.0.as_ptr() };
-        node.refs & !REF_COUNT_MASK != 0
+        let refs = unsafe { (*self.0.as_ptr()).refs.load(Ordering::Acquire) };
+        refs & !REF_COUNT_MASK != 0
     }
 
     #[inline]
@@ -68,23 +69,24 @@ impl<T> Entry<T> {
 
     // remove the entry from it's list and return the contained value
     // it's only safe for the consumer that call pop()
-    pub fn remove(mut self) -> Option<T> {
+    pub fn remove(self) -> Option<T> {
         unsafe {
-            let node = self.0.as_mut();
+            // don't create a `&mut Node`, other threads may access `next` concurrently
+            let node = self.0.as_ptr();
 
             // when the link bit is cleared, next and prev is no longer valid
-            if node.refs & !REF_COUNT_MASK == 0 {
+            if (*node).refs.load(Ordering::Acquire) & !REF_COUNT_MASK == 0 {
                 // already removed
                 return None;
             }
 
             // this is a new tail just return
-            if node.prev.is_null() {
+            if (*node).prev.is_null() {
                 return None;
             }
 
-            let next = node.next.load(Ordering::Acquire);
-            let prev = &mut *node.prev;
+            let next = (*node).next.load(Ordering::Acquire);
+            let prev = (*node).prev;
 
             // here we must make sure the next is not equal to null
             // other thread may modify the next value if it's null
@@ -98,17 +100,16 @@ impl<T> Entry<T> {
             // that prevent frequent queue create and destroy
             if !next.is_null() {
                 // clear the link bit
-                node.refs &= REF_COUNT_MASK;
+                (*node).refs.fetch_and(REF_COUNT_MASK, Ordering::AcqRel);
 
                 // this is not the last node, just unlink it
                 (*next).prev = prev;
-                prev.next.store(next, Ordering::Release);
+                (*prev).next.store(next, Ordering::Release);
 
-                let ret = node.value.take();
+                let ret = (*node).value.take();
 
                 // since self is not dropped, below is always false
-                node.refs -= 1;
-                if node.refs == 0 {
+                if (*node).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
                     // release the node only when the ref count becomes 0
                     let _: Box<Node<T>> = Box::from_raw(node);
                 }
@@ -126,10 +127,9 @@ impl<T> Drop for Entry<T> {
     // running in a coroutine is a kind of sequential operation, so it can safely drop there after
     // returning from "kernel"
     fn drop(&mut self) {
-        let node = unsafe { self.0.as_mut() };
+        let node = self.0.as_ptr();
         // dec the ref count of node
-        node.refs -= 1;
-        if node.refs == 0 {
+        if unsafe { (*node).refs.fetch_sub(1, Ordering::AcqRel) } == 1 {
             // release the node
             let _: Box<Node<T>> = unsafe { Box::from_raw(node) };
         }
@@ -143,7 +143,8 @@ unsafe impl<T: Send> Send for Entry<T> {}
 /// popper at a time (many pushers are allowed).
 pub struct Queue<T> {
     head: CachePadded<AtomicPtr<Node<T>>>,
-    tail: UnsafeCell<*mut Node<T>>,
+    // only written by the consumer, but read by the producers
+    tail: AtomicPtr<Node<T>>,
 }
 
 unsafe impl<T: Send> Send for Queue<T> {}
@@ -155,10 +156,10 @@ impl<T> Queue<T> {
     pub fn new() -> Queue<T> {
         let stub = unsafe { Node::new(None) };
         // there is no handle for the node, so it's ref should be 1 now
-        unsafe { &mut *stub }.refs = 1;
+        unsafe { &*stub }.refs.store(1, Ordering::Relaxed);
         Queue {
             head: AtomicPtr::new(stub).into(),
-            tail: UnsafeCell::new(stub),
+            tail: AtomicPtr::new(stub),
         }
     }
 
@@ -171,7 +172,7 @@ impl<T> Queue<T> {
             let prev = self.head.swap(node, Ordering::AcqRel);
             (*node).prev = prev;
             (*prev).next.store(node, Ordering::Release);
-            let tail = *self.tail.get();
+            let tail = self.tail.load(Ordering::Relaxed);
             let is_head = std::ptr::eq(tail, prev);
             (Entry(ptr::NonNull::new_unchecked(node)), is_head)
         }
@@ -180,7 +181,7 @@ impl<T> Queue<T> {
     /// if the queue is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
-        let tail = unsafe { *self.tail.get() };
+        let tail = self.tail.load(Ordering::Relaxed);
         // the list is empty
         std::ptr::eq(self.head.load(Ordering::Acquire), tail)
     }
@@ -190,7 +191,7 @@ impl<T> Queue<T> {
     /// the if you pop the head, it's unsafe hold the head ref
     #[inline]
     pub unsafe fn peek(&self) -> Option<&T> {
-        let tail = *self.tail.get();
+        let tail = self.tail.load(Ordering::Relaxed);
         // the list is empty
         if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
             return None;
@@ -217,7 +218,7 @@ impl<T> Queue<T> {
         F: Fn(&T) -> bool,
     {
         unsafe {
-            let tail = *self.tail.get();
+            let tail = self.tail.load(Ordering::Relaxed);
             // the list is empty
             if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
                 return None;
@@ -244,18 +245,17 @@ impl<T> Queue<T> {
             }
 
             // clear the link bit
-            assert!((*tail).refs & REF_COUNT_MASK != 0);
-            (*tail).refs &= REF_COUNT_MASK;
+            let old = (*tail).refs.fetch_and(REF_COUNT_MASK, Ordering::AcqRel);
+            assert!(old & REF_COUNT_MASK != 0);
 
             // clear the prev pointer indicate a new end point
             (*next).prev = ptr::null_mut();
             // move the tail to next
-            *self.tail.get() = next;
+            self.tail.store(next, Ordering::Relaxed);
 
             // we take the next value, this is why use option to host the value
             let ret = (*next).value.take().unwrap();
-            (*tail).refs -= 1;
-            if (*tail).refs == 0 {
+            if (*tail).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
                 // release the node only when the ref count becomes 0
                 let _: Box<Node<T>> = Box::from_raw(tail);
             }
@@ -267,7 +267,7 @@ impl<T> Queue<T> {
     /// Pops some data from this queue.
     pub fn pop(&self) -> Option<T> {
         unsafe {
-            let tail = *self.tail.get();
+            let tail = self.tail.load(Ordering::Relaxed);
 
             // the list is empty
             if std::ptr::eq(self.head.load(Ordering::Acquire), tail) {
@@ -275,8 +275,8 @@ impl<T> Queue<T> {
             }
 
             // clear the link bit
-            assert!((*tail).refs & REF_COUNT_MASK != 0);
-            (*tail).refs &= REF_COUNT_MASK;
+            let old = (*tail).refs.fetch_and(REF_COUNT_MASK, Ordering::AcqRel);
+            assert!(old & REF_COUNT_MASK != 0);
 
             // spin until tail next become non-null
             let mut next;
@@ -290,14 +290,13 @@ impl<T> Queue<T> {
             }
             (*next).prev = ptr::null_mut();
             // move the tail to next
-            *self.tail.get() = next;
+            self.tail.store(next, Ordering::Relaxed);
 
             assert!((*tail).value.is_none());
             assert!((*next).value.is_some());
             // we tack the next value, this is why use option to host the value
             let ret = (*next).value.take().unwrap();
-            (*tail).refs -= 1;
-            if (*tail).refs == 0 {
+            if (*tail).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
                 // release the node only when the ref count becomes 0
                 let _: Box<Node<T>> = Box::from_raw(tail);
             }
@@ -317,7 +316,7 @@ impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
         while self.pop().is_some() {}
         // release the stub
-        let _: Box<Node<T>> = unsafe { Box::from_raw(*self.tail.get()) };
+        let _: Box<Node<T>> = unsafe { Box::from_raw(self.tail.load(Ordering::Relaxed)) };
     }
 }
 

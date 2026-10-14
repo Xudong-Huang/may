@@ -186,7 +186,7 @@ pub struct Queue<T> {
     // use for pop
     head: Position<T>,
     // used to delay the drop of the old block
-    old_block: UnsafeCell<Option<Box<BlockNode<T>>>>,
+    old_block: AtomicPtr<BlockNode<T>>,
 
     /// Indicates that dropping a `Queue<T>` may drop values of type `T`.
     _marker: PhantomData<T>,
@@ -209,7 +209,7 @@ impl<T> Queue<T> {
         Queue {
             head: Position::new(init_block),
             tail: BlockPtr::new(init_block).into(),
-            old_block: UnsafeCell::new(None),
+            old_block: AtomicPtr::new(ptr::null_mut()),
             _marker: PhantomData,
         }
     }
@@ -221,11 +221,11 @@ impl<T> Queue<T> {
 
         loop {
             tail = tail.map_addr(|a| a & !(1 << 63));
-            let (block, id) = BlockPtr::unpack(tail);
-            let block = unsafe { &*block };
+            // the block may be stale, only dereference it after the CAS succeeds
+            let (block_ptr, id) = BlockPtr::unpack(tail);
 
             let new_tail = if id < BLOCK_MASK {
-                BlockPtr::pack(block, id + 1)
+                BlockPtr::pack(block_ptr, id + 1)
             } else {
                 tail.map_addr(|a| a | (1 << 63))
             };
@@ -237,15 +237,18 @@ impl<T> Queue<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    let block = unsafe { &*block_ptr };
                     // set the data
                     block.set(id, v);
                     // the block may be released here by the consumer,
                     // so we need to use old_block to delay the drop
                     if id == BLOCK_MASK {
                         let new_block = BlockNode::new_box(block.start + BLOCK_SIZE * 2);
-                        let next_block = unsafe { &mut *block.wait_next_block() };
+                        let next_block = block.wait_next_block();
                         // install the next-next block
-                        next_block.next.store(new_block, Ordering::Release);
+                        unsafe { &*next_block }
+                            .next
+                            .store(new_block, Ordering::Release);
                         self.tail.0.store(next_block, Ordering::Release);
                     }
                     return;
@@ -268,7 +271,8 @@ impl<T> Queue<T> {
 
     /// pop from the queue, if it's empty return None
     pub fn pop(&self) -> Option<T> {
-        let head = unsafe { &mut *self.head.block.unsync_load() };
+        let head_ptr = unsafe { self.head.block.unsync_load() };
+        let head = unsafe { &*head_ptr };
         let pop_index = unsafe { self.head.index.unsync_load() };
         let id = pop_index & BLOCK_MASK;
 
@@ -288,8 +292,7 @@ impl<T> Queue<T> {
 
         if id == BLOCK_MASK {
             // we need to delay the drop of the block to let the push's `wait_next_block` return
-            let old_block = unsafe { &mut *(self.old_block.get()) };
-            old_block.replace(unsafe { Box::from_raw(head) });
+            self.swap_and_free_old_block(head_ptr);
 
             let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
@@ -301,7 +304,12 @@ impl<T> Queue<T> {
     /// fast pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     /// don't check the push index, but only the ready flag
     #[inline]
-    fn fast_bulk_pop(&self, index: usize, head: &mut BlockNode<T>) -> SmallVec<[T; BLOCK_SIZE]> {
+    fn fast_bulk_pop(
+        &self,
+        index: usize,
+        head_ptr: *mut BlockNode<T>,
+    ) -> SmallVec<[T; BLOCK_SIZE]> {
+        let head = unsafe { &*head_ptr };
         // only pop within a block
         let block_end = (index + BLOCK_SIZE) & !BLOCK_MASK;
         let len = block_end - index;
@@ -324,8 +332,7 @@ impl<T> Queue<T> {
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let old_block = unsafe { &mut *(self.old_block.get()) };
-            old_block.replace(unsafe { Box::from_raw(head) });
+            self.swap_and_free_old_block(head_ptr);
 
             let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
@@ -337,8 +344,8 @@ impl<T> Queue<T> {
     /// pop from the queue, if it's empty return None, or else return `SmallVec<[T; BLOCK_SIZE]>`
     pub fn bulk_pop(&self) -> SmallVec<[T; BLOCK_SIZE]> {
         let pop_index = unsafe { self.head.index.unsync_load() };
-        let head = unsafe { &mut *self.head.block.unsync_load() };
-        let v = self.fast_bulk_pop(pop_index, head);
+        let head_ptr = unsafe { self.head.block.unsync_load() };
+        let v = self.fast_bulk_pop(pop_index, head_ptr);
         if !v.is_empty() {
             return v;
         }
@@ -350,6 +357,7 @@ impl<T> Queue<T> {
 
         // only pop within a block
         let end = bulk_end(pop_index, push_index);
+        let head = unsafe { &*head_ptr };
         let value = head.copy_to_bulk(pop_index, end);
 
         let new_index = end;
@@ -357,8 +365,7 @@ impl<T> Queue<T> {
 
         // free the old block node
         if new_index & BLOCK_MASK == 0 {
-            let old_block = unsafe { &mut *(self.old_block.get()) };
-            old_block.replace(unsafe { Box::from_raw(head) });
+            self.swap_and_free_old_block(head_ptr);
 
             let next_block = head.wait_next_block();
             self.head.block.store(next_block, Ordering::Relaxed);
@@ -379,8 +386,18 @@ impl<T> Queue<T> {
             return None;
         }
 
-        let head = &mut *self.head.block.unsync_load();
+        let head = &*self.head.block.unsync_load();
         Some(head.peek(pop_index & BLOCK_MASK))
+    }
+
+    /// free the previously consumed block and keep `block` alive until the next call,
+    /// so that a concurrent push can still read its `next` pointer
+    #[inline]
+    fn swap_and_free_old_block(&self, block: *mut BlockNode<T>) {
+        let old = self.old_block.swap(block, Ordering::Relaxed);
+        if !old.is_null() {
+            drop(unsafe { Box::from_raw(old) });
+        }
     }
 
     /// get the size of queue
@@ -420,6 +437,7 @@ impl<T> Drop for Queue<T> {
         assert!(!next_block.is_null());
         let _unused_block = unsafe { Box::from_raw(block) };
         let _unused_block = unsafe { Box::from_raw(next_block) };
+        self.swap_and_free_old_block(ptr::null_mut());
     }
 }
 
@@ -490,7 +508,7 @@ mod test {
     fn multi_1p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -511,7 +529,7 @@ mod test {
     fn multi_crossbeam_1p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(crossbeam_queue::SegQueue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -532,7 +550,7 @@ mod test {
     fn multi_2p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             let mut total = 0;
@@ -564,7 +582,7 @@ mod test {
     fn multi_crossbeam_2p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(crossbeam_queue::SegQueue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             let mut total = 0;
@@ -596,7 +614,7 @@ mod test {
     fn bulk_pop_1p1c_bench(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             let _q = q.clone();
             // in other thread the value should be still 100
@@ -621,7 +639,7 @@ mod test {
     fn bulk_2p1c_test(b: &mut Bencher) {
         b.iter(|| {
             let q = Arc::new(Queue::new());
-            let total_work: usize = 1_000_000;
+            let total_work: usize = if cfg!(miri) { 200 } else { 1_000_000 };
             // create worker threads that generate mono increasing index
             // in other thread the value should be still 100
             let mut total = 0;
