@@ -165,15 +165,13 @@ impl<T> BlockPtr<T> {
 
     #[inline]
     fn unpack(ptr: *mut BlockNode<T>) -> (*mut BlockNode<T>, usize) {
-        let ptr = ptr as usize;
-        let index = ptr & BLOCK_MASK;
-        let ptr = (ptr & !BLOCK_MASK) as *mut BlockNode<T>;
-        (ptr, index)
+        let index = ptr.addr() & BLOCK_MASK;
+        (ptr.map_addr(|a| a & !BLOCK_MASK), index)
     }
 
     #[inline]
     fn pack(ptr: *const BlockNode<T>, index: usize) -> *mut BlockNode<T> {
-        ((ptr as usize) | index) as *mut BlockNode<T>
+        ptr.cast_mut().map_addr(|a| a | index)
     }
 }
 
@@ -222,14 +220,14 @@ impl<T> Queue<T> {
         let mut tail = self.tail.0.load(Ordering::Acquire);
 
         loop {
-            tail = (tail as usize & !(1 << 63)) as *mut BlockNode<T>;
+            tail = tail.map_addr(|a| a & !(1 << 63));
             let (block, id) = BlockPtr::unpack(tail);
             let block = unsafe { &*block };
 
             let new_tail = if id < BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                (tail as usize | (1 << 63)) as *mut BlockNode<T>
+                tail.map_addr(|a| a | (1 << 63))
             };
 
             match self.tail.0.compare_exchange_weak(
@@ -264,7 +262,7 @@ impl<T> Queue<T> {
     fn push_index(&self) -> usize {
         let tail = self.tail.0.load(Ordering::Acquire);
         let (tail_block, id) = BlockPtr::unpack(tail);
-        let tail_block = (tail_block as usize & !(1 << 63)) as *mut BlockNode<T>;
+        let tail_block = tail_block.map_addr(|a| a & !(1 << 63));
         unsafe { &*tail_block }.start + id
     }
 

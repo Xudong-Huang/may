@@ -122,15 +122,13 @@ impl<T> BlockPtr<T> {
 
     #[inline]
     fn unpack(ptr: *mut BlockNode<T>) -> (*mut BlockNode<T>, usize) {
-        let ptr = ptr as usize;
-        let index = ptr & BLOCK_MASK;
-        let ptr = (ptr & !BLOCK_MASK) as *mut BlockNode<T>;
-        (ptr, index)
+        let index = ptr.addr() & BLOCK_MASK;
+        (ptr.map_addr(|a| a & !BLOCK_MASK), index)
     }
 
     #[inline]
     fn pack(ptr: *const BlockNode<T>, index: usize) -> *mut BlockNode<T> {
-        ((ptr as usize) | index) as *mut BlockNode<T>
+        ptr.cast_mut().map_addr(|a| a | index)
     }
 }
 
@@ -193,7 +191,7 @@ impl<T> Queue<T> {
         let mut tail_block = self.tail.block.load(Ordering::Acquire);
 
         loop {
-            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
+            head = head.map_addr(|a| a & !(1 << 63));
             let (block, id) = BlockPtr::unpack(head);
             if std::ptr::eq(block, tail_block) && id >= (push_index & BLOCK_MASK) {
                 return None;
@@ -202,7 +200,7 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                (head as usize | (1 << 63)) as *mut BlockNode<T>
+                head.map_addr(|a| a | (1 << 63))
             };
 
             let block = unsafe { &mut *block };
@@ -263,7 +261,7 @@ impl<T> Queue<T> {
         let tail_block = unsafe { self.tail.block.unsync_load() };
 
         loop {
-            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
+            head = head.map_addr(|a| a & !(1 << 63));
             let (block, id) = BlockPtr::unpack(head);
             if std::ptr::eq(block, tail_block) && id >= (push_index & BLOCK_MASK) {
                 return None;
@@ -272,7 +270,7 @@ impl<T> Queue<T> {
             let new_head = if id != BLOCK_MASK {
                 BlockPtr::pack(block, id + 1)
             } else {
-                (head as usize | (1 << 63)) as *mut BlockNode<T>
+                head.map_addr(|a| a | (1 << 63))
             };
 
             let block = unsafe { &mut *block };
@@ -332,7 +330,7 @@ impl<T> Queue<T> {
         let mut tail_block = self.tail.block.load(Ordering::Acquire);
 
         loop {
-            head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
+            head = head.map_addr(|a| a & !(1 << 63));
             let (block, id) = BlockPtr::unpack(head);
             let push_id = push_index & BLOCK_MASK;
             // at least leave one element to the owner
@@ -347,7 +345,7 @@ impl<T> Queue<T> {
             };
 
             let new_head = if new_id == 0 {
-                (head as usize | (1 << 63)) as *mut BlockNode<T>
+                head.map_addr(|a| a | (1 << 63))
             } else {
                 BlockPtr::pack(block, new_id)
             };
@@ -418,7 +416,7 @@ impl<T> Queue<T> {
     /// return a wrong length
     pub unsafe fn len(&self) -> usize {
         let head = self.head.0.load(Ordering::Acquire);
-        let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
+        let head = head.map_addr(|a| a & !(1 << 63));
         let (block, id) = BlockPtr::unpack(head);
         let block = unsafe { &mut *block };
         // it's unsafe to deref the block, because it could be a destroyed one
@@ -433,7 +431,7 @@ impl<T> Queue<T> {
     /// if the queue is empty
     pub fn is_empty(&self) -> bool {
         let head = self.head.0.load(Ordering::Acquire);
-        let head = (head as usize & !(1 << 63)) as *mut BlockNode<T>;
+        let head = head.map_addr(|a| a & !(1 << 63));
         let (block, id) = BlockPtr::unpack(head);
 
         let push_index = self.tail.index.load(Ordering::Acquire);
