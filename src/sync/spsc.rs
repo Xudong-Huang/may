@@ -245,11 +245,11 @@ impl<T> InnerQueue<T> {
         // Create an EventSource that:
         // 1. Stores the coroutine as a Blocker in wait_co (for send() to take)
         // 2. Registers a scheduler timer that fires after `timeout`
-        let mut source = RecvTimeoutSource {
+        let source = RecvTimeoutSource {
             queue: &**self,
             timeout,
         };
-        yield_with(&mut source);
+        yield_with(&source);
         self.timeout_wait.clear();
 
         // We are back: either data arrived (send() took wait_co and
