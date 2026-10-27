@@ -739,15 +739,19 @@ mod tests {
                 rx.recv_with_timeout(Duration::from_millis(10)),
                 Err(RecvError::Timeout)
             );
-            go!(move || {
+            // The helper returns the sender so the join handle keeps it alive: otherwise the
+            // final wait could see the drop and report Disconnected instead of Timeout.
+            let sender = go!(move || {
                 thread::sleep(Duration::from_millis(10));
                 tx.send(1).unwrap();
+                tx
             });
             assert_eq!(rx.recv().unwrap(), 1);
             assert_eq!(
                 rx.recv_with_timeout(Duration::from_millis(10)),
                 Err(RecvError::Timeout)
             );
+            drop(sender.join());
         });
     }
 
