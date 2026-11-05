@@ -2,7 +2,7 @@ use std::cmp;
 use std::collections::{BinaryHeap, HashMap};
 use std::mem;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -17,9 +17,8 @@ const HASH_CAP: usize = 1024;
 
 #[inline]
 fn get_instant() -> &'static Instant {
-    use std::mem::MaybeUninit;
-    static START_TIME: MaybeUninit<Instant> = MaybeUninit::zeroed();
-    unsafe { START_TIME.assume_init_ref() }
+    static START_TIME: OnceLock<Instant> = OnceLock::new();
+    START_TIME.get_or_init(Instant::now)
 }
 // get the current wall clock in ns
 #[inline]
