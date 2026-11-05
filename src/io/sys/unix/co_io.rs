@@ -43,8 +43,14 @@ fn set_nonblocking<T: AsRawFd>(fd: &T, nb: bool) -> io::Result<()> {
 /// this type can be used in coroutine context without blocking the thread
 #[derive(Debug)]
 pub struct CoIo<T: AsRawFd> {
-    inner: T,
+    // NOTE: field order matters. `io` must be dropped before `inner`, so the
+    // fd is removed from the selector while it is still open. If `inner` were
+    // dropped first, the fd number could be reused by another thread before
+    // `IoData::drop` runs its `epoll_ctl(DEL)`; the DEL only knows the fd
+    // number, so it would remove the registration of the new socket instead,
+    // and that socket would never receive an io event again.
     io: io_impl::IoData,
+    inner: T,
     #[cfg(feature = "io_timeout")]
     read_timeout: AtomicDuration,
     #[cfg(feature = "io_timeout")]
@@ -300,5 +306,120 @@ mod tests {
         let mut buf = [0u8; 100];
         io.read_exact(&mut buf).unwrap();
         assert_eq!(buf, [0x55u8; 100]);
+    }
+
+    /// Check whether `target` is registered in any epoll instance of this
+    /// process by inspecting `/proc/self/fdinfo`.
+    #[cfg(target_os = "linux")]
+    fn fd_is_watched(target: RawFd) -> bool {
+        let dir = match std::fs::read_dir("/proc/self/fd") {
+            Ok(dir) => dir,
+            Err(_) => return false,
+        };
+        for entry in dir.flatten() {
+            let name = entry.file_name();
+            let info = match std::fs::read_to_string(format!(
+                "/proc/self/fdinfo/{}",
+                name.to_string_lossy()
+            )) {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
+            let tokens: Vec<&str> = info.split_whitespace().collect();
+            for pair in tokens.windows(2) {
+                if pair[0] == "tfd:" && pair[1].parse::<RawFd>() == Ok(target) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// A raw fd owner whose drop replaces the file description at its fd
+    /// number and then blocks, keeping the close/deregister window open.
+    #[cfg(target_os = "linux")]
+    struct ReplacingFd {
+        stream: Option<std::os::unix::net::UnixStream>,
+        replacement: Option<std::os::unix::net::UnixStream>,
+        replaced_tx: std::sync::mpsc::Sender<()>,
+        go_rx: std::sync::mpsc::Receiver<()>,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl AsRawFd for ReplacingFd {
+        fn as_raw_fd(&self) -> RawFd {
+            self.stream.as_ref().unwrap().as_raw_fd()
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for ReplacingFd {
+        fn drop(&mut self) {
+            let target = self.as_raw_fd();
+            // give up ownership without closing the fd; dup2 replaces the
+            // file description at this fd number, closing the old one
+            let _ = self.stream.take().unwrap().into_raw_fd();
+            let replacement = self.replacement.as_ref().unwrap().as_raw_fd();
+            assert_eq!(unsafe { libc::dup2(replacement, target) }, target);
+            self.replaced_tx.send(()).unwrap();
+            // hold the window between closing the old description and the
+            // IoData drop so that a new registration can be installed
+            let _ = self.go_rx.recv_timeout(std::time::Duration::from_secs(10));
+        }
+    }
+
+    /// Closing the socket before deregistering it from the selector lets a
+    /// concurrent fd reuse install a new registration under the same fd
+    /// number, which the stale `epoll_ctl(DEL)` then removes. The reused
+    /// socket would then never receive an io event again.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn drop_does_not_remove_reused_fd_registration() {
+        use std::os::unix::io::FromRawFd;
+        use std::sync::mpsc::channel;
+
+        let (old_a, _old_b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let target = old_a.as_raw_fd();
+        let (replacement, _replacement_peer) = std::os::unix::net::UnixStream::pair().unwrap();
+
+        let (replaced_tx, replaced_rx) = channel();
+        let (go_tx, go_rx) = channel();
+        let (done_tx, done_rx) = channel();
+
+        let old_co = CoIo::new(ReplacingFd {
+            stream: Some(old_a),
+            replacement: Some(replacement),
+            replaced_tx,
+            go_rx,
+        })
+        .unwrap();
+
+        let drop_thread = std::thread::spawn(move || {
+            drop(old_co);
+            let _ = done_tx.send(());
+        });
+
+        // wait until the old description is gone and the fd number now
+        // refers to the replacement socket
+        replaced_rx.recv().unwrap();
+
+        // register the replacement socket under the same fd number
+        let replacement = unsafe { std::os::unix::net::UnixStream::from_raw_fd(target) };
+        let replacement_co = CoIo::new(replacement).unwrap();
+        assert!(
+            fd_is_watched(target),
+            "replacement socket should be registered"
+        );
+
+        // let the old CoIo finish dropping
+        go_tx.send(()).unwrap();
+        done_rx.recv().unwrap();
+        drop_thread.join().unwrap();
+
+        assert!(
+            fd_is_watched(target),
+            "dropping the old CoIo removed the epoll registration of a reused fd"
+        );
+        drop(replacement_co);
     }
 }
