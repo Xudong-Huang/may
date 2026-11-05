@@ -1,11 +1,9 @@
-#[inline]
-#[cold]
-const fn cold() {}
+use std::hint::cold_path;
 
 #[inline]
 pub const fn likely(b: bool) -> bool {
     if !b {
-        cold()
+        cold_path()
     }
     b
 }
@@ -13,7 +11,7 @@ pub const fn likely(b: bool) -> bool {
 #[inline]
 pub const fn unlikely(b: bool) -> bool {
     if b {
-        cold()
+        cold_path()
     }
     b
 }
