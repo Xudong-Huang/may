@@ -12,7 +12,7 @@ use crate::timeout_list::{now, TimeOutList};
 use crate::timeout_list::TimeoutHandle;
 use crate::yield_now::set_co_para;
 #[cfg(feature = "io_timeout")]
-use parking_lot::Mutex;
+use std::cell::RefCell;
 use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
@@ -35,7 +35,7 @@ pub struct EventData {
     overlapped: UnsafeCell<OVERLAPPED>,
     pub handle: HANDLE,
     #[cfg(feature = "io_timeout")]
-    pub timer: Mutex<Option<TimerHandle>>,
+    pub timer: RefCell<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
 
@@ -43,7 +43,7 @@ pub struct EventData {
 // `Arc` and only touches it while running/suspended) and the selector thread
 // (which mutates `co`/`timer` only after the coroutine has suspended, with the
 // IOCP completion providing the happens-before). `handle` is read-only, and
-// `co`/`timer` are interior-mutable (`AtomicOption`/`Mutex`). The `overlapped`
+// `co`/`timer` are interior-mutable (`AtomicOption`/`RefCell`). The `overlapped`
 // field is only written by the kernel during I/O and read after completion.
 unsafe impl Send for EventData {}
 unsafe impl Sync for EventData {}
@@ -54,7 +54,7 @@ impl EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
             handle,
             #[cfg(feature = "io_timeout")]
-            timer: Mutex::new(None),
+            timer: RefCell::new(None),
             co: AtomicOption::none(),
         }
     }
@@ -153,7 +153,7 @@ impl Selector {
             // running the timer_list in the same thread
             // this is not true when running in multi-thread environment
             #[cfg(feature = "io_timeout")]
-            data.timer.lock().take().map(|h| {
+            data.timer.borrow_mut().take().map(|h| {
                 unsafe {
                     // tell the timer function not to cancel the io
                     // it's not always true that you can really remove the timer entry
@@ -239,7 +239,7 @@ impl Selector {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(0);
         }
-        io.timer.lock().replace(h);
+        io.timer.borrow_mut().replace(h);
     }
 }
 
@@ -262,7 +262,7 @@ pub fn timeout_handler(data: TimerData) {
     let event_data = unsafe { &*data.event_data };
     // remove the event timer
     #[cfg(feature = "io_timeout")]
-    event_data.timer.lock().take();
+    event_data.timer.borrow_mut().take();
     // ignore the error, the select may grab the data first!
     let result = unsafe { cancel_io(event_data.handle, event_data.get_overlapped()) };
     result.unwrap_or_else(|e| error!("CancelIoEx failed! e = {e}"));
