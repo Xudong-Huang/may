@@ -5,7 +5,7 @@ If you are not aware of them, your application will easily lost performance or e
 I will list 4 rules bellow
 
 ## Don't call thread blocking APIs
-This is obvious. Calling thread block version APIs in coroutine would halt the worker thread and can't schedule other ready coroutines. It will hurt the performance. 
+This is obvious. Calling thread block version APIs in coroutine would halt the worker thread and can't schedule other ready coroutines. It will hurt the performance.
 
 Those block version APIs includes:
 * io block operation such as socket `read()`/`write()`
@@ -19,7 +19,7 @@ The solution is calling [MAY][may] API instead. And port necessary dependency li
 ## Don't use Thread Local Storage
 Access TLS in coroutine would trigger undefined behavior and it will be hard to debug the issue.
 
-There is a [post](cls) already cover this topic. And the solution is using Coroutine Local Storage instead.
+There is a [post](CLS_instead_of_TLS.md) already cover this topic. And the solution is using Coroutine Local Storage instead.
 
 But if you are depending on a third party function that uses TLS you likely get hurt sooner or later. There is an [issue][issue] that discuss this a bit.
 
@@ -31,7 +31,7 @@ Currently calling `libstd` APIs is safe in  [MAY][may] coroutines.
 [MAY][may] APIs will automatically yield out if necessary, so this is not a problem. But if you are running a long time CPU bound task in coroutine, you'd better call `coroutine::yield_now()` manually at appropriate point.
 
 
-## Don't exceed the stack 
+## Don't exceed the stack
 [MAY][may] doesn't support automatic stack increasing. Each coroutine alloc a limited stack size for its own. If the coroutine exceeds it's stack size, it will trigger undefined behavior.
 
 So that you should avoid calling recursive functions in coroutine. Recursive function calls would easily exhaust your stack.
