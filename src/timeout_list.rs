@@ -24,7 +24,13 @@ fn get_instant() -> &'static Instant {
 #[inline]
 pub fn now() -> u64 {
     // we need a Monotonic Clock here
-    get_instant().elapsed().as_nanos() as u64
+    get_instant().elapsed().as_nanos().min(u64::MAX as u128) as u64
+}
+
+#[inline]
+fn timeout_deadline(now: u64, dur: Duration) -> (u64, u64) {
+    let interval = dur.as_nanos().min(u64::MAX.saturating_sub(now) as u128) as u64;
+    (interval, now + interval)
 }
 
 // timeout event data
@@ -120,8 +126,7 @@ impl<T> TimeOutList<T> {
     // this can be called in any thread
     // return true if we need to recall next expire
     pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
-        let interval = dur.as_nanos() as u64;
-        let time = now() + interval;
+        let (interval, time) = timeout_deadline(now(), dur);
         //println!("add timer = {:?}", time);
 
         let timeout = TimeoutData { time, data };
@@ -299,6 +304,23 @@ impl<T> TimerThread<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timeout_deadline_saturates_for_unrepresentable_durations() {
+        assert_eq!(
+            timeout_deadline(10, Duration::from_nanos(u64::MAX)),
+            (u64::MAX - 10, u64::MAX)
+        );
+        assert_eq!(
+            timeout_deadline(10, Duration::MAX),
+            (u64::MAX - 10, u64::MAX)
+        );
+        assert_eq!(timeout_deadline(10, Duration::from_nanos(5)), (5, 15));
+        assert_eq!(
+            timeout_deadline(u64::MAX, Duration::from_secs(1)),
+            (0, u64::MAX)
+        );
+    }
 
     #[test]
     fn test_timeout_list() {
