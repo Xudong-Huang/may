@@ -7,8 +7,11 @@ use super::miow::{CompletionPort, CompletionStatus};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
 use crate::sync::AtomicOption;
-use crate::timeout_list::{now, TimeOutList, TimeoutHandle};
+use crate::timeout_list::{now, TimeOutList};
+#[cfg(feature = "io_timeout")]
+use crate::timeout_list::TimeoutHandle;
 use crate::yield_now::set_co_para;
+#[cfg(feature = "io_timeout")]
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
@@ -20,6 +23,7 @@ pub struct TimerData {
 }
 
 type TimerList = TimeOutList<TimerData>;
+#[cfg(feature = "io_timeout")]
 pub type TimerHandle = TimeoutHandle<TimerData>;
 
 // event associated io data, must be construct in the coroutine
@@ -30,6 +34,7 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 pub struct EventData {
     overlapped: UnsafeCell<OVERLAPPED>,
     pub handle: HANDLE,
+    #[cfg(feature = "io_timeout")]
     pub timer: Mutex<Option<TimerHandle>>,
     pub co: AtomicOption<CoroutineImpl>,
 }
@@ -48,6 +53,7 @@ impl EventData {
         EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
             handle,
+            #[cfg(feature = "io_timeout")]
             timer: Mutex::new(None),
             co: AtomicOption::none(),
         }
@@ -146,6 +152,7 @@ impl Selector {
             // it's safe to remove the timer since we are
             // running the timer_list in the same thread
             // this is not true when running in multi-thread environment
+            #[cfg(feature = "io_timeout")]
             data.timer.lock().take().map(|h| {
                 unsafe {
                     // tell the timer function not to cancel the io
@@ -254,6 +261,7 @@ pub fn timeout_handler(data: TimerData) {
 
     let event_data = unsafe { &*data.event_data };
     // remove the event timer
+    #[cfg(feature = "io_timeout")]
     event_data.timer.lock().take();
     // ignore the error, the select may grab the data first!
     let result = unsafe { cancel_io(event_data.handle, event_data.get_overlapped()) };
