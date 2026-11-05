@@ -1,5 +1,6 @@
 use std::io;
 use std::os::windows::io::{AsRawSocket, RawSocket};
+use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
@@ -16,7 +17,7 @@ use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Networking::WinSock::MSG_PEEK;
 
 pub struct SocketPeek<'a> {
-    io_data: EventData,
+    io_data: Arc<EventData>,
     buf: &'a mut [u8],
     socket: RawSocket,
     #[cfg(feature = "io_timeout")]
@@ -33,7 +34,7 @@ impl<'a> SocketPeek<'a> {
     ) -> Self {
         let socket = s.as_raw_socket();
         SocketPeek {
-            io_data: EventData::new(socket as HANDLE),
+            io_data: Arc::new(EventData::new(socket as HANDLE)),
             buf,
             socket,
             #[cfg(feature = "io_timeout")]
@@ -59,11 +60,11 @@ impl EventSource for SocketPeek<'_> {
         // we must prepare the timer before call the API
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            s.get_selector().add_io_timer(&mut self.io_data, dur);
+            s.get_selector().add_io_timer(&self.io_data, dur);
         }
 
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.store(co);
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
@@ -81,7 +82,7 @@ impl EventSource for SocketPeek<'_> {
             cancel.set_io(CancelIoData::new(&self.io_data));
             // re-check the cancel status
             if cancel.is_canceled() {
-                unsafe { cancel.cancel() };
+                cancel.cancel();
             }
         }
     }

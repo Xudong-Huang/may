@@ -135,13 +135,12 @@ impl Coroutine {
         self.inner.park.unpark();
     }
 
-    /// cancel a coroutine
-    /// # Safety
+    /// Cancels the coroutine.
     ///
-    /// This function would force a coroutine exist when next scheduling
-    /// And would drop all the resource tha the coroutine currently holding
-    /// This may have unexpected side effects if you are not fully aware it
-    pub unsafe fn cancel(&self) {
+    /// This forces the coroutine to unwind when it is next scheduled, dropping
+    /// all the resources it currently holds. As with a panic, this may have
+    /// unexpected side effects if the coroutine is not cancellation-safe.
+    pub fn cancel(&self) {
         self.inner.cancel.cancel();
     }
 

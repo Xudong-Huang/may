@@ -6,8 +6,10 @@ use std::{io, ptr};
 use super::miow::{CompletionPort, CompletionStatus};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
+use crate::sync::AtomicOption;
 use crate::timeout_list::{now, TimeOutList, TimeoutHandle};
 use crate::yield_now::set_co_para;
+use parking_lot::Mutex;
 use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
@@ -28,22 +30,31 @@ pub type TimerHandle = TimeoutHandle<TimerData>;
 pub struct EventData {
     overlapped: UnsafeCell<OVERLAPPED>,
     pub handle: HANDLE,
-    pub timer: Option<TimerHandle>,
-    pub co: Option<CoroutineImpl>,
+    pub timer: Mutex<Option<TimerHandle>>,
+    pub co: AtomicOption<CoroutineImpl>,
 }
+
+// SAFETY: `EventData` is shared between the coroutine (which owns it via an
+// `Arc` and only touches it while running/suspended) and the selector thread
+// (which mutates `co`/`timer` only after the coroutine has suspended, with the
+// IOCP completion providing the happens-before). `handle` is read-only, and
+// `co`/`timer` are interior-mutable (`AtomicOption`/`Mutex`). The `overlapped`
+// field is only written by the kernel during I/O and read after completion.
+unsafe impl Send for EventData {}
+unsafe impl Sync for EventData {}
 
 impl EventData {
     pub fn new(handle: HANDLE) -> EventData {
         EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
             handle,
-            timer: None,
-            co: None,
+            timer: Mutex::new(None),
+            co: AtomicOption::none(),
         }
     }
 
     #[inline]
-    pub fn get_overlapped(&mut self) -> *mut OVERLAPPED {
+    pub fn get_overlapped(&self) -> *mut OVERLAPPED {
         self.overlapped.get()
     }
 
@@ -126,17 +137,16 @@ impl Selector {
                 continue;
             }
 
-            let data = unsafe { &mut *(overlapped as *mut EventData) };
+            let data = unsafe { &*(overlapped as *const EventData) };
             // when cancel failed the coroutine will continue to finish
-            // it's unsafe to ref any local stack value!
-            // if cancel not take the coroutine, then it's possible that
-            // the coroutine will never come back because there is no event
+            // the io data is kept alive by the coroutine (via Arc) until the
+            // coroutine resumes, and the cancel path holds its own Arc.
             let mut co = data.co.take().expect("can't get co in selector");
 
             // it's safe to remove the timer since we are
             // running the timer_list in the same thread
             // this is not true when running in multi-thread environment
-            data.timer.take().map(|h| {
+            data.timer.lock().take().map(|h| {
                 unsafe {
                     // tell the timer function not to cancel the io
                     // it's not always true that you can really remove the timer entry
@@ -214,7 +224,7 @@ impl Selector {
     // register the io request to the timeout list
     #[inline]
     #[cfg(feature = "io_timeout")]
-    pub fn add_io_timer(&self, io: &mut EventData, timeout: Duration) {
+    pub fn add_io_timer(&self, io: &EventData, timeout: Duration) {
         let id = (io.handle as usize % self.vec.len()) >> 2;
         // info!("io timeout = {:?}", dur);
         let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
@@ -222,7 +232,7 @@ impl Selector {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(0);
         }
-        io.timer.replace(h);
+        io.timer.lock().replace(h);
     }
 }
 
@@ -242,12 +252,10 @@ pub fn timeout_handler(data: TimerData) {
         return;
     }
 
-    unsafe {
-        let event_data = &mut *data.event_data;
-        // remove the event timer
-        event_data.timer.take();
-        // ignore the error, the select may grab the data first!
-        cancel_io(event_data.handle, event_data.get_overlapped())
-            .unwrap_or_else(|e| error!("CancelIoEx failed! e = {e}"));
-    }
+    let event_data = unsafe { &*data.event_data };
+    // remove the event timer
+    event_data.timer.lock().take();
+    // ignore the error, the select may grab the data first!
+    let result = unsafe { cancel_io(event_data.handle, event_data.get_overlapped()) };
+    result.unwrap_or_else(|e| error!("CancelIoEx failed! e = {e}"));
 }

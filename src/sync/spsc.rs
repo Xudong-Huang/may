@@ -36,7 +36,7 @@ impl<T> EventSource for RecvTimeoutSource<T> {
         // coroutine: afterwards its cancel data may be gone.
         cancel.set_co(wait_co.clone());
         if cancel.is_canceled() {
-            unsafe { cancel.cancel() };
+            cancel.cancel();
             return;
         }
         self.queue.timeout_wait.store(wait_co.clone());
@@ -726,9 +726,7 @@ mod tests {
         let (_tx, rx) = channel::<i32>();
         let handle = go!(move || rx.recv_timeout(Duration::from_secs(5)));
         sleep(Duration::from_millis(50));
-        unsafe {
-            handle.coroutine().cancel();
-        }
+        handle.coroutine().cancel();
         assert!(handle.join().is_err());
     }
 

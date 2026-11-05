@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
+use std::sync::Arc;
 
 use super::super::miow::{accept_complete, accept_overlapped, AcceptAddrsBuf};
 use super::super::{add_socket, co_io_result, EventData};
@@ -16,7 +17,7 @@ use crate::sync::delay_drop::DelayDrop;
 use windows_sys::Win32::Foundation::*;
 
 pub struct TcpListenerAccept<'a> {
-    io_data: EventData,
+    io_data: Arc<EventData>,
     socket: &'a ::std::net::TcpListener,
     ret: OptionCell<::std::net::TcpStream>,
     addr: AcceptAddrsBuf,
@@ -36,7 +37,7 @@ impl<'a> TcpListenerAccept<'a> {
         let stream = stream.into();
 
         Ok(TcpListenerAccept {
-            io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+            io_data: Arc::new(EventData::new(socket.as_raw_socket() as HANDLE)),
             socket: socket.inner(),
             ret: OptionCell::new(stream),
             addr: AcceptAddrsBuf::new(),
@@ -71,7 +72,7 @@ impl EventSource for TcpListenerAccept<'_> {
         let cancel = co_cancel_data(&co);
         // we don't need to register the timeout here,
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.store(co);
 
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
@@ -89,7 +90,7 @@ impl EventSource for TcpListenerAccept<'_> {
             cancel.set_io(CancelIoData::new(&self.io_data));
             // re-check the cancel status
             if cancel.is_canceled() {
-                unsafe { cancel.cancel() };
+                cancel.cancel();
             }
         }
     }

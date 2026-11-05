@@ -77,7 +77,7 @@ impl Selector {
     /// terminate the select coroutine
     /// this would remove the selector from the associated cqueue
     pub fn remove(self) {
-        unsafe { self.co.cancel() };
+        self.co.cancel();
     }
 }
 
@@ -285,7 +285,7 @@ impl Drop for Cqueue {
             .iter()
             .map(|j| j.as_ref())
             .fold((), |_, join| match join {
-                Some(j) if !j.is_done() => unsafe { j.coroutine().cancel() },
+                Some(j) if !j.is_done() => j.coroutine().cancel(),
                 _ => {}
             });
 

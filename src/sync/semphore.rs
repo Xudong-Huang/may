@@ -253,7 +253,7 @@ mod tests {
         sleep(Duration::from_millis(100));
         println!("sem1={sem1:?}");
         // cancel h1
-        unsafe { h1.coroutine().cancel() };
+        h1.coroutine().cancel();
         h1.join().unwrap_err();
         // release the semphore
         sem1.post();

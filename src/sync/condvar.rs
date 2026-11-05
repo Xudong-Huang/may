@@ -358,7 +358,7 @@ mod tests {
         const M: usize = 3;
         // we cancel some of the coroutine
         for co in vec.iter().take(M) {
-            unsafe { co.coroutine().cancel() };
+            co.coroutine().cancel();
         }
 
         // note that cancel and notify has contention here

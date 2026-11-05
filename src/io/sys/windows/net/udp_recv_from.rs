@@ -1,6 +1,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::os::windows::io::AsRawSocket;
+use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ use crate::sync::delay_drop::DelayDrop;
 use windows_sys::Win32::Foundation::*;
 
 pub struct UdpRecvFrom<'a> {
-    io_data: EventData,
+    io_data: Arc<EventData>,
     buf: &'a mut [u8],
     socket: &'a ::std::net::UdpSocket,
     addr: SocketAddrBuf,
@@ -30,7 +31,7 @@ pub struct UdpRecvFrom<'a> {
 impl<'a> UdpRecvFrom<'a> {
     pub fn new(socket: &'a UdpSocket, buf: &'a mut [u8]) -> Self {
         UdpRecvFrom {
-            io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+            io_data: Arc::new(EventData::new(socket.as_raw_socket() as HANDLE)),
             buf,
             socket: socket.inner(),
             addr: SocketAddrBuf::new(),
@@ -59,10 +60,10 @@ impl EventSource for UdpRecvFrom<'_> {
         let cancel = co_cancel_data(&co);
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            s.get_selector().add_io_timer(&mut self.io_data, dur);
+            s.get_selector().add_io_timer(&self.io_data, dur);
         }
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.store(co);
         // call the overlapped read API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             recv_from_overlapped(
@@ -79,7 +80,7 @@ impl EventSource for UdpRecvFrom<'_> {
             cancel.set_io(CancelIoData::new(&self.io_data));
             // re-check the cancel status
             if cancel.is_canceled() {
-                unsafe { cancel.cancel() };
+                cancel.cancel();
             }
         }
     }

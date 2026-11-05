@@ -620,7 +620,7 @@ mod tests {
             cancel_id = 1;
         }
         // println!("cancel id = {}", cancel_id);
-        unsafe { vec[cancel_id - 1].coroutine().cancel() };
+        vec[cancel_id - 1].coroutine().cancel();
 
         // let all coroutine to continue
         let (lock, cond) = &*sync;
@@ -670,7 +670,7 @@ mod tests {
         });
 
         // cancel read coroutine that is waiting for the rwlock
-        unsafe { h.coroutine().cancel() };
+        h.coroutine().cancel();
         h.join().unwrap_err();
 
         // release the write lock, so that other thread can got the lock

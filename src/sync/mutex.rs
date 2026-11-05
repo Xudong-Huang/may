@@ -504,7 +504,7 @@ mod tests {
         // wait h1 and h2 enqueue
         sleep(Duration::from_millis(100));
         // cancel h1
-        unsafe { h1.coroutine().cancel() };
+        h1.coroutine().cancel();
         h1.join().unwrap_err();
         // release the mutex
         drop(g);
@@ -545,7 +545,7 @@ mod tests {
         drop(g);
         sleep(Duration::from_millis(50));
         // cancel h1 while h1 hold the lock
-        unsafe { h1.coroutine().cancel() };
+        h1.coroutine().cancel();
         h1.join().unwrap_err();
         h2.join().unwrap();
         let g = mutex1.lock().unwrap();

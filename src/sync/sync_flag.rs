@@ -191,7 +191,7 @@ mod tests {
         sleep(Duration::from_millis(100));
         println!("flag1={flag1:?}");
         // cancel h1
-        unsafe { h1.coroutine().cancel() };
+        h1.coroutine().cancel();
         h1.join().unwrap_err();
         // release the SyncFlag
         flag1.fire();

@@ -36,7 +36,7 @@ fn cancel_coroutine() {
     // let the coroutine run
     thread::sleep(Duration::from_millis(10));
 
-    unsafe { j.coroutine().cancel() };
+    j.coroutine().cancel();
 
     match j.join() {
         Ok(_) => panic!("test should return panic"),
@@ -68,7 +68,7 @@ fn cancel_io_coroutine() {
     // let the coroutine run
     thread::sleep(Duration::from_millis(10));
 
-    unsafe { j.coroutine().cancel() };
+    j.coroutine().cancel();
 
     match j.join() {
         Ok(_) => panic!("test should return panic"),

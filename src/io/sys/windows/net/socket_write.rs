@@ -45,11 +45,11 @@ impl EventSource for SocketWrite<'_> {
         let s = get_scheduler();
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            s.get_selector().add_io_timer(&mut self.io_data, dur);
+            s.get_selector().add_io_timer(&self.io_data, dur);
         }
 
         // prepare the co first
-        self.io_data.co = Some(co);
+        self.io_data.co.store(co);
         // call the overlapped write API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             socket_write(self.socket, self.buf, self.io_data.get_overlapped())

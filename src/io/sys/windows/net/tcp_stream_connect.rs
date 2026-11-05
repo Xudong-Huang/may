@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
+use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
@@ -18,7 +19,7 @@ use crate::sync::delay_drop::DelayDrop;
 use windows_sys::Win32::Foundation::*;
 
 pub struct TcpStreamConnect {
-    io_data: EventData,
+    io_data: Arc<EventData>,
     stream: OptionCell<std::net::TcpStream>,
     #[cfg(feature = "io_timeout")]
     timeout: Option<Duration>,
@@ -67,7 +68,7 @@ impl TcpStreamConnect {
                         // must register io first
                         s.set_nonblocking(true)?;
                         add_socket(&s).map(|_io| TcpStreamConnect {
-                            io_data: EventData::new(s.as_raw_socket() as HANDLE),
+                            io_data: Arc::new(EventData::new(s.as_raw_socket() as HANDLE)),
                             addr,
                             stream: OptionCell::new(s),
                             #[cfg(feature = "io_timeout")]
@@ -96,9 +97,9 @@ impl EventSource for TcpStreamConnect {
         let cancel = co_cancel_data(&co);
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
-            s.get_selector().add_io_timer(&mut self.io_data, dur);
+            s.get_selector().add_io_timer(&self.io_data, dur);
         }
-        self.io_data.co = Some(co);
+        self.io_data.co.store(co);
 
         // call the overlapped connect API
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
@@ -116,7 +117,7 @@ impl EventSource for TcpStreamConnect {
             cancel.set_io(CancelIoData::new(&self.io_data));
             // re-check the cancel status
             if cancel.is_canceled() {
-                unsafe { cancel.cancel() };
+                cancel.cancel();
             }
         }
     }

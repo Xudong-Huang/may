@@ -39,7 +39,7 @@ pub trait CancelIo {
     // clear the io data
     fn clear(&self);
     // if io was set, return Some(io::Result<()>)
-    unsafe fn cancel(&self) -> Option<io::Result<()>>;
+    fn cancel(&self) -> Option<io::Result<()>>;
 }
 
 #[cfg(not(feature = "io_cancel"))]
@@ -53,7 +53,7 @@ impl CancelIo for CancelIoImpl {
     }
     fn set(&self, _: Self::Data) {}
     fn clear(&self) {}
-    unsafe fn cancel(&self) -> Option<io::Result<()>> {
+    fn cancel(&self) -> Option<io::Result<()>> {
         None
     }
 }
@@ -122,7 +122,7 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // async cancel for a coroutine
     #[cold]
-    pub unsafe fn cancel(&self) {
+    pub fn cancel(&self) {
         self.state.fetch_or(1, Ordering::Release);
 
         if let Some(Ok(())) = self.io.cancel() {

@@ -79,7 +79,7 @@ impl EventSource for UnixListenerAccept<'_> {
             cancel.set_io((*io_data).clone());
             // re-check the cancel status
             if cancel.is_canceled() {
-                unsafe { cancel.cancel() };
+                cancel.cancel();
             }
         }
     }

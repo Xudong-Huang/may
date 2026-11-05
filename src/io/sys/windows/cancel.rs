@@ -1,29 +1,30 @@
 use std::io;
+use std::sync::Arc;
 
 use super::EventData;
 use crate::cancel::CancelIo;
 use crate::sync::AtomicOption;
 
+// Keeps the pending `EventData` alive via `Arc` so that a concurrent cancel can
+// call `CancelIoEx` without dereferencing the target coroutine's stack frame.
 pub struct CancelIoData {
-    ev_data: *mut EventData,
+    ev_data: Arc<EventData>,
 }
 
-unsafe impl Send for CancelIoData {}
-
 impl CancelIoData {
-    pub fn new(ev_data: &EventData) -> Self {
+    pub fn new(ev_data: &Arc<EventData>) -> Self {
         CancelIoData {
-            ev_data: ev_data as *const _ as *mut _,
+            ev_data: ev_data.clone(),
         }
     }
 
-    pub unsafe fn cancel(&self) -> io::Result<()> {
+    pub fn cancel(&self) -> io::Result<()> {
         use windows_sys::Win32::System::IO::CancelIoEx;
 
-        let ev = &mut *self.ev_data;
+        let ev = self.ev_data.as_ref();
         let handle = ev.handle;
         let overlapped = ev.get_overlapped();
-        let ret = CancelIoEx(handle, overlapped);
+        let ret = unsafe { CancelIoEx(handle, overlapped) };
         if ret == 0 {
             let err = io::Error::last_os_error();
             error!("cancel err={err:?}");
@@ -35,8 +36,9 @@ impl CancelIoData {
     }
 }
 
-// windows must use Mutex to protect it's data
-// because it will not use the AtomicOption<CoroutineImpl> as a gate keeper
+// windows keeps the io data alive via `Arc<EventData>`, so unlike unix it
+// doesn't need `AtomicOption<CoroutineImpl>` as a gate keeper for the cancel
+// path.
 pub struct CancelIoImpl(AtomicOption<CancelIoData>);
 
 impl CancelIo for CancelIoImpl {
@@ -54,7 +56,7 @@ impl CancelIo for CancelIoImpl {
         self.0.take();
     }
 
-    unsafe fn cancel(&self) -> Option<io::Result<()>> {
+    fn cancel(&self) -> Option<io::Result<()>> {
         self.0.take().map(|d| d.cancel())
     }
 }
