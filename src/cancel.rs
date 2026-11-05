@@ -109,7 +109,7 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // panic if cancel was set
     pub fn check_cancel(&self) {
-        if unlikely(self.state.load(Ordering::Acquire) == 1) {
+        if unlikely(self.is_canceled()) {
             // before panic clear the last coroutine error
             // this would affect future new coroutine that reuse the instance
             get_co_para();

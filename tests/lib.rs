@@ -82,6 +82,42 @@ fn cancel_io_coroutine() {
     }
 }
 
+// A coroutine blocked in `WaitIo::wait_io` must unwind on cancel. This is the
+// regression test for the `RawIoBlock::yield_back` override that used to clear
+// the cancel bit instead of re-checking it, leaving `join()` hanging forever.
+#[test]
+#[cfg(all(unix, feature = "io_cancel"))]
+fn cancel_wait_io_coroutine() {
+    use may::io::WaitIo;
+    use std::sync::mpsc::channel;
+
+    let (tx, rx) = channel();
+
+    let j = go!(move || {
+        // a listening socket has no io event until a connection arrives, so
+        // `wait_io()` suspends the coroutine until a cancel resumes it
+        let listener = may::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        tx.send(()).unwrap();
+        listener.wait_io()
+    });
+
+    // wait until the coroutine is blocked in wait_io
+    rx.recv().unwrap();
+
+    j.coroutine().cancel();
+
+    match j.join() {
+        Ok(_) => panic!("test should return panic"),
+        Err(panic) => {
+            use generator::Error;
+            match panic.downcast_ref::<Error>() {
+                Some(&Error::Cancel) => println!("coroutine cancelled"),
+                _ => panic!("panic type wrong"),
+            }
+        }
+    }
+}
+
 #[test]
 fn one_coroutine() {
     let j = go!(move || {
