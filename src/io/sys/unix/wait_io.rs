@@ -5,7 +5,6 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::cancel::Cancel;
 #[cfg(feature = "io_cancel")]
 use crate::coroutine_impl::co_get_handle;
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
@@ -44,12 +43,6 @@ impl EventSource for RawIoBlock<'_> {
                 cancel.cancel();
             }
         }
-    }
-
-    /// after yield back process
-    fn yield_back(&self, _cancel: &'static Cancel) {
-        #[cfg(feature = "io_cancel")]
-        _cancel.clear_cancel_bit();
     }
 }
 
