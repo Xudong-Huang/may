@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
@@ -57,10 +57,7 @@ fn with<F: FnOnce(&LocalMap) -> R, R>(f: F) -> R {
     }
 }
 
-pub type LocalMap = RefCell<HashMap<TypeId, Box<dyn Opaque>, BuildHasherDefault<IdHasher>>>;
-
-pub trait Opaque {}
-impl<T> Opaque for T {}
+pub type LocalMap = RefCell<HashMap<TypeId, Box<dyn Any>, BuildHasherDefault<IdHasher>>>;
 
 /// A key for local data stored in a coroutine.
 ///
@@ -124,6 +121,7 @@ impl<T: 'static> LocalKey<T> {
     ///
     /// * If the initialization expression is run and it panics
     /// * If the closure provided panics
+    /// * If multiple keys use the same key identifier with different value types
     #[inline]
     pub fn with<F, R>(&'static self, f: F) -> R
     where
@@ -131,12 +129,17 @@ impl<T: 'static> LocalKey<T> {
     {
         let key = (self.__key)();
         with(|data| {
-            let raw_pointer = {
+            let value = {
                 let mut data = data.borrow_mut();
                 let entry = data.entry(key).or_insert_with(|| Box::new((self.__init)()));
-                &**entry as *const dyn Opaque as *const T
+                entry
+                    .downcast_ref::<T>()
+                    .expect("coroutine-local key used with mismatched value type")
+                    as *const T
             };
-            unsafe { f(&*raw_pointer) }
+            // Values are boxed, so map reallocation cannot move them. Access is
+            // shared-only, and the downcast above verifies the pointer's type.
+            unsafe { f(&*value) }
         })
     }
 }
