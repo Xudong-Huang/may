@@ -590,8 +590,7 @@ mod tests {
         let result = go!(move || {
             let (tx, rx) = channel::<i32>();
             drop(tx);
-            let result = rx.recv_timeout(Duration::from_secs(5));
-            result
+            rx.recv_timeout(Duration::from_secs(5))
         })
         .join()
         .unwrap();

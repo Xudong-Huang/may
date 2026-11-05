@@ -7,13 +7,13 @@ use super::miow::{CompletionPort, CompletionStatus};
 use crate::coroutine_impl::CoroutineImpl;
 use crate::scheduler::Scheduler;
 use crate::sync::AtomicOption;
-use crate::timeout_list::{now, TimeOutList};
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::TimeoutHandle;
+use crate::timeout_list::{now, TimeOutList};
 use crate::yield_now::set_co_para;
+use smallvec::SmallVec;
 #[cfg(feature = "io_timeout")]
 use std::cell::RefCell;
-use smallvec::SmallVec;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
