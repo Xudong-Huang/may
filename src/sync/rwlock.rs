@@ -6,8 +6,8 @@ use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::sync::{LockResult, OnceLock, PoisonError, TryLockError, TryLockResult};
+use std::thread;
 
 use crate::cancel::trigger_cancel_panic;
 use crate::coroutine_impl::{current_cancel_data, is_coroutine};
@@ -414,9 +414,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
         let mut d = f.debug_struct("RwLock");
         match self.try_read() {
             Ok(guard) => d.field("data", &&*guard),
-            Err(TryLockError::Poisoned(err)) => {
-                d.field("data", &&**err.get_ref())
-            }
+            Err(TryLockError::Poisoned(err)) => d.field("data", &&**err.get_ref()),
             Err(TryLockError::WouldBlock) => d.field("data", &format_args!("<locked>")),
         };
         d.field("poisoned", &self.poison.get());
@@ -752,7 +750,9 @@ mod tests {
         // the lock must still be usable
         match rw.try_write() {
             Err(TryLockError::Poisoned(_)) => {}
-            Err(TryLockError::WouldBlock) => panic!("rwlock corrupted after poisoned try_write race"),
+            Err(TryLockError::WouldBlock) => {
+                panic!("rwlock corrupted after poisoned try_write race")
+            }
             Ok(_) => panic!("try_write should report poison"),
         };
     }

@@ -35,10 +35,7 @@ impl Flag {
         // during which other coroutines keep running on the thread. In that
         // window their guards must not poison: the "panic" is not theirs and
         // not a real panic at all.
-        if !guard.panicking
-            && thread::panicking()
-            && !crate::cancel::cancel_panic_in_flight()
-        {
+        if !guard.panicking && thread::panicking() && !crate::cancel::cancel_panic_in_flight() {
             let is_canceled = if crate::coroutine_impl::is_coroutine() {
                 let cancel = crate::coroutine_impl::current_cancel_data();
                 cancel.is_canceled()
