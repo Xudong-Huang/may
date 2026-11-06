@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::sync::{LockResult, OnceLock, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
@@ -14,7 +15,7 @@ use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
 
 use super::blocking::SyncBlocker;
-use super::mutex::{self, Mutex};
+use super::mutex::{self, Mutex, MutexGuard};
 use super::poison;
 
 /// A reader-writer lock.
@@ -238,12 +239,18 @@ impl<T: ?Sized> RwLock<T> {
 
     fn read_unlock(&self) {
         // this runs from `RwLockReadGuard::drop`, which may execute while a
-        // cancel panic is unwinding the coroutine. If the rlock acquisition
-        // has to park while the cancel bit is set, the park's subscribe
-        // re-delivers the cancel, the mutex would trigger a second cancel
-        // panic and abort the process with a panic-while-panicking. Disable
-        // the cancel around the acquisition so the drop always completes;
-        // the pending cancel resumes once the unwind finishes.
+        // cancel panic is unwinding the coroutine. Two hazards to avoid:
+        // - parking here would suspend the unwind mid-flight, leaving
+        //   `thread::panicking()` set for the whole worker thread while
+        //   other coroutines run on it; their cancels would then be
+        //   silently swallowed by `check_cancel`'s panicking guard and
+        //   their guards spuriously poisoned
+        // - if a park had to happen while the cancel bit is set, the
+        //   park's subscribe would re-deliver the cancel and abort the
+        //   process with a panic-while-panicking
+        // so acquire the reader-count mutex without parking (see
+        // `try_lock_rlock`), and keep the cancel disabled as a
+        // belt-and-braces for the fallback path
         let cancel = if is_coroutine() {
             Some(current_cancel_data())
         } else {
@@ -252,7 +259,15 @@ impl<T: ?Sized> RwLock<T> {
         if let Some(c) = cancel.as_ref() {
             c.disable_cancel();
         }
-        let mut r = self.rlock.lock().expect("rwlock read_unlock");
+        let mut r = if thread::panicking() {
+            // we are inside an unwind (our own cancel panic, or another
+            // coroutine's suspended one): avoid parking so the unwind is
+            // not suspended mid-flight (see the comment above)
+            self.try_lock_rlock()
+        } else {
+            // normal drop: the blocking lock is cheap and safe here
+            self.rlock.lock().expect("rwlock read_unlock")
+        };
         if let Some(c) = cancel.as_ref() {
             c.enable_cancel();
         }
@@ -260,6 +275,31 @@ impl<T: ?Sized> RwLock<T> {
         if *r == 0 {
             self.unlock();
         }
+    }
+
+    /// Acquire the internal reader-count mutex without parking if possible.
+    ///
+    /// The mutex is only ever held for a few instructions: the read()/read_
+    /// unlock() critical sections never park while holding it (a reader can
+    /// only wait for the global lock after seeing *r == 0, i.e. while no
+    /// read guard exists), so a bounded spin virtually always acquires.
+    fn try_lock_rlock(&self) -> MutexGuard<'_, usize> {
+        for _ in 0..1_000_000 {
+            match self.rlock.try_lock() {
+                Ok(r) => return r,
+                Err(TryLockError::Poisoned(_)) => {
+                    // the internal mutex's critical sections never panic,
+                    // so this is a spurious poison; clear and retry
+                    self.rlock.clear_poison();
+                    continue;
+                }
+                Err(TryLockError::WouldBlock) => std::hint::spin_loop(),
+            }
+        }
+        // pathological case: the holder is descheduled mid-section; fall
+        // back to the blocking lock. the cancel is disabled around this
+        // call so a re-delivered cancel cannot double-panic
+        self.rlock.lock().expect("rwlock read_unlock")
     }
 
     /// Locks this `RwLock` with exclusive write access, blocking the current

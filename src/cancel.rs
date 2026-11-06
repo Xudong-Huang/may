@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -12,6 +13,39 @@ use crate::sync::AtomicOption;
 use crate::yield_now::{get_co_para, set_co_para};
 use generator::Error;
 
+// a cancel panic is in flight on this thread: a coroutine's unwind from a
+// Cancel panic can be suspended (a Drop that parks), during which
+// `thread::panicking()` stays true for the whole thread while other
+// coroutines keep running on it. The flag distinguishes that window from a
+// real (non-cancel) panic so that:
+// - `poison::done` does not spuriously poison locks whose guards are
+//   dropped by other coroutines during the window
+// - the unwinding coroutine's own drops never re-trigger the cancel panic
+thread_local! {
+    static CANCEL_PANICKING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// true if a Cancel-panic unwind is currently in flight on this thread
+#[inline]
+pub(crate) fn cancel_panic_in_flight() -> bool {
+    CANCEL_PANICKING.with(|f| f.get())
+}
+
+/// mark that a Cancel-panic unwind started on this thread
+/// called by `trigger_cancel_panic`, cleared when the coroutine completes
+/// in `run_coroutine`
+#[inline]
+fn set_cancel_panic_flag() {
+    CANCEL_PANICKING.with(|f| f.set(true));
+}
+
+/// clear the Cancel-panic flag once the unwind has completed
+/// idempotent, called from `run_coroutine` on every coroutine completion
+#[inline]
+pub(crate) fn clear_cancel_panic_flag() {
+    CANCEL_PANICKING.with(|f| f.set(false));
+}
+
 // the cancel is implemented by triggering a Cancel panic
 // if drop is called due to a Cancel panic, it's not safe
 // to call Any coroutine API in the drop any more because
@@ -23,6 +57,9 @@ pub fn trigger_cancel_panic() -> ! {
     // if thread::panicking() {
     //     eprintln!("trigger another panic while panicking");
     // }
+    if crate::coroutine_impl::is_coroutine() {
+        set_cancel_panic_flag();
+    }
 
     // should we clear the cancel flag to let other API continue?
     // so that we can avoid the re-panic problem?

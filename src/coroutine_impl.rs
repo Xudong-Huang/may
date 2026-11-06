@@ -279,8 +279,21 @@ impl Builder {
             // to unwind these local data. for the panic err we would set it in the
             // coroutine local data so that can return from the packet variable
 
+            let result = f();
+
+            // if the coroutine was canceled but the cancel panic never fired
+            // (the cancel was delivered while another unwind was suspended on
+            // this thread, or landed just before completion), report the
+            // cancellation from `join` instead of silently returning `Ok`
+            if crate::coroutine_impl::is_coroutine()
+                && crate::coroutine_impl::current_cancel_data().is_canceled()
+            {
+                their_join.trigger();
+                return subscriber;
+            }
+
             // set the return packet
-            their_packet.store(f());
+            their_packet.store(result);
 
             their_join.trigger();
             subscriber
@@ -530,6 +543,14 @@ pub(crate) fn run_coroutine(mut co: CoroutineImpl) {
             }
             // trigger the join here
             join.trigger();
+            // if this coroutine was unwinding from a Cancel panic, the
+            // unwind has now completed at the generator boundary and the
+            // thread's panic count has been reset; only then may the flag
+            // be cleared. A normal completion while another coroutine's
+            // unwind is still suspended must keep the flag set.
+            if !std::thread::panicking() {
+                crate::cancel::clear_cancel_panic_flag();
+            }
             Done::drop_coroutine(co);
         }
     }

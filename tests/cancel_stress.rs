@@ -207,6 +207,28 @@ fn cancel_after_finish() {
     }
 }
 
+/// Cancel a coroutine that has no cancellation-aware point left (busy
+/// running): the cancellation must still be reported from `join` instead of
+/// silently returning the coroutine's result.
+#[test]
+fn cancel_reported_at_completion() {
+    for _ in 0..100 {
+        let (tx, rx) = channel();
+        let j = go!(move || {
+            tx.send(()).unwrap();
+            // busy work with no suspension points
+            let mut x = 0usize;
+            for i in 0..10_000_000 {
+                x = x.wrapping_add(i);
+            }
+            x
+        });
+        rx.recv().unwrap();
+        j.coroutine().cancel();
+        assert!(j.join().is_err_and(|e| is_cancel(&*e)));
+    }
+}
+
 /// Cancel a coroutine while it is parked on a `Mutex` with cancellation
 /// *disabled* — the state `Condvar::wait_impl` enters for its internal
 /// re-lock — must not corrupt the mutex's waiter count.
