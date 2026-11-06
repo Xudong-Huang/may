@@ -562,7 +562,10 @@ mod tests {
         .unwrap();
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
         assert!(elapsed >= Duration::from_millis(40));
-        assert!(elapsed < Duration::from_millis(200));
+        // Wakeup latency on shared CI runners can spike to hundreds of
+        // milliseconds (observed on macOS), so the upper bound is only a
+        // sanity check that the call returned at all.
+        assert!(elapsed < Duration::from_secs(2));
     }
 
     #[test]
@@ -582,7 +585,10 @@ mod tests {
         .join()
         .unwrap();
         assert_eq!(result, Ok(99));
-        assert!(elapsed < Duration::from_millis(200));
+        // Wakeup latency on shared CI runners can spike to hundreds of
+        // milliseconds (observed on macOS), so the upper bound is only a
+        // sanity check that the call returned at all.
+        assert!(elapsed < Duration::from_secs(2));
     }
 
     #[test]
@@ -609,7 +615,8 @@ mod tests {
         .join()
         .unwrap();
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
-        assert!(elapsed < Duration::from_millis(100));
+        // Same as above: only a sanity check against a lost wakeup.
+        assert!(elapsed < Duration::from_secs(1));
     }
 
     #[test]
@@ -650,7 +657,10 @@ mod tests {
         .join()
         .unwrap();
         assert_eq!(result, Ok(7));
-        assert!(elapsed < Duration::from_millis(200));
+        // Wakeup latency on shared CI runners can spike to hundreds of
+        // milliseconds (observed on macOS), so the upper bound is only a
+        // sanity check that the call returned at all.
+        assert!(elapsed < Duration::from_secs(2));
     }
 
     #[test]
@@ -816,7 +826,10 @@ mod tests {
         let elapsed = start.elapsed();
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
         assert!(elapsed >= Duration::from_millis(40));
-        assert!(elapsed < Duration::from_millis(200));
+        // Wakeup latency on shared CI runners can spike to hundreds of
+        // milliseconds (observed on macOS), so the upper bound is only a
+        // sanity check that the call returned at all.
+        assert!(elapsed < Duration::from_secs(2));
     }
 
     #[test]
@@ -831,7 +844,10 @@ mod tests {
         let elapsed = start.elapsed();
         handle.join().ok();
         assert_eq!(result, Ok(99));
-        assert!(elapsed < Duration::from_millis(200));
+        // Wakeup latency on shared CI runners can spike to hundreds of
+        // milliseconds (observed on macOS), so the upper bound is only a
+        // sanity check that the call returned at all.
+        assert!(elapsed < Duration::from_secs(2));
     }
 
     #[test]
@@ -849,7 +865,8 @@ mod tests {
         let result = rx.recv_timeout(Duration::ZERO);
         let elapsed = start.elapsed();
         assert_eq!(result, Err(RecvTimeoutError::Timeout));
-        assert!(elapsed < Duration::from_millis(50));
+        // Same as above: only a sanity check against a lost wakeup.
+        assert!(elapsed < Duration::from_secs(1));
     }
 
     #[test]
