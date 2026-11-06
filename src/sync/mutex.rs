@@ -87,11 +87,14 @@ impl<T: ?Sized> Mutex<T> {
         self.to_wake.get_or_init(Queue::new).push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
-            self.to_wake
+            let w = self
+                .to_wake
                 .get_or_init(Queue::new)
                 .pop()
-                .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
+            if self.unpark_one(&w) {
+                self.unlock();
+            }
         }
         loop {
             match cur.park(None) {
@@ -154,20 +157,33 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
-    fn unpark_one(&self, w: &SyncBlocker) {
+    /// unpark one waiter, return true if it registered a release action:
+    /// it is unwinding (canceled) and won't take the lock, so the hand-off
+    /// must continue with the next waiter
+    fn unpark_one(&self, w: &SyncBlocker) -> bool {
         w.unpark();
-        if w.take_release() {
-            self.unlock();
-        }
+        w.take_release()
     }
 
     fn unlock(&self) {
-        if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
-            self.to_wake
+        // pass the lock down the waiter chain iteratively: a popped waiter
+        // that registered a release action is unwinding and won't take the
+        // lock, so the hand-off continues with the next waiter. Recursing
+        // here would overflow the (small, 32KB default) coroutine stack
+        // when a cancel storm leaves a chain of released waiters (see the
+        // same fix in condvar::notify_one).
+        let mut cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
+        while cnt > 1 {
+            let w = self
+                .to_wake
                 .get_or_init(Queue::new)
                 .pop()
-                .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
+            if !self.unpark_one(&w) {
+                break;
+            }
+            // the released waiter's slot is released as well
+            cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
@@ -662,5 +678,64 @@ mod tests {
         h2.join().unwrap();
         let g = mutex1.lock().unwrap();
         assert_eq!(*g, 1);
+    }
+
+    // regression: releasing the lock must walk the chain of released
+    // (canceled) waiters iteratively — a recursive unlock would overflow
+    // the coroutine stack
+    #[test]
+    fn test_mutex_release_chain() {
+        use crate::sleep::sleep;
+        use crate::sync::mpsc::channel;
+        use std::time::Duration;
+
+        const N: usize = 500;
+
+        let m = Arc::new(Mutex::new(()));
+        let m_holder = m.clone();
+        let (tx_held, rx_held) = channel();
+        let (tx_go, rx_go) = channel();
+        // the holder is a coroutine so the release-chain walk runs on a
+        // 32KB coroutine stack; it holds the lock until the test tells it
+        // to release, so the waiters can never acquire the lock
+        let holder = go!(move || {
+            let _g = m_holder.lock().unwrap();
+            tx_held.send(()).unwrap(); // the lock is definitely held now
+            rx_go.recv().unwrap(); // wait until all waiters are canceled
+                                   // dropping the guard at scope end walks the chain
+        });
+
+        // wait until the holder acquired the lock before spawning the
+        // waiters: otherwise a waiter could win the lock race, panic with
+        // unreachable!() before being canceled, and poison the mutex
+        rx_held.recv().unwrap();
+
+        let mut handles = vec![];
+        for _ in 0..N {
+            let m = m.clone();
+            handles.push(go!(move || {
+                let _g = m.lock().unwrap(); // canceled while waiting
+                unreachable!();
+            }));
+        }
+
+        // let all waiters enqueue
+        sleep(Duration::from_millis(100));
+        // cancel all waiters while they are parked on the mutex: each one
+        // registers a release action and then unwinds
+        for h in &handles {
+            h.coroutine().cancel();
+        }
+        for h in handles {
+            assert!(h.join().is_err());
+        }
+
+        // the holder releases the lock and iteratively passes it down the
+        // chain of released waiters
+        tx_go.send(()).unwrap();
+        holder.join().unwrap();
+        // the mutex must be usable afterwards
+        let g = m.lock().unwrap();
+        drop(g);
     }
 }
