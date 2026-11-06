@@ -6,7 +6,7 @@
 
 #[cfg(feature = "io_cancel")]
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -210,21 +210,34 @@ fn cancel_after_finish() {
 /// Cancel a coroutine that has no cancellation-aware point left (busy
 /// running): the cancellation must still be reported from `join` instead of
 /// silently returning the coroutine's result.
+///
+/// The coroutine keeps spinning on a plain atomic until the main thread has
+/// delivered the cancel, so the cancel is guaranteed to land while the
+/// coroutine is still running. A fixed-iteration busy loop is a race here:
+/// in release builds it finishes faster than the main thread wakes up from
+/// the channel receive, making the cancel a no-op after completion.
 #[test]
 fn cancel_reported_at_completion() {
     for _ in 0..100 {
         let (tx, rx) = channel();
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
         let j = go!(move || {
             tx.send(()).unwrap();
-            // busy work with no suspension points
+            // busy work with no suspension points; keep spinning until the
+            // main thread has delivered the cancel
             let mut x = 0usize;
-            for i in 0..10_000_000 {
-                x = x.wrapping_add(i);
+            while r.load(Ordering::Acquire) {
+                x = x.wrapping_add(1);
+                std::hint::spin_loop();
             }
             x
         });
         rx.recv().unwrap();
+        // the coroutine cannot finish before this: `running` is only
+        // cleared after the cancel flag is set
         j.coroutine().cancel();
+        running.store(false, Ordering::Release);
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
 }
