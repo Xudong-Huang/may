@@ -19,6 +19,7 @@ use may::coroutine;
 #[cfg(feature = "io_cancel")]
 use may::net::TcpListener;
 use may::sync::mpsc::channel;
+use may::sync::{Condvar, Mutex};
 
 fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
     matches!(err.downcast_ref::<Error>(), Some(Error::Cancel))
@@ -204,4 +205,53 @@ fn cancel_after_finish() {
         co.cancel();
         co.cancel();
     }
+}
+
+/// Cancel a coroutine while it is parked on a `Mutex` with cancellation
+/// *disabled* — the state `Condvar::wait_impl` enters for its internal
+/// re-lock — must not corrupt the mutex's waiter count.
+///
+/// The first cancel wakes the coroutine from the condvar wait; it then
+/// re-locks the mutex with cancel disabled. The second cancel delivers a
+/// fresh `Canceled` into that mutex wait, exercising the deferred-cancel
+/// (`b_ignore`) path: the wait must keep waiting and the mutex must remain
+/// usable afterwards. Do NOT remove the second cancel — it is the trigger.
+#[test]
+fn cancel_disabled_while_parked_on_mutex() {
+    let pair = Arc::new((Mutex::new(0usize), Condvar::new()));
+
+    let p = pair.clone();
+    let h = go!(move || {
+        let (m, c) = &*p;
+        let g = m.lock().unwrap();
+        // waits on the condvar, releasing the mutex
+        let _ = c.wait(g);
+        unreachable!("wait() returned after cancel");
+    });
+
+    // let the coroutine reach the condvar wait
+    thread::sleep(Duration::from_millis(100));
+
+    // hold the mutex so the coroutine's re-lock must park
+    let guard = pair.0.lock().unwrap();
+
+    // first cancel: the coroutine wakes from the condvar wait,
+    // disables cancel and parks on the mutex re-lock
+    h.coroutine().cancel();
+    thread::sleep(Duration::from_millis(200));
+
+    // second cancel: lands while parked on the mutex with cancel disabled
+    h.coroutine().cancel();
+    thread::sleep(Duration::from_millis(200));
+
+    // hand the mutex over to the coroutine
+    drop(guard);
+    assert!(h.join().is_err_and(|e| is_cancel(&*e)));
+
+    // the mutex must be free and usable afterwards
+    let g = pair
+        .0
+        .try_lock()
+        .expect("mutex corrupted after cancel: try_lock failed on a free mutex");
+    drop(g);
 }

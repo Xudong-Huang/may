@@ -48,6 +48,12 @@ impl Flag {
     pub fn get(&self) -> bool {
         self.failed.load(Ordering::Relaxed) != 0
     }
+
+    // clear the poisoned state
+    #[inline]
+    pub fn clear(&self) {
+        self.failed.store(0, Ordering::Relaxed);
+    }
 }
 
 pub struct Guard {

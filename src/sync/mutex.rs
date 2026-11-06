@@ -4,9 +4,9 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::atomic::{fence, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::sync::{LockResult, TryLockError, TryLockResult};
+use std::sync::{LockResult, OnceLock, TryLockError, TryLockResult};
 
 use super::blocking::SyncBlocker;
 use super::poison;
@@ -15,9 +15,15 @@ use crate::park::ParkError;
 
 use may_queue::mpsc::Queue;
 
+/// A mutual exclusion primitive useful for protecting shared data.
+///
+/// Works for both threads and coroutines (see the module docs): blocking in
+/// a coroutine yields the underlying thread instead of blocking it, and the
+/// wait can be canceled. Waiter hand-off is FIFO.
 pub struct Mutex<T: ?Sized> {
-    // the waiting blocker list
-    to_wake: Queue<Arc<SyncBlocker>>,
+    // the waiting blocker list, allocated lazily on first contention
+    // so that `Mutex::new` can be a const fn
+    to_wake: OnceLock<Queue<Arc<SyncBlocker>>>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
     poison: poison::Flag,
@@ -36,13 +42,17 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
     __poison: poison::Guard,
 }
 
-// impl<'a, T: ?Sized> !Send for MutexGuard<'a, T> {}
+// note: MutexGuard is `Send`/`Sync` through its fields when `T` is, which
+// matches the current std behavior.
 
 impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
-    pub fn new(t: T) -> Mutex<T> {
+    ///
+    /// This is a `const fn`: the waiter queue is initialized lazily on
+    /// first contention, so an uncontended mutex never allocates.
+    pub const fn new(t: T) -> Mutex<T> {
         Mutex {
-            to_wake: Queue::new(),
+            to_wake: OnceLock::new(),
             cnt: AtomicUsize::new(0),
             poison: poison::Flag::new(),
             data: UnsafeCell::new(t),
@@ -51,6 +61,19 @@ impl<T> Mutex<T> {
 }
 
 impl<T: ?Sized> Mutex<T> {
+    /// Acquires the mutex, blocking the current thread or coroutine until it
+    /// is available.
+    ///
+    /// For a coroutine, the wait is cancellable: if the coroutine is
+    /// canceled while waiting for the lock, the cancel panic is propagated
+    /// and the lock is not acquired.
+    ///
+    /// # Errors
+    ///
+    /// If another user of this mutex panicked while holding it, then this
+    /// call returns an error once the mutex is acquired. The lock is still
+    /// acquired in that case; recover the guard from the error and dropping
+    /// it unlocks the mutex.
     pub fn lock(&self) -> LockResult<MutexGuard<'_, T>> {
         // try lock first
         match self.try_lock() {
@@ -61,10 +84,11 @@ impl<T: ?Sized> Mutex<T> {
 
         let cur = SyncBlocker::current();
         // register blocker first
-        self.to_wake.push(cur.clone());
+        self.to_wake.get_or_init(Queue::new).push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
+                .get_or_init(Queue::new)
                 .pop()
                 .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
@@ -88,14 +112,12 @@ impl<T: ?Sized> Mutex<T> {
                             break;
                         }
                         self.unlock();
-                    } else {
-                        // register
+                    } else if !b_ignore {
+                        // register the release action: if we get handed the
+                        // lock while unwinding, pass it on to the next waiter
                         cur.set_release();
                         // re-check unpark status
                         if cur.is_unparked() && cur.take_release() {
-                            if b_ignore {
-                                break;
-                            }
                             self.unlock();
                         }
                     }
@@ -113,6 +135,15 @@ impl<T: ?Sized> Mutex<T> {
         MutexGuard::new(self)
     }
 
+    /// Attempts to acquire the mutex without blocking.
+    ///
+    /// # Errors
+    ///
+    /// * [`TryLockError::WouldBlock`] if the lock is currently held by
+    ///   another thread or coroutine.
+    /// * [`TryLockError::Poisoned`] if the lock was acquired but is
+    ///   poisoned; the guard can be recovered from the error and unlocking
+    ///   happens when the error is dropped.
     pub fn try_lock(&self) -> TryLockResult<MutexGuard<'_, T>> {
         match self
             .cnt
@@ -133,17 +164,47 @@ impl<T: ?Sized> Mutex<T> {
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
+                .get_or_init(Queue::new)
                 .pop()
                 .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
         }
     }
 
+    /// Returns `true` if the mutex is poisoned.
+    ///
+    /// A mutex gets poisoned when a panic unwinds through a guard that was
+    /// not caused by a coroutine cancellation.
     #[inline]
     pub fn is_poisoned(&self) -> bool {
         self.poison.get()
     }
 
+    /// Clears the poisoned state from this mutex.
+    ///
+    /// If the mutex is poisoned, it will remain poisoned until this function
+    /// is called. This allows recovering from a poisoned state and marking
+    /// that it has recovered. For example, if the value is overwritten by a
+    /// known-good value, then the mutex can be marked as un-poisoned. Or
+    /// possibly, the value could be inspected to determine if it is in a
+    /// consistent state, and if so the poison is removed.
+    pub fn clear_poison(&self) {
+        self.poison.clear();
+    }
+
+    /// Consumes this mutex, returning the underlying data.
+    ///
+    /// This does not attempt to acquire the lock, so it is up to the caller
+    /// to ensure the mutex is not locked — in particular, no waiter may be
+    /// parked in [`Mutex::lock`] on another reference to the mutex, or that
+    /// waiter would be handed the lock after the data is destroyed
+    /// (undefined behavior). This is the same contract as
+    /// [`std::sync::Mutex::into_inner`].
+    ///
+    /// # Errors
+    ///
+    /// If the mutex is poisoned, the data is still returned, wrapped in a
+    /// `PoisonError`.
     pub fn into_inner(self) -> LockResult<T>
     where
         T: Sized,
@@ -152,6 +213,18 @@ impl<T: ?Sized> Mutex<T> {
         poison::map_result(self.poison.borrow(), |_| data)
     }
 
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// Since this call borrows the `Mutex` mutably, no actual locking needs
+    /// to take place — but the caller must ensure the mutex is not locked
+    /// (and has no parked waiters) anywhere else, e.g. by owning the only
+    /// reference via `Arc::try_unwrap`. Violating this is undefined
+    /// behavior.
+    ///
+    /// # Errors
+    ///
+    /// If the mutex is poisoned, the data is still returned, wrapped in a
+    /// `PoisonError`.
     pub fn get_mut(&mut self) -> LockResult<&mut T> {
         // We know statically that there are no other references to `self`, so
         // there's no need to lock the inner lock.
@@ -163,6 +236,14 @@ impl<T: ?Sized> Mutex<T> {
 impl<T: Default> Default for Mutex<T> {
     fn default() -> Mutex<T> {
         Mutex::new(Default::default())
+    }
+}
+
+impl<T> From<T> for Mutex<T> {
+    /// Creates a new mutex in an unlocked state ready for use.
+    /// This is equivalent to [`Mutex::new`].
+    fn from(t: T) -> Mutex<T> {
+        Mutex::new(t)
     }
 }
 
@@ -180,9 +261,8 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
 
 impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
     fn new(lock: &'mutex Mutex<T>) -> LockResult<MutexGuard<'mutex, T>> {
-        // after get the lock we should sync the mem
-        fence(Ordering::SeqCst);
-
+        // the acquire ordering is provided by the SeqCst operations on
+        // `cnt` in the lock/unlock paths, no extra fence is needed
         poison::map_result(lock.poison.borrow(), |guard| MutexGuard {
             __lock: lock,
             __poison: guard,
@@ -208,9 +288,8 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         self.__lock.poison.done(&self.__poison);
+        // the SeqCst fetch_sub in `unlock` provides the release ordering
         self.__lock.unlock();
-        // after release the lock we should sync the mem
-        fence(Ordering::SeqCst);
     }
 }
 
@@ -254,6 +333,17 @@ mod tests {
         let m = Mutex::new(());
         drop(m.lock().unwrap());
         drop(m.lock().unwrap());
+    }
+
+    #[test]
+    fn test_const_new() {
+        // `static` requires a const initializer, so this proves
+        // `Mutex::new` is a `const fn`
+        static M: Mutex<i32> = Mutex::new(1);
+        let mut g = M.lock().unwrap();
+        *g += 1;
+        drop(g);
+        assert_eq!(*M.lock().unwrap(), 2);
     }
 
     #[test]
@@ -361,6 +451,28 @@ mod tests {
             Err(e) => assert_eq!(*e.into_inner(), NonCopy(10)),
             Ok(x) => panic!("get_mut of poisoned Mutex is Ok: {x:?}"),
         }
+    }
+
+    #[test]
+    fn test_clear_poison() {
+        let m = Arc::new(Mutex::new(NonCopy(10)));
+        let m2 = m.clone();
+        let _ = thread::spawn(move || {
+            let _lock = m2.lock().unwrap();
+            panic!("test panic in inner thread to poison mutex");
+        })
+        .join();
+
+        assert!(m.is_poisoned());
+        m.clear_poison();
+        assert!(!m.is_poisoned());
+        assert_eq!(*m.lock().unwrap(), NonCopy(10));
+    }
+
+    #[test]
+    fn test_from() {
+        let m = Mutex::from(NonCopy(10));
+        assert_eq!(m.into_inner().unwrap(), NonCopy(10));
     }
 
     #[test]

@@ -131,6 +131,8 @@ impl FastBlocker {
 #[derive(Debug)]
 pub struct SyncBlocker {
     // flag to tell unparked
+    // set once by `unpark` and never reset: a SyncBlocker is used for a
+    // single wait only, so the flag only ever needs to be checked once
     unparked: AtomicBool,
     // used to register release action
     release: AtomicBool,
