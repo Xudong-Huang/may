@@ -16,9 +16,22 @@ use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex};
 use super::poison;
 
-/// A reader-writer lock
+/// A reader-writer lock.
 ///
-/// The priority policy of the lock is that readers have weak priority
+/// This type of lock allows a number of readers or at most one writer at
+/// any point in time. The write portion of this lock typically allows
+/// modification of the underlying data (exclusive access) and the read
+/// portion of this lock typically allows for read-only access (shared
+/// access).
+///
+/// Works for both threads and coroutines (see the module docs): blocking
+/// in a coroutine yields the underlying thread instead of blocking it, and
+/// the wait can be canceled.
+///
+/// The priority policy of the lock is reader-preference: a new reader can
+/// join already-active readers without queueing, so a writer can starve
+/// under a constant stream of readers. Apart from that, waiter hand-off is
+/// FIFO.
 pub struct RwLock<T: ?Sized> {
     // below two variables consist a global mutex
     // we need to deal with the cancel logic differently
@@ -39,22 +52,26 @@ unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
 impl<T: ?Sized> UnwindSafe for RwLock<T> {}
 impl<T: ?Sized> RefUnwindSafe for RwLock<T> {}
 
+/// RAII structure used to release the shared read access of a lock when
+/// dropped.
 #[must_use]
 pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
     __lock: &'a RwLock<T>,
 }
 
-// impl<'a, T: ?Sized> !marker::Send for RwLockReadGuard<'a, T> {}
+// note: both guards are `Send`/`Sync` through their fields when `T` is,
+// which matches the current std behavior.
 
+/// RAII structure used to release the exclusive write access of a lock when
+/// dropped.
 #[must_use]
 pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
     __lock: &'a RwLock<T>,
     __poison: poison::Guard,
 }
 
-// impl<'a, T: ?Sized> !marker::Send for RwLockWriteGuard<'a, T> {}
-
 impl<T> RwLock<T> {
+    /// Creates a new instance of an `RwLock<T>` which is unlocked.
     pub fn new(t: T) -> RwLock<T> {
         RwLock {
             to_wake: SegQueue::new(),
@@ -141,6 +158,21 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
+    /// Locks this `RwLock` with shared read access, blocking the current
+    /// thread or coroutine until it can be acquired.
+    ///
+    /// The calling thread or coroutine will be blocked until there are no
+    /// writers which hold the lock. There may be other readers inside the
+    /// lock when this method returns.
+    ///
+    /// For a coroutine, the wait is cancellable: if the coroutine is
+    /// canceled while waiting for the lock, the cancel panic is propagated
+    /// and the lock is not acquired.
+    ///
+    /// # Errors
+    ///
+    /// If the lock is poisoned, the lock is still acquired and the guard is
+    /// returned inside the error; dropping the error releases the lock.
     pub fn read(&self) -> LockResult<RwLockReadGuard<'_, T>> {
         let mut r = self.rlock.lock().expect("rwlock read");
         if *r == 0 {
@@ -158,6 +190,20 @@ impl<T: ?Sized> RwLock<T> {
         RwLockReadGuard::new(self)
     }
 
+    /// Attempts to acquire this `RwLock` with shared read access without
+    /// blocking.
+    ///
+    /// If the access could not be granted at this time, then `Err` is
+    /// returned. Otherwise, an RAII guard is returned which will release
+    /// the shared access when it is dropped.
+    ///
+    /// # Errors
+    ///
+    /// * [`TryLockError::WouldBlock`] if the lock could not be acquired
+    ///   immediately.
+    /// * [`TryLockError::Poisoned`] if the lock was acquired but is
+    ///   poisoned; the guard can be recovered from the error and releasing
+    ///   it unlocks the lock.
     pub fn try_read(&self) -> TryLockResult<RwLockReadGuard<'_, T>> {
         let mut r = match self.rlock.try_lock() {
             Ok(r) => r,
@@ -189,6 +235,20 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
+    /// Locks this `RwLock` with exclusive write access, blocking the current
+    /// thread or coroutine until it can be acquired.
+    ///
+    /// This function will not return while other writers or other readers
+    /// currently have access to the lock.
+    ///
+    /// For a coroutine, the wait is cancellable: if the coroutine is
+    /// canceled while waiting for the lock, the cancel panic is propagated
+    /// and the lock is not acquired.
+    ///
+    /// # Errors
+    ///
+    /// If the lock is poisoned, the lock is still acquired and the guard is
+    /// returned inside the error; dropping the error releases the lock.
     pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, T>> {
         if let Err(ParkError::Canceled) = self.lock() {
             // now we can safely go with the cancel panic
@@ -197,6 +257,20 @@ impl<T: ?Sized> RwLock<T> {
         RwLockWriteGuard::new(self)
     }
 
+    /// Attempts to lock this `RwLock` with exclusive write access without
+    /// blocking.
+    ///
+    /// If the access could not be granted at this time, then `Err` is
+    /// returned. Otherwise, an RAII guard is returned which will release
+    /// the exclusive access when it is dropped.
+    ///
+    /// # Errors
+    ///
+    /// * [`TryLockError::WouldBlock`] if the lock could not be acquired
+    ///   immediately.
+    /// * [`TryLockError::Poisoned`] if the lock was acquired but is
+    ///   poisoned; the guard can be recovered from the error and releasing
+    ///   it unlocks the lock.
     pub fn try_write(&self) -> TryLockResult<RwLockWriteGuard<'_, T>> {
         if let Err(TryLockError::WouldBlock) = self.try_lock() {
             return Err(TryLockError::WouldBlock);
@@ -208,10 +282,27 @@ impl<T: ?Sized> RwLock<T> {
         self.unlock();
     }
 
+    /// Returns `true` if the lock is poisoned.
+    ///
+    /// A lock gets poisoned when a writer panics while holding it; reader
+    /// panics and coroutine cancellation do not poison it.
     pub fn is_poisoned(&self) -> bool {
         self.poison.get()
     }
 
+    /// Consumes this `RwLock`, returning the underlying data.
+    ///
+    /// This does not attempt to acquire the lock, so it is up to the caller
+    /// to ensure the lock is not locked — in particular, no waiter may be
+    /// parked in [`RwLock::read`]/[`RwLock::write`] on another reference to
+    /// the lock, or that waiter would be handed the lock after the data is
+    /// destroyed (undefined behavior). This is the same contract as
+    /// [`std::sync::RwLock::into_inner`].
+    ///
+    /// # Errors
+    ///
+    /// If the lock is poisoned, the data is still returned, wrapped in a
+    /// `PoisonError`.
     pub fn into_inner(self) -> LockResult<T>
     where
         T: Sized,
@@ -222,6 +313,18 @@ impl<T: ?Sized> RwLock<T> {
         poison::map_result(self.poison.borrow(), |_| data)
     }
 
+    /// Returns a mutable reference to the underlying data.
+    ///
+    /// Since this call borrows the `RwLock` mutably, no actual locking needs
+    /// to take place — but the caller must ensure the lock is not locked
+    /// (and has no parked waiters) anywhere else, e.g. by owning the only
+    /// reference via `Arc::try_unwrap`. Violating this is undefined
+    /// behavior.
+    ///
+    /// # Errors
+    ///
+    /// If the lock is poisoned, the data is still returned, wrapped in a
+    /// `PoisonError`.
     pub fn get_mut(&mut self) -> LockResult<&mut T> {
         // We know statically that there are no other references to `self`, so
         // there's no need to lock the inner lock.
