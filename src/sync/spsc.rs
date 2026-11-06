@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::thread::Thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::AtomicOption;
 use crate::coroutine_impl::{
@@ -431,36 +431,33 @@ impl<T> Receiver<T> {
     }
 
     fn recv_timeout_thread(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        // Store the blocker first, then try_recv to handle race condition.
-        // If data arrives between try_recv and park, send() will take the
-        // blocker and unpark us.
-        let blocker = Blocker::new_thread(std::thread::current());
-        self.inner.wait_co.store(blocker);
-        match self.inner.try_recv() {
-            Err(TryRecvError::Empty) => {
-                // no data, wait for it with timeout
-                std::thread::park_timeout(timeout);
+        let start = Instant::now();
+        loop {
+            let blocker = Blocker::new_thread(std::thread::current());
+            self.inner.wait_co.store(blocker);
+            std::sync::atomic::fence(Ordering::SeqCst);
+            match self.inner.try_recv() {
+                Err(TryRecvError::Empty) => {}
+                data => {
+                    self.inner.wait_co.clear();
+                    return data.map_err(|_| RecvTimeoutError::Disconnected);
+                }
             }
-            data => {
+
+            let remaining = timeout.saturating_sub(start.elapsed());
+            if remaining.is_zero() {
                 self.inner.wait_co.clear();
-                return data.map_err(|_| RecvTimeoutError::Disconnected);
+                return match self.inner.try_recv() {
+                    Ok(t) => Ok(t),
+                    Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+                    Err(TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
+                };
             }
-        }
 
-        // After waking, our blocker may still be registered: a sender can
-        // push data and find the blocker only after we already returned
-        // from park_timeout, which would unpark a thread that is no longer
-        // waiting and keep the Thread handle alive until the queue drops.
-        // Clear it on every wakeup path; the take is a no-op if send()
-        // already consumed the blocker.
-        self.inner.wait_co.clear();
-
-        // After waking (from data or timeout), try to receive again.
-        // Data might have arrived while we were parked.
-        match self.inner.try_recv() {
-            Ok(t) => Ok(t),
-            Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
-            Err(TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
+            // As in recv(), bound each park to recover from a lost wakeup.
+            // An unpark token or spurious wakeup does not end the timeout.
+            std::thread::park_timeout(remaining.min(Duration::from_millis(10)));
+            self.inner.wait_co.clear();
         }
     }
 
@@ -894,6 +891,55 @@ mod tests {
         let result = rx.recv_timeout(Duration::from_secs(5));
         sender.join().unwrap();
         assert_eq!(result, Err(RecvTimeoutError::Disconnected));
+    }
+
+    #[test]
+    fn recv_timeout_thread_ignores_existing_unpark_token() {
+        thread::spawn(|| {
+            let (_tx, rx) = channel::<i32>();
+            thread::current().unpark();
+            let start = Instant::now();
+            assert_eq!(
+                rx.recv_timeout(Duration::from_millis(100)),
+                Err(RecvTimeoutError::Timeout)
+            );
+            assert!(start.elapsed() >= Duration::from_millis(100));
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn recv_timeout_thread_disconnect_after_early_wakeup() {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::<i32>();
+        let receiver = thread::spawn(move || {
+            thread::current().unpark();
+            ready_tx.send(()).unwrap();
+            rx.recv_timeout(Duration::from_secs(5))
+        });
+        ready_rx.recv().unwrap();
+        thread::sleep(Duration::from_millis(20));
+        drop(tx);
+        assert_eq!(
+            receiver.join().unwrap(),
+            Err(RecvTimeoutError::Disconnected)
+        );
+    }
+
+    #[test]
+    fn recv_timeout_thread_data_after_early_wakeup() {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (tx, rx) = channel::<i32>();
+        let receiver = thread::spawn(move || {
+            thread::current().unpark();
+            ready_tx.send(()).unwrap();
+            rx.recv_timeout(Duration::from_secs(5))
+        });
+        ready_rx.recv().unwrap();
+        thread::sleep(Duration::from_millis(20));
+        tx.send(88).unwrap();
+        assert_eq!(receiver.join().unwrap(), Ok(88));
     }
 
     #[test]
