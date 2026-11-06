@@ -73,7 +73,9 @@ impl<T: ?Sized> RwLock<T> {
         match self.try_lock() {
             Ok(_) => return Ok(()),
             Err(TryLockError::WouldBlock) => {}
-            Err(TryLockError::Poisoned(_)) => return Err(ParkError::Timeout),
+            Err(TryLockError::Poisoned(_)) => {
+                unreachable!("poison is reported only after the lock is acquired")
+            }
         }
 
         let cur = SyncBlocker::current();
@@ -107,20 +109,17 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     fn try_lock(&self) -> TryLockResult<()> {
-        if self.cnt.load(Ordering::SeqCst) == 0 {
-            match self
-                .cnt
-                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            {
-                Ok(_) => Ok(()),
-                Err(_) => {
-                    if self.poison.get() {
-                        Err(TryLockError::Poisoned(PoisonError::new(())))
-                    } else {
-                        Err(TryLockError::WouldBlock)
-                    }
-                }
-            }
+        // note: a failed CAS must only report `WouldBlock`. Reporting
+        // `Poisoned` here would hand back a guard-in-error whose lock was
+        // never acquired, and its drop would unlock a lock it never held,
+        // underflowing `cnt`. Poison is reported by the guard constructors,
+        // which are only called after a real acquisition.
+        if self
+            .cnt
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            Ok(())
         } else {
             Err(TryLockError::WouldBlock)
         }
@@ -176,10 +175,10 @@ impl<T: ?Sized> RwLock<T> {
             }
         }
 
-        let g = RwLockReadGuard::new(self)?;
-        // finally we add rlock
+        // increment the reader count before the poison check so that the
+        // guard returned inside a `Poisoned` error balances its own drop
         *r += 1;
-        Ok(g)
+        Ok(RwLockReadGuard::new(self)?)
     }
 
     fn read_unlock(&self) {
@@ -503,6 +502,69 @@ mod tests {
         }
 
         drop(read_guard);
+    }
+
+    #[test]
+    fn test_try_read_poisoned_free() {
+        // poison the rwlock
+        let rw = Arc::new(RwLock::new(1));
+        let rw2 = rw.clone();
+        let _: Result<(), _> = thread::spawn(move || {
+            let _lock = rw2.write().unwrap();
+            panic!();
+        })
+        .join();
+        assert!(rw.is_poisoned());
+
+        // a poisoned try_read must report Poisoned with the lock held;
+        // dropping the error must release the lock again
+        drop(rw.try_read().unwrap_err());
+
+        // the lock must still be usable: acquired with a poisoned report
+        match rw.try_write() {
+            Err(TryLockError::Poisoned(_)) => {}
+            Err(TryLockError::WouldBlock) => panic!("rwlock corrupted after poisoned try_read"),
+            Ok(_) => panic!("try_write should report poison"),
+        };
+    }
+
+    #[test]
+    fn test_poisoned_race_no_underflow() {
+        use std::sync::Barrier;
+
+        let rw = Arc::new(RwLock::new(1));
+        let rw2 = rw.clone();
+        let _: Result<(), _> = thread::spawn(move || {
+            let _lock = rw2.write().unwrap();
+            panic!();
+        })
+        .join();
+        assert!(rw.is_poisoned());
+
+        // threads race try_write on a poisoned free rwlock; the loser
+        // of the CAS must get WouldBlock, not a guard it never acquired
+        for _ in 0..2000 {
+            let barrier = Arc::new(Barrier::new(8));
+            let mut hs = vec![];
+            for _ in 0..8 {
+                let rw = rw.clone();
+                let b = barrier.clone();
+                hs.push(thread::spawn(move || {
+                    b.wait();
+                    drop(rw.try_write());
+                }));
+            }
+            for h in hs {
+                h.join().unwrap();
+            }
+        }
+
+        // the lock must still be usable
+        match rw.try_write() {
+            Err(TryLockError::Poisoned(_)) => {}
+            Err(TryLockError::WouldBlock) => panic!("rwlock corrupted after poisoned try_write race"),
+            Ok(_) => panic!("try_write should report poison"),
+        };
     }
 
     #[test]
