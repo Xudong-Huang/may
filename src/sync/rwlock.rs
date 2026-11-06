@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::sync::{LockResult, PoisonError, TryLockError, TryLockResult};
+use std::sync::{LockResult, OnceLock, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
@@ -35,8 +35,9 @@ use super::poison;
 pub struct RwLock<T: ?Sized> {
     // below two variables consist a global mutex
     // we need to deal with the cancel logic differently
-    // the waiting blocker list
-    to_wake: SegQueue<Arc<SyncBlocker>>,
+    // the waiting blocker list, allocated lazily on first contention
+    // so that `RwLock::new` can be a const fn
+    to_wake: OnceLock<SegQueue<Arc<SyncBlocker>>>,
     // track how many blockers are waiting on the mutex
     cnt: AtomicUsize,
 
@@ -59,8 +60,10 @@ pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
     __lock: &'a RwLock<T>,
 }
 
-// note: both guards are `Send`/`Sync` through their fields when `T` is,
-// which matches the current std behavior.
+// note: the write guard is `Send`/`Sync` through its fields when `T` is,
+// which matches the current std behavior. The read guard only exposes
+// shared access, so like std it is additionally `Sync` on `T: Sync` alone.
+unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
 
 /// RAII structure used to release the exclusive write access of a lock when
 /// dropped.
@@ -72,9 +75,12 @@ pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
 
 impl<T> RwLock<T> {
     /// Creates a new instance of an `RwLock<T>` which is unlocked.
-    pub fn new(t: T) -> RwLock<T> {
+    ///
+    /// This is a `const fn`: the waiter queue is initialized lazily on
+    /// first contention, so an uncontended lock never allocates.
+    pub const fn new(t: T) -> RwLock<T> {
         RwLock {
-            to_wake: SegQueue::new(),
+            to_wake: OnceLock::new(),
             cnt: AtomicUsize::new(0),
             rlock: Mutex::new(0),
             poison: poison::Flag::new(),
@@ -97,10 +103,11 @@ impl<T: ?Sized> RwLock<T> {
 
         let cur = SyncBlocker::current();
         // register blocker first
-        self.to_wake.push(cur.clone());
+        self.to_wake.get_or_init(SegQueue::new).push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             self.to_wake
+                .get_or_init(SegQueue::new)
                 .pop()
                 .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
@@ -145,6 +152,7 @@ impl<T: ?Sized> RwLock<T> {
     fn unlock(&self) {
         if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
             self.to_wake
+                .get_or_init(SegQueue::new)
                 .pop()
                 .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
@@ -290,6 +298,15 @@ impl<T: ?Sized> RwLock<T> {
         self.poison.get()
     }
 
+    /// Clears the poisoned state from this lock.
+    ///
+    /// If the lock is poisoned, it will remain poisoned until this function
+    /// is called. This allows recovering from a poisoned state and marking
+    /// that it has recovered.
+    pub fn clear_poison(&self) {
+        self.poison.clear();
+    }
+
     /// Consumes this `RwLock`, returning the underlying data.
     ///
     /// This does not attempt to acquire the lock, so it is up to the caller
@@ -335,13 +352,16 @@ impl<T: ?Sized> RwLock<T> {
 
 impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut d = f.debug_struct("RwLock");
         match self.try_read() {
-            Ok(guard) => write!(f, "RwLock {{ data: {:?} }}", &*guard),
+            Ok(guard) => d.field("data", &&*guard),
             Err(TryLockError::Poisoned(err)) => {
-                write!(f, "RwLock {{ data: Poisoned({:?}) }}", &**err.get_ref())
+                d.field("data", &&**err.get_ref())
             }
-            Err(TryLockError::WouldBlock) => write!(f, "RwLock {{ <locked> }}"),
-        }
+            Err(TryLockError::WouldBlock) => d.field("data", &format_args!("<locked>")),
+        };
+        d.field("poisoned", &self.poison.get());
+        d.finish_non_exhaustive()
     }
 }
 
@@ -349,6 +369,14 @@ impl<T: Default> Default for RwLock<T> {
     /// Creates a new `RwLock<T>`, with the `Default` value for T.
     fn default() -> RwLock<T> {
         RwLock::new(Default::default())
+    }
+}
+
+impl<T> From<T> for RwLock<T> {
+    /// Creates a new instance of an `RwLock<T>` which is unlocked.
+    /// This is equivalent to [`RwLock::new`].
+    fn from(t: T) -> RwLock<T> {
+        RwLock::new(t)
     }
 }
 
@@ -367,19 +395,19 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for RwLockReadGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLockReadGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RwLockReadGuard")
             .field("lock", &self.__lock)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for RwLockWriteGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLockWriteGuard<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("RwLockWriteGuard")
             .field("lock", &self.__lock)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -733,6 +761,48 @@ mod tests {
             Err(e) => assert_eq!(*e.into_inner(), NonCopy(10)),
             Ok(x) => panic!("get_mut of poisoned RwLock is Ok: {x:?}"),
         }
+    }
+
+    #[test]
+    fn test_const_new() {
+        // `static` requires a const initializer, so this proves
+        // `RwLock::new` is a `const fn`
+        static RW: RwLock<i32> = RwLock::new(1);
+        let mut g = RW.write().unwrap();
+        *g += 1;
+        drop(g);
+        assert_eq!(*RW.read().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_clear_poison() {
+        let rw = Arc::new(RwLock::new(NonCopy(10)));
+        let rw2 = rw.clone();
+        let _ = thread::spawn(move || {
+            let _lock = rw2.write().unwrap();
+            panic!("test panic in inner thread to poison RwLock");
+        })
+        .join();
+
+        assert!(rw.is_poisoned());
+        rw.clear_poison();
+        assert!(!rw.is_poisoned());
+        assert_eq!(*rw.read().unwrap(), NonCopy(10));
+    }
+
+    #[test]
+    fn test_from() {
+        let rw = RwLock::from(NonCopy(10));
+        assert_eq!(rw.into_inner().unwrap(), NonCopy(10));
+    }
+
+    #[test]
+    fn test_read_guard_sync_bound() {
+        fn assert_sync<T: Sync>() {}
+        // `&dyn Sync` is Sync but not Send: the read guard only exposes
+        // shared access, so like std it must be Sync on the `T: Sync`
+        // bound alone, without requiring `T: Send + Sync` via the lock
+        assert_sync::<super::RwLockReadGuard<'static, &'static dyn Sync>>();
     }
 
     #[test]
