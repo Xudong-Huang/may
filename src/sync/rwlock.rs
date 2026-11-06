@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::{LockResult, OnceLock, PoisonError, TryLockError, TryLockResult};
 
 use crate::cancel::trigger_cancel_panic;
+use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
 
@@ -236,7 +237,25 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     fn read_unlock(&self) {
+        // this runs from `RwLockReadGuard::drop`, which may execute while a
+        // cancel panic is unwinding the coroutine. If the rlock acquisition
+        // has to park while the cancel bit is set, the park's subscribe
+        // re-delivers the cancel, the mutex would trigger a second cancel
+        // panic and abort the process with a panic-while-panicking. Disable
+        // the cancel around the acquisition so the drop always completes;
+        // the pending cancel resumes once the unwind finishes.
+        let cancel = if is_coroutine() {
+            Some(current_cancel_data())
+        } else {
+            None
+        };
+        if let Some(c) = cancel.as_ref() {
+            c.disable_cancel();
+        }
         let mut r = self.rlock.lock().expect("rwlock read_unlock");
+        if let Some(c) = cancel.as_ref() {
+            c.enable_cancel();
+        }
         *r -= 1;
         if *r == 0 {
             self.unlock();
@@ -913,5 +932,111 @@ mod tests {
         let a = rx.recv().unwrap();
         assert_eq!(a, 10);
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn test_rwlock_write_held_cancel() {
+        use crate::sleep::sleep;
+        use std::time::Duration;
+
+        let rw1 = Arc::new(RwLock::new(0));
+        let rw2 = rw1.clone();
+        let rw3 = rw1.clone();
+
+        let h1 = go!(move || {
+            let mut g = rw2.write().unwrap();
+            // cancel while holding the write lock
+            // this should not poison the lock
+            sleep(Duration::from_secs(10000));
+            *g += 1;
+        });
+
+        let h2 = go!(move || {
+            // let h1 grab the lock first
+            sleep(Duration::from_millis(50));
+            let mut g = rw3.write().unwrap();
+            *g += 1;
+        });
+
+        // let h1 hold the write lock
+        sleep(Duration::from_millis(100));
+        // cancel h1 while it holds the lock
+        h1.coroutine().cancel();
+        h1.join().unwrap_err();
+        h2.join().unwrap();
+
+        assert!(!rw1.is_poisoned());
+        let g = rw1.read().unwrap();
+        assert_eq!(*g, 1);
+    }
+
+    #[test]
+    fn test_rwlock_read_held_cancel() {
+        use crate::sleep::sleep;
+        use std::time::Duration;
+
+        let rw1 = Arc::new(RwLock::new(0));
+        let rw2 = rw1.clone();
+
+        let h1 = go!(move || {
+            let _g = rw2.read().unwrap();
+            // cancel while holding the read lock
+            sleep(Duration::from_secs(10000));
+        });
+
+        // let h1 grab the read lock
+        sleep(Duration::from_millis(100));
+        h1.coroutine().cancel();
+        h1.join().unwrap_err();
+
+        // the read guard must have been released during the unwind and
+        // the lock must not be poisoned
+        assert!(!rw1.is_poisoned());
+        let mut g = rw1.write().unwrap();
+        *g += 1;
+        assert_eq!(*g, 1);
+    }
+
+    #[test]
+    fn test_rwlock_read_drop_cancel_stress() {
+        use crate::sleep::sleep;
+        use std::time::Duration;
+
+        let rw = Arc::new(RwLock::new(0usize));
+
+        // a thread that continuously hammers read() to keep the internal
+        // reader-count mutex contended while read guards drop during cancel
+        // unwinds. read() barges past the held read lock instead of
+        // blocking (write() would park on the global lock and stop the
+        // hammer), so it keeps hitting the reader-count mutex the whole
+        // time the coroutine below holds its guard.
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop2 = stop.clone();
+        let rw_hammer = rw.clone();
+        let hammer = thread::spawn(move || {
+            while !stop2.load(Ordering::Relaxed) {
+                drop(rw_hammer.read().unwrap());
+            }
+        });
+
+        for _ in 0..100 {
+            let rw_co = rw.clone();
+            let h = go!(move || {
+                let _g = rw_co.read().unwrap();
+                // cancel while holding the read lock, racing the hammer
+                // thread for the internal reader-count mutex during the
+                // guard drop
+                sleep(Duration::from_millis(50));
+            });
+            sleep(Duration::from_millis(1));
+            h.coroutine().cancel();
+            h.join().unwrap_err();
+        }
+
+        stop.store(true, Ordering::Relaxed);
+        hammer.join().unwrap();
+
+        let mut g = rw.write().unwrap();
+        *g += 1;
     }
 }
