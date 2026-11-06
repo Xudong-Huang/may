@@ -447,6 +447,14 @@ impl<T> Receiver<T> {
             }
         }
 
+        // After waking, our blocker may still be registered: a sender can
+        // push data and find the blocker only after we already returned
+        // from park_timeout, which would unpark a thread that is no longer
+        // waiting and keep the Thread handle alive until the queue drops.
+        // Clear it on every wakeup path; the take is a no-op if send()
+        // already consumed the blocker.
+        self.inner.wait_co.clear();
+
         // After waking (from data or timeout), try to receive again.
         // Data might have arrived while we were parked.
         match self.inner.try_recv() {
@@ -921,6 +929,23 @@ mod tests {
             rx.recv_timeout(Duration::from_millis(10)),
             Err(RecvTimeoutError::Timeout)
         );
+    }
+
+    #[test]
+    fn recv_timeout_thread_no_stale_blocker() {
+        let (tx, rx) = channel::<i32>();
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(10)),
+            Err(RecvTimeoutError::Timeout)
+        );
+        // send() must not find a registered waiter: if the timeout left a
+        // stale blocker behind, send() would unpark us here and the next
+        // park would return immediately instead of sleeping.
+        tx.send(1).unwrap();
+        let start = Instant::now();
+        thread::park_timeout(Duration::from_millis(30));
+        assert!(start.elapsed() >= Duration::from_millis(20));
+        assert_eq!(rx.try_recv(), Ok(1));
     }
 
     // -----------------------------------------------------------------------
