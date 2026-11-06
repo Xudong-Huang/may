@@ -2,6 +2,7 @@
 //! please ref the doc from std::sync::condvar
 use crossbeam::queue::SegQueue;
 
+use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::{LockResult, PoisonError};
@@ -9,8 +10,27 @@ use std::time::Duration;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex, MutexGuard};
-use crate::cancel::trigger_cancel_panic;
+use crate::cancel::{trigger_cancel_panic, Cancel};
 use crate::park::ParkError;
+
+/// restores cancel delivery on drop, so that a panic between
+/// `disable_cancel` and `enable_cancel` cannot leave the coroutine with
+/// cancel permanently disabled (the cancel data state is inflated by 2 per
+/// disable and only deflated by a matching enable)
+struct CancelDisableGuard(&'static Cancel);
+
+impl CancelDisableGuard {
+    fn new(cancel: &'static Cancel) -> Self {
+        cancel.disable_cancel();
+        CancelDisableGuard(cancel)
+    }
+}
+
+impl Drop for CancelDisableGuard {
+    fn drop(&mut self) {
+        self.0.enable_cancel();
+    }
+}
 
 /// A type indicating whether a timed wait on a condition variable returned
 /// due to a time out or not.
@@ -26,13 +46,18 @@ impl WaitTimeoutResult {
 
 pub struct Condvar {
     // the waiting blocker list
+    // NOTE: a blocker that exits the wait via timeout/cancel without being
+    // notified stays in the queue (with the release flag set) until a
+    // notify pops it, so the signal can be forwarded to the next live
+    // waiter. If a condvar is never notified again, those blockers are
+    // retained for the lifetime of the condvar.
     to_wake: SegQueue<Arc<SyncBlocker>>,
     // used to verify the same mutex instance
     mutex: AtomicUsize,
 }
 
 impl Condvar {
-    pub fn new() -> Condvar {
+    pub const fn new() -> Condvar {
         Condvar {
             to_wake: SegQueue::new(),
             mutex: AtomicUsize::new(0),
@@ -50,31 +75,25 @@ impl Condvar {
         let cur = SyncBlocker::current();
 
         // we can't cancel panic here!!
-        if let Some(c) = cancel.as_ref() {
-            c.disable_cancel();
-        }
+        let _g = cancel.map(CancelDisableGuard::new);
 
         self.to_wake.push(cur.clone());
 
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
-        if let Some(c) = cancel.as_ref() {
-            c.enable_cancel();
-        }
+        // re-enable cancel before parking: a pending cancel is delivered
+        // by the park itself
+        drop(_g);
 
         // wait until coming back
         let ret = cur.park(dur);
-        // disable cancel panic
-        if let Some(c) = cancel.as_ref() {
-            c.disable_cancel();
-        }
-        // don't run the guard destructor
-        ::std::mem::forget(lock.lock());
 
+        // when timed out or canceled, register the release action BEFORE
+        // the re-lock below: the re-lock can block indefinitely, and a
+        // notify that pops our blocker while we are blocked must forward
+        // the signal to the next live waiter instead of delivering it to
+        // a waiter that is already leaving
         if ret.is_err() {
-            // when in a cancel state, could cause problem for the lock
-            // make notify never panic by disable the cancel bit
-
             // check the unpark status
             if cur.is_unparked() {
                 self.notify_one();
@@ -88,14 +107,17 @@ impl Condvar {
             }
         }
 
+        // disable cancel panic
+        let _g = cancel.map(CancelDisableGuard::new);
+        // don't run the guard destructor
+        ::std::mem::forget(lock.lock());
+
         // drop the parker here without panic!
         // it may panic in the drop of Park
         drop(cur);
 
-        // enable cancel panic
-        if let Some(c) = cancel.as_ref() {
-            c.enable_cancel();
-        }
+        // enable cancel panic (guard drop)
+        drop(_g);
 
         ret
     }
@@ -136,6 +158,29 @@ impl Condvar {
         Ok(guard)
     }
 
+    pub fn wait_timeout_while<'a, T, F>(
+        &self,
+        mut guard: MutexGuard<'a, T>,
+        dur: Duration,
+        mut condition: F,
+    ) -> LockResult<(MutexGuard<'a, T>, WaitTimeoutResult)>
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        while condition(&mut *guard) {
+            match self.wait_timeout(guard, dur) {
+                Ok((g, timeout_result)) => {
+                    if timeout_result.timed_out() {
+                        return Ok((g, timeout_result));
+                    }
+                    guard = g;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok((guard, WaitTimeoutResult(false)))
+    }
+
     pub fn wait_timeout<'a, T>(
         &self,
         guard: MutexGuard<'a, T>,
@@ -166,15 +211,23 @@ impl Condvar {
     }
 
     pub fn notify_one(&self) {
-        // NOTICE: the following code would not drop the lock!
-        // if let Some(w) = self.to_wake.lock().unwrap().pop() {
+        // loop instead of recursing on the release chain: each popped
+        // blocker may have registered a release action (it timed out or was
+        // canceled and won't take the lock), in which case the signal must
+        // be passed on to the next waiter. A cancel storm can queue many
+        // released blockers back to back, and a recursive call would
+        // overflow the (small, 32KB default) coroutine stack and abort
+        loop {
+            let w = self.to_wake.pop();
 
-        let w = self.to_wake.pop();
-
-        if let Some(w) = w {
-            w.unpark();
-            if w.take_release() {
-                self.notify_one();
+            if let Some(w) = w {
+                w.unpark();
+                // when release is taken, pass the signal to the next waiter
+                if !w.take_release() {
+                    break;
+                }
+            } else {
+                break;
             }
         }
     }
@@ -211,13 +264,27 @@ impl Default for Condvar {
     }
 }
 
+impl fmt::Debug for Condvar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Condvar").finish_non_exhaustive()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::sleep::sleep;
     use crate::sync::mpsc::channel;
     use crate::sync::{Condvar, Mutex};
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn test_const_new() {
+        static C: Condvar = Condvar::new();
+        C.notify_one();
+        C.notify_all();
+    }
 
     #[test]
     fn smoke() {
@@ -382,5 +449,198 @@ mod tests {
         // for most cases this assertion is correct
         // rarely try_recv would return Ok(())
         // assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    }
+
+    #[test]
+    fn test_wait_timeout_while() {
+        let m = Arc::new(Mutex::new(false));
+        let c = Arc::new(Condvar::new());
+
+        // condition already false: returns immediately without timing out
+        let g = m.lock().unwrap();
+        let (g, to) = c
+            .wait_timeout_while(g, Duration::from_millis(1), |p| *p)
+            .unwrap();
+        assert!(!to.timed_out());
+        drop(g);
+
+        // condition stays true: the wait times out
+        {
+            let mut g = m.lock().unwrap();
+            *g = true;
+        }
+        let g = m.lock().unwrap();
+        let (g, to) = c
+            .wait_timeout_while(g, Duration::from_millis(1), |p| *p)
+            .unwrap();
+        assert!(to.timed_out());
+        drop(g);
+
+        // condition flipped by another thread: returns without timing out
+        {
+            let mut g = m.lock().unwrap();
+            *g = false;
+        }
+        let m2 = m.clone();
+        let c2 = c.clone();
+        let g = m.lock().unwrap();
+        let _t = thread::spawn(move || {
+            let mut g = m2.lock().unwrap();
+            *g = true;
+            c2.notify_one();
+            drop(g);
+        });
+        let (g, to) = c
+            .wait_timeout_while(g, Duration::from_secs(2), |p| !*p)
+            .unwrap();
+        assert!(!to.timed_out());
+        drop(g);
+    }
+
+    // regression: a waiter that timed out while the notifier holds the
+    // mutex must not consume the signal meant for the live waiter behind
+    // it in the queue — the release action is registered before the
+    // blocking mutex re-lock
+    #[test]
+    fn test_timed_out_waiter_forwards_notify() {
+        let m = Arc::new(Mutex::new(()));
+        let m1 = m.clone();
+        let m2 = m.clone();
+        let m3 = m.clone();
+        let c = Arc::new(Condvar::new());
+        let c1 = c.clone();
+        let c2 = c.clone();
+        let c3 = c.clone();
+        let (tx, rx) = channel();
+
+        // W1: first in the condvar queue, times out quickly
+        let h1 = go!(move || {
+            let g = m1.lock().unwrap();
+            let (g, to) = c1.wait_timeout(g, Duration::from_millis(100)).unwrap();
+            assert!(to.timed_out());
+            drop(g);
+        });
+
+        // W2: second in the queue, must receive the forwarded signal
+        let h2 = go!(move || {
+            sleep(Duration::from_millis(20)); // let W1 enqueue first
+            let g = m2.lock().unwrap();
+            tx.send(()).unwrap(); // parked in the condvar wait below
+            let (g, to) = c2.wait_timeout(g, Duration::from_secs(2)).unwrap();
+            assert!(!to.timed_out());
+            drop(g);
+        });
+
+        // W2 holds the mutex, about to park: this lock blocks until W2's
+        // wait unlocks the mutex. W1's 100ms timeout fires while we hold
+        // it, so W1 blocks in its mutex re-lock.
+        rx.recv().unwrap();
+        let g = m3.lock().unwrap();
+        sleep(Duration::from_millis(200));
+        // pops W1's blocker: the signal must be forwarded to W2
+        c3.notify_one();
+        drop(g);
+        h1.join().unwrap();
+        h2.join().unwrap();
+    }
+
+    // regression: same as above but with a canceled waiter instead of a
+    // timed out one
+    #[test]
+    fn test_canceled_waiter_forwards_notify() {
+        let m = Arc::new(Mutex::new(()));
+        let m1 = m.clone();
+        let m2 = m.clone();
+        let m3 = m.clone();
+        let c = Arc::new(Condvar::new());
+        let c1 = c.clone();
+        let c2 = c.clone();
+        let c3 = c.clone();
+        let (tx, rx) = channel();
+
+        // W1: first in the condvar queue, will be canceled
+        let h1 = go!(move || {
+            let g = m1.lock().unwrap();
+            let _ = c1.wait(g).unwrap(); // cancel panic propagates
+            unreachable!();
+        });
+
+        // W2: second in the queue, must receive the forwarded signal
+        let h2 = go!(move || {
+            sleep(Duration::from_millis(20)); // let W1 enqueue first
+            let g = m2.lock().unwrap();
+            tx.send(()).unwrap(); // parked in the condvar wait below
+            let (g, to) = c2.wait_timeout(g, Duration::from_secs(2)).unwrap();
+            assert!(!to.timed_out());
+            drop(g);
+        });
+
+        // W2 holds the mutex, about to park: this lock blocks until W2's
+        // wait unlocks the mutex. We cancel W1 while holding it: W1
+        // registers its release action, then blocks in its mutex re-lock.
+        rx.recv().unwrap();
+        let g = m3.lock().unwrap();
+        h1.coroutine().cancel();
+        sleep(Duration::from_millis(100));
+        // pops W1's blocker: the signal must be forwarded to W2
+        c3.notify_one();
+        drop(g);
+        assert!(h1.join().is_err());
+        h2.join().unwrap();
+    }
+
+    // regression: a chain of released blockers must be walked iteratively
+    // — a recursive notify_one would overflow the coroutine stack
+    #[test]
+    fn test_notify_one_release_chain() {
+        const N: usize = 500;
+
+        let m = Arc::new(Mutex::new(()));
+        let c = Arc::new(Condvar::new());
+        let (tx_timeout, rx_timeout) = channel();
+        let (tx_live, rx_live) = channel();
+        let mut handles = vec![];
+        for _ in 0..N - 1 {
+            let m = m.clone();
+            let c = c.clone();
+            let tx = tx_timeout.clone();
+            handles.push(go!(move || {
+                let g = m.lock().unwrap();
+                let (g, to) = c.wait_timeout(g, Duration::from_millis(10)).unwrap();
+                assert!(to.timed_out());
+                drop(g);
+                tx.send(()).unwrap();
+            }));
+        }
+        drop(tx_timeout);
+
+        // live waiter: enqueues last, must receive the forwarded signal
+        let m_live = m.clone();
+        let c_live = c.clone();
+        let h = go!(move || {
+            sleep(Duration::from_millis(30)); // let the timeouts enqueue first
+            let g = m_live.lock().unwrap();
+            tx_live.send(()).unwrap(); // about to park below
+            let (g, to) = c_live.wait_timeout(g, Duration::from_secs(2)).unwrap();
+            assert!(!to.timed_out());
+            drop(g);
+        });
+
+        // wait for all timed-out waiters to exit (release registered)
+        for _ in 0..N - 1 {
+            rx_timeout.recv().unwrap();
+        }
+        rx_live.recv().unwrap();
+        // blocks until the live waiter's wait unlocks the mutex, so the
+        // notify below finds its blocker in the queue
+        let g = m.lock().unwrap();
+        drop(g);
+        // walks the whole release chain and wakes the live waiter
+        c.notify_one();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+        h.join().unwrap();
     }
 }
