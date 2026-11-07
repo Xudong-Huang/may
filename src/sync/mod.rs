@@ -22,6 +22,6 @@ pub use blocking::{Blocker, FastBlocker};
 pub use condvar::{Condvar, WaitTimeoutResult};
 pub use mutex::{Mutex, MutexGuard};
 pub use rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-pub use semphore::Semphore;
+pub use semphore::{Semaphore, Semphore};
 pub use sync_flag::SyncFlag;
 pub use wait_group::WaitGroup;

@@ -152,15 +152,35 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     fn unlock(&self) {
-        if self.cnt.fetch_sub(1, Ordering::SeqCst) > 1 {
-            self.to_wake
+        // pass the lock down the waiter chain iteratively: a popped waiter
+        // that registered a release action timed out or was canceled and
+        // won't take the lock, so the hand-off continues with the next
+        // waiter. Recursing here would overflow the (small, 32KB default)
+        // coroutine stack when a cancel storm leaves a long chain of
+        // released waiters (see the same fix in `Mutex::unlock` and
+        // `Condvar::notify_one`).
+        let mut cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
+        while cnt > 1 {
+            let w = self
+                .to_wake
                 .get_or_init(SegQueue::new)
                 .pop()
-                .map(|w| self.unpark_one(&w))
                 .expect("got null blocker!");
+
+            w.unpark();
+            // when release is taken, the waiter is leaving without the lock
+            // and its slot must be released as well
+            if !w.take_release() {
+                break;
+            }
+            cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
+    /// Unpark one waiter for the first-grab path in [`lock`].
+    ///
+    /// If the waiter has already registered its release action, continue the
+    /// hand-off with the iterative [`unlock`] loop.
     fn unpark_one(&self, w: &SyncBlocker) {
         w.unpark();
         if w.take_release() {
@@ -1078,5 +1098,58 @@ mod tests {
 
         let mut g = rw.write().unwrap();
         *g += 1;
+    }
+
+    /// Regression test for the hand-off chain: a cancel storm leaves many
+    /// released blockers queued, and unlocking must walk past all of them
+    /// iteratively. The old implementation recursed once per released
+    /// waiter and overflowed the 32KB coroutine stack on a chain this long.
+    #[test]
+    fn test_rwlock_unlock_skips_canceled_waiters() {
+        const N: usize = 500;
+
+        let rw = Arc::new(RwLock::new(0usize));
+        let (ready_tx, ready_rx) = channel();
+        let (release_tx, release_rx) = channel();
+
+        // hold the write lock from a coroutine so the hand-off on drop runs
+        // on a coroutine stack
+        let rw_holder = rw.clone();
+        let holder = go!(move || {
+            let _g = rw_holder.write().unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            // `_g` drops here, performing the hand-off
+        });
+        ready_rx.recv().unwrap();
+
+        let waiters: Vec<_> = (0..N)
+            .map(|_| {
+                let rw = rw.clone();
+                go!(move || {
+                    drop(rw.write().unwrap());
+                })
+            })
+            .collect();
+
+        // let the waiters park, then cancel them all; each leaves a released
+        // blocker in the hand-off queue
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        for w in &waiters {
+            w.coroutine().cancel();
+        }
+        for w in waiters {
+            assert!(w.join().is_err());
+        }
+
+        // dropping the guard now walks the released chain on a 32KB stack
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+
+        // the lock must be usable afterwards
+        assert!(!rw.is_poisoned());
+        let mut g = rw.write().unwrap();
+        *g += 1;
+        assert_eq!(*g, 1);
     }
 }

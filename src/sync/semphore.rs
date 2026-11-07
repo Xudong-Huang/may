@@ -47,6 +47,9 @@ pub struct Semphore {
     to_wake: SegQueue<Arc<SyncBlocker>>,
 }
 
+/// Alias for [`Semphore`] using the conventional spelling.
+pub type Semaphore = Semphore;
+
 impl Semphore {
     /// create a semphore with the initial value
     pub fn new(init: usize) -> Self {
@@ -57,17 +60,29 @@ impl Semphore {
         }
     }
 
+    // wake up the first live waiter, forwarding the permit past waiters that
+    // have already timed out or been canceled (their `release` flag is set).
+    //
+    // Iterative on purpose: a cancel storm can leave many released blockers
+    // back to back in the queue, and recursing through `post` would overflow
+    // the (small, 32KB default) coroutine stack and abort.
     #[inline]
     fn wakeup_one(&self) {
-        self.to_wake
-            .pop()
-            .map(|w| {
-                w.unpark();
-                if w.take_release() {
-                    self.post();
-                }
-            })
-            .expect("got null blocker!");
+        loop {
+            let w = self.to_wake.pop().expect("got null blocker!");
+
+            w.unpark();
+            if !w.take_release() {
+                // a live waiter consumed the permit
+                break;
+            }
+
+            // the released waiter no longer counts as waiting (`cnt += 1`);
+            // forward the permit if there are still waiters behind it
+            if self.cnt.fetch_add(1, Ordering::SeqCst) >= 0 {
+                break;
+            }
+        }
     }
 
     // return false if timeout
@@ -109,21 +124,40 @@ impl Semphore {
         }
     }
 
-    /// wait for a semphore
-    /// if the semphore value is bigger than zero the function returns immediately
-    /// otherwise it would block the until a `post` is executed
+    /// Wait for a semaphore.
+    ///
+    /// If the semaphore value is bigger than zero the function returns
+    /// immediately, otherwise it blocks until a `post` is executed.
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting.
     pub fn wait(&self) {
         self.wait_timeout_impl(None);
     }
 
-    /// same as `wait` except that with an extra timeout value
-    /// return false if timeout happened
+    /// Same as [`wait`](Self::wait), but returns `false` if the timeout
+    /// expired before a permit became available.
+    ///
+    /// A timed-out waiter leaves its blocker in the internal queue until a
+    /// later `post` pops it and forwards the permit, so a timeout-polling
+    /// loop retains one blocker per timeout until the next post.
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting.
+    #[must_use = "returns false when the timeout expired"]
     pub fn wait_timeout(&self, dur: Duration) -> bool {
         self.wait_timeout_impl(Some(dur))
     }
 
-    /// return false if would block
-    /// return true if successfully acquire one semphore resource
+    /// Try to acquire one semaphore resource without blocking.
+    ///
+    /// Returns `true` if a permit was acquired and `false` if the call would
+    /// block.
+    #[must_use = "returns false if the semaphore would block"]
     pub fn try_wait(&self) -> bool {
         // we not register ourself at all
         // just manipulate the cnt is enough
@@ -140,19 +174,37 @@ impl Semphore {
         false
     }
 
-    /// increment the semphore value
-    /// and would wakeup a thread/coroutine that is calling `wait`
+    /// Increment the semaphore value and wake up a thread/coroutine that is
+    /// calling [`wait`](Self::wait), if any.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the permit count would overflow `isize::MAX`.
     pub fn post(&self) {
-        let cnt = self.cnt.fetch_add(1, Ordering::SeqCst);
-        assert!(cnt < isize::MAX);
+        // CAS loop so the counter is not wrapped before the overflow check
+        // can fire
+        let prev = loop {
+            let cur = self.cnt.load(Ordering::SeqCst);
+            assert!(cur < isize::MAX, "semaphore permit count overflow");
+            match self
+                .cnt
+                .compare_exchange_weak(cur, cur + 1, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => break cur,
+                Err(_) => continue,
+            }
+        };
 
         // try to wakeup one waiter first
-        if cnt < 0 {
+        if prev < 0 {
             self.wakeup_one();
         }
     }
 
-    /// return the current semphore value
+    /// Return the current semaphore value.
+    ///
+    /// Queued waiters are not reported: the value is clamped to `0` while
+    /// the internal counter is negative.
     pub fn get_value(&self) -> usize {
         let cnt = self.cnt.load(Ordering::SeqCst);
         if cnt > 0 {
@@ -310,5 +362,58 @@ mod tests {
         // release the semphore
         sem1.post();
         h2.join().unwrap();
+    }
+
+    #[test]
+    fn try_wait_and_get_value() {
+        let sem = Semphore::new(2);
+        assert_eq!(sem.get_value(), 2);
+        assert!(sem.try_wait());
+        assert_eq!(sem.get_value(), 1);
+        assert!(sem.try_wait());
+        assert!(!sem.try_wait());
+        assert_eq!(sem.get_value(), 0);
+
+        sem.post();
+        assert_eq!(sem.get_value(), 1);
+        assert!(sem.try_wait());
+        assert_eq!(sem.get_value(), 0);
+    }
+
+    /// Regression test for the release-forwarding chain: canceled waiters
+    /// leave released blockers queued, and a single `post` must walk past all
+    /// of them. The old recursive implementation overflowed the 32KB
+    /// coroutine stack on a chain this long.
+    #[test]
+    fn released_waiters_are_forwarded_iteratively() {
+        use crate::sleep::sleep;
+
+        const N: usize = 1000;
+
+        let sem = Arc::new(Semphore::new(0));
+        let waiters: Vec<_> = (0..N)
+            .map(|_| {
+                let s = sem.clone();
+                go!(move || s.wait())
+            })
+            .collect();
+
+        // let the waiters enqueue, then cancel them all; each leaves a
+        // released blocker behind
+        sleep(Duration::from_millis(50));
+        for w in &waiters {
+            w.coroutine().cancel();
+        }
+        for w in waiters {
+            assert!(w.join().is_err());
+        }
+
+        // run the post (and thus the forwarding chain) on a coroutine stack
+        let s = sem.clone();
+        go!(move || s.post()).join().unwrap();
+
+        assert_eq!(sem.get_value(), 1);
+        assert!(sem.try_wait());
+        assert_eq!(sem.get_value(), 0);
     }
 }
