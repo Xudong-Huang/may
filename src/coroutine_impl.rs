@@ -140,6 +140,8 @@ impl Coroutine {
     /// This forces the coroutine to unwind when it is next scheduled, dropping
     /// all the resources it currently holds. As with a panic, this may have
     /// unexpected side effects if the coroutine is not cancellation-safe.
+    ///
+    /// Change to safe since version 0.3.52.
     pub fn cancel(&self) {
         self.inner.cancel.cancel();
     }
