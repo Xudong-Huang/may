@@ -14,7 +14,8 @@ use std::fmt;
 use std::io::ErrorKind;
 use std::num::NonZeroUsize;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::ptr;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::thread::Thread;
@@ -26,9 +27,38 @@ use crate::coroutine_impl::{
 };
 use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
+use crate::timeout_list::TimeoutHandle;
 use crate::yield_now::{get_co_para, yield_now, yield_with};
 
 use may_queue::spsc::Queue;
+
+/// The coroutine handle shared between `send`/`drop_chan`, the scheduler
+/// timer and the cancel machinery; exactly one of them takes the
+/// `CoroutineImpl`.
+type TimeoutCo = Arc<AtomicOption<CoroutineImpl>>;
+
+/// Guards the `wait_kernel` flag for the duration of an
+/// `EventSource::subscribe` call.
+///
+/// The wait source lives on the coroutine's stack and `subscribe` runs after
+/// the coroutine has suspended. A concurrent wake can resume the coroutine on
+/// another worker before `subscribe` returns; the source's `Drop` waits on
+/// this flag, which also keeps the coroutine's local data (including its
+/// `Cancel` registration) alive until the kernel is done.
+struct WaitKernel<'a>(&'a AtomicBool);
+
+impl<'a> WaitKernel<'a> {
+    fn new(flag: &'a AtomicBool) -> WaitKernel<'a> {
+        flag.store(true, Ordering::Release);
+        WaitKernel(flag)
+    }
+}
+
+impl Drop for WaitKernel<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
 
 /// EventSource for `recv_timeout`. It holds its own reference to the queue:
 /// once the coroutine is reachable by `send()` or the timer it may resume,
@@ -36,29 +66,99 @@ use may_queue::spsc::Queue;
 struct RecvTimeoutSource<T> {
     queue: Arc<InnerQueue<T>>,
     timeout: Duration,
+    wait_kernel: AtomicBool,
+    // the scheduler timer, removed if the wait ends before its deadline
+    timer: AtomicPtr<TimeoutHandle<TimeoutCo>>,
+}
+
+impl<T> RecvTimeoutSource<T> {
+    fn new(queue: Arc<InnerQueue<T>>, timeout: Duration) -> Self {
+        RecvTimeoutSource {
+            queue,
+            timeout,
+            wait_kernel: AtomicBool::new(false),
+            timer: AtomicPtr::new(ptr::null_mut()),
+        }
+    }
+
+    fn delay_drop(&self) -> WaitKernel<'_> {
+        WaitKernel::new(&self.wait_kernel)
+    }
+
+    fn set_timer(
+        &self,
+        handle: Option<TimeoutHandle<TimeoutCo>>,
+    ) -> Option<TimeoutHandle<TimeoutCo>> {
+        let ptr = match handle {
+            None => ptr::null_mut(),
+            Some(h) => h.into_ptr(),
+        };
+        let old = self.timer.swap(ptr, Ordering::Relaxed);
+        if old.is_null() {
+            None
+        } else {
+            Some(unsafe { TimeoutHandle::from_ptr(old) })
+        }
+    }
+
+    // remove the timer if it has not fired yet
+    fn remove_timer(&self) {
+        if let Some(h) = self.set_timer(None) {
+            if h.is_link() {
+                get_scheduler().del_timer(h);
+            }
+        }
+    }
+}
+
+impl<T> Drop for RecvTimeoutSource<T> {
+    fn drop(&mut self) {
+        // A concurrent wake may have resumed the coroutine while `subscribe`
+        // was still running; wait for it before touching the source.
+        while self.wait_kernel.load(Ordering::Acquire) {
+            yield_now();
+        }
+        self.remove_timer();
+    }
 }
 
 impl<T> EventSource for RecvTimeoutSource<T> {
     fn subscribe(&mut self, co: CoroutineImpl) {
+        let _g = self.delay_drop();
+
         let cancel = co_cancel_data(&co);
         // Shared between the scheduler timer and `send()` wakeup (see `timeout_wait`).
         let wait_co = Arc::new(AtomicOption::some(co));
         // Register for cancellation while nothing else can resume the
-        // coroutine: afterwards its cancel data may be gone.
+        // coroutine: once `timeout_wait` is stored, its local data may be
+        // released. Do not touch `cancel` after that point.
         cancel.set_co(wait_co.clone());
         if cancel.is_canceled() {
             cancel.cancel();
             return;
         }
         self.queue.timeout_wait.store(wait_co.clone());
+
+        // Re-check after registering. The store above is a SeqCst RMW that
+        // pairs with `send`/`drop_chan`'s take: if the take happened first we
+        // observe the queued value / the disconnect here instead of sleeping
+        // until the timer fires.
+        if !self.queue.queue.is_empty() || self.queue.channels.load(Ordering::Acquire) == 0 {
+            if let Some(co) = wait_co.take() {
+                get_scheduler().schedule(co);
+            }
+            return;
+        }
+
         // Arm the timer last: a short timeout can fire at once.
-        get_scheduler().add_timer(self.timeout, wait_co);
+        let handle = get_scheduler().add_timer(self.timeout, wait_co);
+        self.set_timer(Some(handle));
     }
 }
 
 struct Park<'a, T> {
     queue: &'a InnerQueue<T>,
-    // a flag if kernel is entered
+    // true while `subscribe` is running
     wait_kernel: AtomicBool,
 }
 
@@ -66,29 +166,21 @@ impl<'a, T> Park<'a, T> {
     fn new(queue: &'a InnerQueue<T>) -> Park<'a, T> {
         Park {
             queue,
-            wait_kernel: AtomicBool::new(true),
+            wait_kernel: AtomicBool::new(false),
         }
     }
 
-    fn delay_drop(&self) -> DropGuard<'_, '_, T> {
-        DropGuard(self)
+    fn delay_drop(&self) -> WaitKernel<'_> {
+        WaitKernel::new(&self.wait_kernel)
     }
 }
 
 impl<T> Drop for Park<'_, T> {
     fn drop(&mut self) {
         // wait the kernel finish
-        while self.wait_kernel.load(Ordering::Relaxed) {
+        while self.wait_kernel.load(Ordering::Acquire) {
             yield_now();
         }
-    }
-}
-
-pub struct DropGuard<'a, 'b, T>(&'b Park<'a, T>);
-
-impl<T> Drop for DropGuard<'_, '_, T> {
-    fn drop(&mut self) {
-        self.0.wait_kernel.store(false, Ordering::Relaxed);
     }
 }
 
@@ -100,12 +192,12 @@ impl<T> EventSource for Park<'_, T> {
         // register the coroutine
         let wait_co = &self.queue.wait_co;
         wait_co.store(Blocker::new_coroutine(co));
-        // re-check the state, only clear once after resume
-        if !self.queue.queue.is_empty() {
+        // re-check both queued data and disconnection, only clear once after
+        // resume
+        if !self.queue.queue.is_empty() || self.queue.channels.load(Ordering::Acquire) == 0 {
             if let Some(co) = wait_co.take() {
                 run_coroutine(co.into_coroutine());
             }
-            // return;
         }
     }
 }
@@ -192,7 +284,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn send(&self, t: T) -> Result<(), T> {
-        if unlikely(self.port_dropped.load(Ordering::Relaxed)) {
+        if unlikely(self.port_dropped.load(Ordering::Acquire)) {
             return Err(t);
         }
         self.queue.push(t);
@@ -274,12 +366,12 @@ impl<T> InnerQueue<T> {
         }
 
         // Create an EventSource that:
-        // 1. Stores the coroutine as a Blocker in wait_co (for send() to take)
+        // 1. Stores the coroutine in `timeout_wait` (for send()/drop_chan())
         // 2. Registers a scheduler timer that fires after `timeout`
-        let source = RecvTimeoutSource {
-            queue: self.clone(),
-            timeout,
-        };
+        //
+        // The source removes the timer from the wheel on drop, so a wait that
+        // ends before its deadline does not leave an armed timer behind.
+        let source = RecvTimeoutSource::new(self.clone(), timeout);
         yield_with(&source);
         self.timeout_wait.clear();
 
@@ -308,7 +400,7 @@ impl<T> InnerQueue<T> {
         match self.queue.pop() {
             Some(data) => Ok(data),
             None => {
-                if likely(self.channels.load(Ordering::Relaxed) > 0) {
+                if likely(self.channels.load(Ordering::Acquire) > 0) {
                     Err(TryRecvError::Empty)
                 } else {
                     // there is no sender any more, should re-check
@@ -319,7 +411,7 @@ impl<T> InnerQueue<T> {
     }
 
     fn drop_chan(&self) {
-        self.channels.store(0, Ordering::Relaxed);
+        self.channels.store(0, Ordering::Release);
         if let Some(co) = self.wait_co.take() {
             co.unpark();
         }
@@ -331,7 +423,7 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn drop_port(&self) {
-        self.port_dropped.store(true, Ordering::Relaxed);
+        self.port_dropped.store(true, Ordering::Release);
         // clear all the data
         while self.queue.pop().is_some() {}
     }
@@ -780,6 +872,31 @@ mod tests {
         sleep(Duration::from_millis(50));
         handle.coroutine().cancel();
         assert!(handle.join().is_err());
+    }
+
+    /// A sender dropping concurrently with `recv()` must not leave the
+    /// consumer parked: the waiter registration re-checks the disconnect
+    /// state after announcing itself.
+    #[test]
+    fn recv_disconnect_race() {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        for _ in 0..200 {
+            let (tx, rx) = channel::<i32>();
+            let ready_tx = ready_tx.clone();
+            let h = go!(move || {
+                ready_tx.send(()).unwrap();
+                rx.recv()
+            });
+            ready_rx.recv().unwrap();
+            drop(tx);
+
+            let start = Instant::now();
+            while !h.is_done() && start.elapsed() < Duration::from_secs(2) {
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(h.is_done(), "recv() did not observe the disconnect");
+            assert!(h.join().unwrap().is_err());
+        }
     }
 
     #[test]
