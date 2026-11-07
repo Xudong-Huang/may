@@ -1,14 +1,24 @@
-//! mpmc synchronized channel implementation
+//! Multi-producer, multi-consumer channels for threads and coroutines.
 //!
-//! support an unbounded mpmc queue, senders would not block
-//! receivers would block if there is no data until sender send data
-//! it's almost the same as `mpsc` except that we support multi receivers
-//! each receiver would consume one data each time so that other receivers
-//! would not see that the same data any more
+//! Unlike [`super::mpsc`], every receiver consumes at most one value per
+//! receive, and both [`Sender`] and [`Receiver`] are `Clone` and `Sync`, so
+//! they can be shared across threads and coroutines. The channel is
+//! unbounded: `send` never blocks, while receivers block when the queue is
+//! empty.
+//!
+//! Disconnect semantics match `std::sync::mpsc`: dropping every sender
+//! disconnects the channel, and values already queued are still delivered
+//! before `try_recv`/`recv` report `Disconnected`.
+//!
+//! For coroutines, a blocking receive is a cancellation point: cancellation
+//! unwinds the coroutine with the cancel panic instead of returning an error.
 
 use std::fmt;
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
+// Re-exported so the error types are reachable through this module's path,
+// matching the other channel modules.
+pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -156,32 +166,56 @@ impl<T> Drop for InnerQueue<T> {
     }
 }
 
+/// The receiving half of an MPMC channel created by [`channel`].
+///
+/// Receivers are cloneable and shareable: each `recv`/`try_recv` consumes at
+/// most one queued value, and concurrent receivers never observe the same
+/// value.
 pub struct Receiver<T> {
     inner: Arc<InnerQueue<T>>,
 }
 
 unsafe impl<T: Send> Send for Receiver<T> {}
-// impl<T> !Sync for Receiver<T> {}
+// MPMC halves are intentionally `Sync` (unlike `mpsc`); values are owned by
+// the queue and only moved out.
+impl<T> UnwindSafe for Receiver<T> {}
+impl<T> RefUnwindSafe for Receiver<T> {}
 
+/// An iterator over the values of a [`Receiver`], blocking until the channel
+/// disconnects.
+#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
+/// A non-blocking iterator over the currently buffered values of a
+/// [`Receiver`].
+#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
+/// An owning iterator over the values of a [`Receiver`].
+#[derive(Debug)]
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
 
+/// The sending half of an MPMC channel created by [`channel`].
+///
+/// Cloning a `Sender` creates another handle to the same channel. Senders
+/// never block: the channel is unbounded.
 pub struct Sender<T> {
     inner: Arc<InnerQueue<T>>,
 }
 
 unsafe impl<T: Send> Send for Sender<T> {}
-// impl<T> !Sync for Sender<T> {}
+impl<T> UnwindSafe for Sender<T> {}
+impl<T> RefUnwindSafe for Sender<T> {}
 
+/// Create an unbounded multi-producer, multi-consumer channel.
+///
+/// Both halves are cloneable and can be shared between threads or coroutines.
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let a = Arc::new(InnerQueue::new());
     (Sender::new(a.clone()), Receiver::new(a))
@@ -196,6 +230,10 @@ impl<T> Sender<T> {
         Sender { inner }
     }
 
+    /// Send a value on the channel, returning it back on error.
+    ///
+    /// Returns `Err` if every receiver has been dropped. Sending never
+    /// blocks: the channel is unbounded.
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.inner.send(t)
     }
@@ -240,10 +278,21 @@ impl<T> Receiver<T> {
         Receiver { inner }
     }
 
+    /// Attempt to receive a value without blocking.
+    ///
+    /// Returns [`TryRecvError::Empty`] if the queue is empty and at least one
+    /// sender is alive, and [`TryRecvError::Disconnected`] if every sender has
+    /// been dropped and the queue is empty.
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.inner.try_recv()
     }
 
+    /// Block until a value is available or the channel is disconnected.
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting.
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.inner.recv(None) {
             Err(RecvTimeoutError::Timeout) => {
@@ -254,14 +303,25 @@ impl<T> Receiver<T> {
         }
     }
 
+    /// Block until a value is available, the timeout expires, or the channel
+    /// is disconnected.
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting.
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.inner.recv(Some(timeout))
     }
 
+    /// Return an iterator that blocks for each value until the channel
+    /// disconnects.
     pub fn iter(&self) -> Iter<'_, T> {
         Iter { rx: self }
     }
 
+    /// Return an iterator that never blocks, stopping as soon as the channel
+    /// is empty (or disconnected).
     pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter { rx: self }
     }
@@ -338,6 +398,61 @@ mod tests {
             Ok(val) => val.parse().unwrap(),
             Err(..) => 1,
         }
+    }
+
+    /// Compile-time checks for the parts of the public surface that mirror
+    /// `super::mpsc`.
+    #[test]
+    fn std_api_surface() {
+        // the error types are reachable through this module's path
+        use crate::sync::mpmc::{
+            RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError,
+        };
+        let _: Option<RecvError> = None;
+        let _: Option<RecvTimeoutError> = None;
+        let _: Option<SendError<()>> = None;
+        let _: Option<TryRecvError> = None;
+        let _: Option<TrySendError<()>> = None;
+
+        // all three iterators implement Debug, like mpsc/std
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<Iter<'static, i32>>();
+        assert_debug::<TryIter<'static, i32>>();
+        assert_debug::<IntoIter<i32>>();
+
+        // both halves are unwind-safe regardless of T
+        fn assert_unwind<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+        assert_unwind::<Sender<*mut ()>>();
+        assert_unwind::<Receiver<*mut ()>>();
+
+        // unlike mpsc, both halves are cloneable and shareable
+        fn assert_clone_sync<T: Clone + Sync>() {}
+        assert_clone_sync::<Sender<i32>>();
+        assert_clone_sync::<Receiver<i32>>();
+    }
+
+    /// A coroutine blocked in `recv()` must be woken by cancellation.
+    #[test]
+    fn recv_canceled_while_waiting() {
+        use crate::sleep::sleep;
+        use std::time::Instant;
+
+        let (_tx, rx) = channel::<i32>();
+        let h = go!(move || {
+            let _ = rx.recv();
+        });
+        sleep(Duration::from_millis(50));
+        h.coroutine().cancel();
+
+        let start = Instant::now();
+        while !h.is_done() && start.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            h.is_done(),
+            "cancel did not wake a coroutine blocked in recv()"
+        );
+        assert!(h.join().is_err());
     }
 
     #[test]
