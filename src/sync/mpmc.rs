@@ -71,8 +71,17 @@ impl<T> InnerQueue<T> {
         match self.queue.pop() {
             Some(data) => Ok(data),
             None => match self.tx_ports.load(Ordering::Acquire) {
+                // a disconnect wakeup has no item; this is the normal
+                // disconnect path
                 0 => Err(RecvTimeoutError::Disconnected),
-                _n => unreachable!("mpmc recv found no data"),
+                _ => {
+                    // A permit with no item while senders are alive means the
+                    // semaphore/queue accounting diverged. Report the channel
+                    // as disconnected in release builds instead of panicking
+                    // from a library receive path.
+                    debug_assert!(false, "mpmc: a semaphore permit had no queued item");
+                    Err(RecvTimeoutError::Disconnected)
+                }
             },
         }
     }
@@ -89,7 +98,10 @@ impl<T> InnerQueue<T> {
             Some(data) => Ok(data),
             None => match self.tx_ports.load(Ordering::Acquire) {
                 0 => Err(TryRecvError::Disconnected),
-                _ => unreachable!("mpmc try_recv found no data"),
+                _ => {
+                    debug_assert!(false, "mpmc: a semaphore permit had no queued item");
+                    Err(TryRecvError::Empty)
+                }
             },
         }
     }
@@ -110,7 +122,11 @@ impl<T> InnerQueue<T> {
                 }
             }
             n if n > 1 => {}
-            n => panic!("bad number of tx_ports left {n}"),
+            n => {
+                // underflow: an internal accounting bug. Do not panic from a
+                // Drop implementation (it can abort during unwinding).
+                debug_assert!(false, "bad number of tx_ports left {n}");
+            }
         }
     }
 
@@ -125,15 +141,18 @@ impl<T> InnerQueue<T> {
                 while self.queue.pop().is_some() {}
             }
             n if n > 1 => {}
-            n => panic!("bad number of rx_ports left {n}"),
+            n => {
+                debug_assert!(false, "bad number of rx_ports left {n}");
+            }
         }
     }
 }
 
 impl<T> Drop for InnerQueue<T> {
     fn drop(&mut self) {
-        assert_eq!(self.tx_ports.load(Ordering::Acquire), 0);
-        assert_eq!(self.rx_ports.load(Ordering::Acquire), 0);
+        // invariant checks only: panicking in Drop while unwinding aborts
+        debug_assert_eq!(self.tx_ports.load(Ordering::Acquire), 0);
+        debug_assert_eq!(self.rx_ports.load(Ordering::Acquire), 0);
     }
 }
 
@@ -181,7 +200,13 @@ impl<T> Sender<T> {
         self.inner.send(t)
     }
 
-    /// return how many elements in the queue that are not consumed by receivers
+    /// Return a best-effort count of queued items not yet claimed by a
+    /// receiver.
+    ///
+    /// This is the semaphore's permit count, clamped at 0. It does not count
+    /// items already handed to a woken receiver, and it can transiently
+    /// include a permit returned by the release protocol after a receiver
+    /// timed out or was canceled.
     pub fn pressure(&self) -> usize {
         self.inner.sem.get_value()
     }
@@ -221,7 +246,10 @@ impl<T> Receiver<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.inner.recv(None) {
-            Err(RecvTimeoutError::Timeout) => unreachable!("mpmc recv timeout"),
+            Err(RecvTimeoutError::Timeout) => {
+                debug_assert!(false, "mpmc recv(None) returned a timeout");
+                Err(RecvError)
+            }
             data => data.map_err(|_| RecvError),
         }
     }
