@@ -10,13 +10,22 @@
 //! queued are delivered before `try_recv`/`recv` report `Disconnected`, and
 //! `recv_timeout` returns `Timeout` only when no value became available by the
 //! deadline.
+//!
+//! Apart from the single-producer restriction (`Sender` is neither `Clone`
+//! nor `Sync`), the public surface mirrors [`super::mpsc`]: the same methods,
+//! re-exported error types, iterator traits, `Debug` output and unwind-safety
+//! bounds.
+use std::cell::Cell;
 use std::fmt;
 use std::io::ErrorKind;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
-use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
+// Re-exported so the error types are reachable through this module's path,
+// matching `super::mpsc` (and `std::sync::mpsc`).
+pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::thread::Thread;
 use std::time::{Duration, Instant};
@@ -450,43 +459,67 @@ impl<T> InnerQueue<T> {
 
 /// The receiving half of an SPSC channel created by [`channel`].
 ///
-/// A `Receiver` is `Send` but not `Sync`: it is the single consumer and
-/// cannot be shared. It can be moved between threads or used from a
+/// A `Receiver` is [`Send`] but **not** [`Sync`]: it is the single consumer
+/// and cannot be shared. It can be moved between threads or used from a
 /// coroutine.
+///
+/// ```compile_fail,E0277
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<may::sync::spsc::Receiver<i32>>();
+/// ```
 pub struct Receiver<T> {
     inner: Arc<InnerQueue<T>>,
+    // `Cell<()>` is `Send` but `!Sync`, which keeps `Receiver` `!Sync` (the
+    // queue's `pop` uses unsynchronized consumer-side access). Zero-sized.
+    _marker: PhantomData<Cell<()>>,
 }
 
 unsafe impl<T: Send> Send for Receiver<T> {}
+// Values are owned by the queue and only moved out; matching `mpsc`.
+impl<T> UnwindSafe for Receiver<T> {}
+impl<T> RefUnwindSafe for Receiver<T> {}
 
 /// An iterator over the values of a [`Receiver`], blocking until the channel
 /// disconnects.
+#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
 /// A non-blocking iterator over the currently buffered values of a
 /// [`Receiver`].
+#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
 /// An owning iterator over the values of a [`Receiver`].
+#[derive(Debug)]
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
 
 /// The sending half of an SPSC channel created by [`channel`].
 ///
-/// A `Sender` is not cloneable and is the single producer. It can be moved
-/// between threads or used from a coroutine.
+/// A `Sender` is not cloneable and is **not** [`Sync`]: it is the single
+/// producer, unlike [`super::mpsc::Sender`]. It can be moved between threads
+/// or used from a coroutine.
+///
+/// ```compile_fail,E0277
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<may::sync::spsc::Sender<i32>>();
+/// ```
 pub struct Sender<T> {
     inner: Arc<InnerQueue<T>>,
+    // `Cell<()>` is `Send` but `!Sync`, which keeps `Sender` `!Sync` (the
+    // queue's `push` uses unsynchronized producer-side access). Zero-sized.
+    _marker: PhantomData<Cell<()>>,
 }
 
 unsafe impl<T: Send> Send for Sender<T> {}
-impl<T: Send> UnwindSafe for Sender<T> {}
-impl<T: Send> RefUnwindSafe for Sender<T> {}
+// Values are owned by the queue and only moved out; matching `mpsc`.
+impl<T> UnwindSafe for Sender<T> {}
+impl<T> RefUnwindSafe for Sender<T> {}
 
 /// Create an unbounded single-producer, single-consumer channel.
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
@@ -500,7 +533,10 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 impl<T> Sender<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Sender<T> {
-        Sender { inner }
+        Sender {
+            inner,
+            _marker: PhantomData,
+        }
     }
 
     /// Send a value on the channel, returning it back on error.
@@ -530,7 +566,10 @@ impl<T> fmt::Debug for Sender<T> {
 
 impl<T> Receiver<T> {
     fn new(inner: Arc<InnerQueue<T>>) -> Receiver<T> {
-        Receiver { inner }
+        Receiver {
+            inner,
+            _marker: PhantomData,
+        }
     }
 
     /// Attempt to receive a value without blocking.
@@ -689,6 +728,32 @@ mod tests {
             Ok(val) => val.parse().unwrap(),
             Err(..) => 1,
         }
+    }
+
+    /// Compile-time checks for the parts of the public surface that mirror
+    /// `super::mpsc`.
+    #[test]
+    fn std_api_surface() {
+        // the error types are reachable through this module's path
+        use crate::sync::spsc::{
+            RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError,
+        };
+        let _: Option<RecvError> = None;
+        let _: Option<RecvTimeoutError> = None;
+        let _: Option<SendError<()>> = None;
+        let _: Option<TryRecvError> = None;
+        let _: Option<TrySendError<()>> = None;
+
+        // all three iterators implement Debug in mpsc/std
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<Iter<'static, i32>>();
+        assert_debug::<TryIter<'static, i32>>();
+        assert_debug::<IntoIter<i32>>();
+
+        // both halves are unwind-safe regardless of T, like mpsc
+        fn assert_unwind<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+        assert_unwind::<Sender<*mut ()>>();
+        assert_unwind::<Receiver<*mut ()>>();
     }
 
     // -----------------------------------------------------------------------
