@@ -17,7 +17,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
+// Re-exported so `may::sync::mpsc::*` mirrors `std::sync::mpsc::*` and code
+// can switch the path without changing the error types it names.
+pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -178,17 +180,20 @@ impl<T> RefUnwindSafe for Receiver<T> {}
 
 /// An iterator over the values of a [`Receiver`], blocking until the channel
 /// disconnects.
+#[derive(Debug)]
 pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
 /// A non-blocking iterator over the currently buffered values of a
 /// [`Receiver`].
+#[derive(Debug)]
 pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
 /// An owning iterator over the values of a [`Receiver`].
+#[derive(Debug)]
 pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
@@ -203,8 +208,9 @@ pub struct Sender<T> {
 }
 
 unsafe impl<T: Send> Send for Sender<T> {}
-impl<T: Send> UnwindSafe for Sender<T> {}
-impl<T: Send> RefUnwindSafe for Sender<T> {}
+// std's `Sender<T>` is unwind-safe regardless of `T`.
+impl<T> UnwindSafe for Sender<T> {}
+impl<T> RefUnwindSafe for Sender<T> {}
 
 /// Create an unbounded multi-producer, single-consumer channel.
 ///
@@ -398,6 +404,32 @@ mod tests {
             Ok(val) => val.parse().unwrap(),
             Err(..) => 1,
         }
+    }
+
+    /// Compile-time checks for the parts of the public surface that should
+    /// mirror `std::sync::mpsc`.
+    #[test]
+    fn std_api_surface() {
+        // the error types are reachable through this module's path, like std
+        use crate::sync::mpsc::{
+            RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError,
+        };
+        let _: Option<RecvError> = None;
+        let _: Option<RecvTimeoutError> = None;
+        let _: Option<SendError<()>> = None;
+        let _: Option<TryRecvError> = None;
+        let _: Option<TrySendError<()>> = None;
+
+        // all three iterators implement Debug in std
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<Iter<'static, i32>>();
+        assert_debug::<TryIter<'static, i32>>();
+        assert_debug::<IntoIter<i32>>();
+
+        // std's `Sender<T>` is unwind-safe regardless of `T`; use a raw
+        // pointer as a cheap `!Send` type parameter
+        fn assert_unwind<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+        assert_unwind::<Sender<*mut ()>>();
     }
 
     #[test]
