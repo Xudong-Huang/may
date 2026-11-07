@@ -6,6 +6,8 @@ use std::sync::{LockResult, PoisonError};
 use std::thread;
 
 pub struct Flag {
+    // Best-effort: poisoning is advisory, and a thread that joins the
+    // panicking thread observes the flag through the join's synchronization.
     failed: AtomicUsize,
 }
 
