@@ -2,8 +2,11 @@ use std::time::Duration;
 
 fn main() {
     may::go!(|| {
-        let (sx1, rx1) = may::sync::mpsc::channel();
-        let (sx2, rx2) = may::sync::mpsc::channel();
+        // `loop_select!` re-runs the branch closures and borrows the
+        // receivers, so use the multi-consumer channel (`mpsc::Receiver` is
+        // `!Sync`).
+        let (sx1, rx1) = may::sync::mpmc::channel();
+        let (sx2, rx2) = may::sync::mpmc::channel();
         sx1.send(100i32).unwrap();
         sx2.send(200i32).unwrap();
 

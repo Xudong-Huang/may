@@ -120,8 +120,9 @@ fn cqueue_oneshot() {
     let (tx2, rx2) = channel();
 
     cqueue::scope(|cqueue| {
-        cqueue_add_oneshot!(cqueue, 0, _ = rx1.recv() => println!("rx1 received"));
-        cqueue_add_oneshot!(cqueue, 1, a = rx2.recv() => println!("rx2 received, a={a:?}"));
+        // `Receiver` is `!Sync`; move each receiver into its coroutine.
+        cqueue_add_oneshot!(cqueue, 0, _ = { let rx1 = rx1; rx1.recv() } => println!("rx1 received"));
+        cqueue_add_oneshot!(cqueue, 1, a = { let rx2 = rx2; rx2.recv() } => println!("rx2 received, a={a:?}"));
 
         tx1.send("hello").unwrap();
         match cqueue.poll(None) {
@@ -144,7 +145,10 @@ fn cqueue_oneshot() {
 
 #[test]
 fn cqueue_select() {
-    use may::sync::mpsc::channel;
+    // This test borrows receivers into the select branches and reuses one
+    // afterwards; `mpsc::Receiver` is `!Sync` (single-consumer), so use the
+    // multi-consumer channel here.
+    use may::sync::mpmc::channel;
 
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();
@@ -178,7 +182,9 @@ fn cqueue_timeout() {
 
 #[test]
 fn cqueue_loop() {
-    use may::sync::mpsc::channel;
+    // The `cqueue_add!` closures run in a loop and borrow their receivers,
+    // so use the multi-consumer channel (`mpsc::Receiver` is `!Sync`).
+    use may::sync::mpmc::channel;
 
     let (tx1, rx1) = channel();
     let (tx2, rx2) = channel();

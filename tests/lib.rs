@@ -340,17 +340,20 @@ fn join_macro() {
     join!(
         coroutine::sleep(Duration::from_millis(1000)),
         {
+            // `Receiver` is `!Sync`, so move it into the scoped coroutine
+            // instead of borrowing it.
+            let rx1 = rx1;
             let x = rx1.recv().unwrap();
-            assert_eq!(x, 42)
+            assert_eq!(x, 42);
+            assert!(rx1.try_recv().is_err());
         },
         {
+            let rx2 = rx2;
             let a = rx2.recv().unwrap();
-            assert_eq!(a, "hello")
+            assert_eq!(a, "hello");
+            assert!(rx2.try_recv().is_err());
         }
     );
-
-    assert!(rx1.try_recv().is_err());
-    assert!(rx2.try_recv().is_err());
 }
 
 #[test]

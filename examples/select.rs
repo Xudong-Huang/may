@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use may::coroutine;
 use may::net::TcpListener;
-use may::sync::mpsc::channel;
+// `select!` borrows its operands into scoped coroutines and this example
+// reuses a receiver afterwards, so use the multi-consumer channel
+// (`mpsc::Receiver` is `!Sync`).
+use may::sync::mpmc::channel;
 
 // general select example that use cqueue
 fn main() {
