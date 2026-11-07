@@ -2,6 +2,7 @@
 //! please ref the doc from std::sync::mutex
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,15 +36,36 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 impl<T: ?Sized> UnwindSafe for Mutex<T> {}
 impl<T: ?Sized> RefUnwindSafe for Mutex<T> {}
 
+/// An RAII guard granting exclusive access to the mutex's data.
+///
+/// The guard unlocks the mutex when dropped. Like
+/// [`std::sync::MutexGuard`], it must stay on the locking thread: it is
+/// `!Send`, and `&MutexGuard<T>` is `Sync` only when `T: Sync`, because shared
+/// access to the guard is shared access to the data.
+///
+/// ```compile_fail,E0277
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<may::sync::MutexGuard<'static, std::cell::Cell<u32>>>();
+/// ```
+///
+/// ```compile_fail,E0277
+/// fn assert_send<T: Send>() {}
+/// assert_send::<may::sync::MutexGuard<'static, u32>>();
+/// ```
 pub struct MutexGuard<'a, T: ?Sized + 'a> {
     // funny underscores due to how Deref/DerefMut currently work (they
     // disregard field privacy).
     __lock: &'a Mutex<T>,
     __poison: poison::Guard,
+    // `*mut ()` is neither `Send` nor `Sync`; this keeps the guard on the
+    // locking thread (the poison guard uses `thread::panicking()` on drop).
+    // The manual `Sync` impl below restores `Sync` for `T: Sync`.
+    _marker: PhantomData<*mut ()>,
 }
 
-// note: MutexGuard is `Send`/`Sync` through its fields when `T` is, which
-// matches the current std behavior.
+// `&MutexGuard<T>` only exposes `&T`, so it is `Sync` exactly when `T: Sync`
+// (std's bound); the raw-pointer marker keeps the guard `!Send`.
+unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
 
 impl<T> Mutex<T> {
     /// Creates a new mutex in an unlocked state ready for use.
@@ -282,6 +304,7 @@ impl<'mutex, T: ?Sized> MutexGuard<'mutex, T> {
         poison::map_result(lock.poison.borrow(), |guard| MutexGuard {
             __lock: lock,
             __poison: guard,
+            _marker: PhantomData,
         })
     }
 }
@@ -343,6 +366,17 @@ mod tests {
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);
+
+    /// `Sync` is `T: Sync` only (not `T: Send`) and the guard is `!Send`;
+    /// the negative bounds are checked by the compile_fail doctests on
+    /// `MutexGuard`.
+    #[test]
+    fn guard_trait_bounds() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<MutexGuard<'static, u32>>();
+        // a Sync + !Send payload, like std's MutexGuard, is still `Sync`
+        assert_sync::<MutexGuard<'static, std::sync::MutexGuard<'static, u32>>>();
+    }
 
     #[test]
     fn smoke() {

@@ -2,6 +2,7 @@
 //! please ref the doc from std::sync::rwlock
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -57,23 +58,51 @@ impl<T: ?Sized> RefUnwindSafe for RwLock<T> {}
 
 /// RAII structure used to release the shared read access of a lock when
 /// dropped.
+///
+/// Like [`std::sync::RwLockReadGuard`], the guard is `!Send`, and
+/// `&RwLockReadGuard<T>` is `Sync` only when `T: Sync`.
+///
+/// ```compile_fail,E0277
+/// fn assert_send<T: Send>() {}
+/// assert_send::<may::sync::RwLockReadGuard<'static, u32>>();
+/// ```
 #[must_use]
 pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
     __lock: &'a RwLock<T>,
+    // `*mut ()` is neither `Send` nor `Sync`; it keeps the guard on the
+    // locking thread. The `Sync` impl below restores `Sync` for `T: Sync`.
+    _marker: PhantomData<*mut ()>,
 }
 
-// note: the write guard is `Send`/`Sync` through its fields when `T` is,
-// which matches the current std behavior. The read guard only exposes
-// shared access, so like std it is additionally `Sync` on `T: Sync` alone.
+// `&RwLockReadGuard<T>` only exposes `&T`, so it is `Sync` exactly when
+// `T: Sync` (std's bound); the marker keeps the guard `!Send`.
 unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
 
 /// RAII structure used to release the exclusive write access of a lock when
 /// dropped.
+///
+/// Like [`std::sync::RwLockWriteGuard`], the guard is `!Send`, and
+/// `&RwLockWriteGuard<T>` is `Sync` only when `T: Sync`.
+///
+/// ```compile_fail,E0277
+/// fn assert_send<T: Send>() {}
+/// assert_send::<may::sync::RwLockWriteGuard<'static, u32>>();
+/// ```
+///
+/// ```compile_fail,E0277
+/// fn assert_sync<T: Sync>() {}
+/// assert_sync::<may::sync::RwLockWriteGuard<'static, std::cell::Cell<u32>>>();
+/// ```
 #[must_use]
 pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
     __lock: &'a RwLock<T>,
     __poison: poison::Guard,
+    _marker: PhantomData<*mut ()>,
 }
+
+// `&RwLockWriteGuard<T>` exposes `&T` through `Deref`, so it is `Sync` when
+// `T: Sync` (std's bound); the marker keeps the guard `!Send`.
+unsafe impl<T: ?Sized + Sync> Sync for RwLockWriteGuard<'_, T> {}
 
 impl<T> RwLock<T> {
     /// Creates a new instance of an `RwLock<T>` which is unlocked.
@@ -240,6 +269,7 @@ impl<T: ?Sized> RwLock<T> {
             Err(TryLockError::Poisoned(_)) => {
                 return Err(TryLockError::Poisoned(PoisonError::new(RwLockReadGuard {
                     __lock: self,
+                    _marker: PhantomData,
                 })));
             }
             Err(TryLockError::WouldBlock) => return Err(TryLockError::WouldBlock),
@@ -459,7 +489,10 @@ impl<T> From<T> for RwLock<T> {
 
 impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
     fn new(lock: &'rwlock RwLock<T>) -> LockResult<RwLockReadGuard<'rwlock, T>> {
-        poison::map_result(lock.poison.borrow(), |_| RwLockReadGuard { __lock: lock })
+        poison::map_result(lock.poison.borrow(), |_| RwLockReadGuard {
+            __lock: lock,
+            _marker: PhantomData,
+        })
     }
 }
 
@@ -468,6 +501,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
         poison::map_result(lock.poison.borrow(), |guard| RwLockWriteGuard {
             __lock: lock,
             __poison: guard,
+            _marker: PhantomData,
         })
     }
 }
@@ -525,6 +559,7 @@ impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use super::{RwLockReadGuard, RwLockWriteGuard};
     use crate::sync::mpsc::channel;
     use crate::sync::{Condvar, Mutex, RwLock};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -533,6 +568,18 @@ mod tests {
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);
+
+    /// Guards are `!Send`; shared access (`&guard`) is `Sync` for `T: Sync`
+    /// only. The negative bounds are checked by compile_fail doctests.
+    #[test]
+    fn guard_trait_bounds() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<RwLockReadGuard<'static, u32>>();
+        assert_sync::<RwLockWriteGuard<'static, u32>>();
+        // std parity: `Sync` does not require `Send`
+        assert_sync::<RwLockReadGuard<'static, std::sync::MutexGuard<'static, u32>>>();
+        assert_sync::<RwLockWriteGuard<'static, std::sync::MutexGuard<'static, u32>>>();
+    }
 
     #[test]
     fn smoke() {
