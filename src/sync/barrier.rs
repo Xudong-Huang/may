@@ -53,6 +53,7 @@ struct BarrierState {
 /// let barrier = Barrier::new(1);
 /// let barrier_wait_result = barrier.wait();
 /// ```
+#[derive(Debug)]
 pub struct BarrierWaitResult(bool);
 
 impl fmt::Debug for Barrier {
@@ -98,6 +99,12 @@ impl Barrier {
     /// returns `true` from [`BarrierWaitResult::is_leader()`] when returning
     /// from this function, and all other threads will receive a result that
     /// will return `false` from [`BarrierWaitResult::is_leader()`].
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting. The canceled waiter counts as having arrived for the current
+    /// generation (the barrier remains usable).
     ///
     /// # Examples
     ///
@@ -198,4 +205,25 @@ fn test_barrier() {
         }
     }
     assert!(leader_found);
+}
+
+#[test]
+fn test_barrier_canceled_waiter() {
+    use crate::sleep::sleep;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let barrier = Arc::new(Barrier::new(2));
+    let b = barrier.clone();
+    let h = go!(move || {
+        b.wait();
+    });
+    // let the waiter enqueue
+    sleep(Duration::from_millis(50));
+    h.coroutine().cancel();
+    assert!(h.join().is_err());
+
+    // The canceled waiter counted as arrived for this generation, so a new
+    // wait completes it as the leader instead of hanging.
+    assert!(barrier.wait().is_leader());
 }

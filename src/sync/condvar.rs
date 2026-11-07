@@ -44,6 +44,14 @@ impl WaitTimeoutResult {
     }
 }
 
+/// A condition variable, usable from both threads and coroutines.
+///
+/// Waits take a [`Mutex`] guard; the guard is released while waiting and
+/// re-acquired before the wait returns.
+///
+/// Unlike `std::sync::Condvar`, a `Condvar` is permanently bound to the first
+/// mutex used with it: waiting with a different mutex panics even when no
+/// waiter is currently queued.
 pub struct Condvar {
     // the waiting blocker list
     // NOTE: a blocker that exits the wait via timeout/cancel without being
@@ -57,6 +65,7 @@ pub struct Condvar {
 }
 
 impl Condvar {
+    /// Create a new condition variable ready to be waited on and notified.
     pub const fn new() -> Condvar {
         Condvar {
             to_wake: SegQueue::new(),
@@ -122,6 +131,19 @@ impl Condvar {
         ret
     }
 
+    /// Block the current thread or coroutine until this condition variable is
+    /// notified.
+    ///
+    /// The mutex guard is released while waiting and re-acquired before this
+    /// function returns. Notification does not guarantee that the predicate a
+    /// caller is interested in holds, so waiters should re-check it in a loop
+    /// ([`wait_while`](Self::wait_while) does that for you).
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting; the guard is released first. Panics if the guard belongs to a
+    /// different mutex than the one this condition variable is bound to.
     pub fn wait<'a, T>(&self, guard: MutexGuard<'a, T>) -> LockResult<MutexGuard<'a, T>> {
         let poisoned = {
             let lock = mutex::guard_lock(&guard);
@@ -144,6 +166,14 @@ impl Condvar {
         }
     }
 
+    /// Wait until `condition` returns `false`.
+    ///
+    /// Equivalent to calling [`wait`](Self::wait) in a loop while the
+    /// predicate holds.
+    ///
+    /// # Panics
+    ///
+    /// Same as [`wait`](Self::wait).
     pub fn wait_while<'a, T, F>(
         &self,
         mut guard: MutexGuard<'a, T>,
@@ -158,6 +188,15 @@ impl Condvar {
         Ok(guard)
     }
 
+    /// Wait until `condition` returns `false` or the timeout expires.
+    ///
+    /// Returns the re-acquired guard and a [`WaitTimeoutResult`] indicating
+    /// whether the timeout was reached; in that case the predicate may still
+    /// hold.
+    ///
+    /// # Panics
+    ///
+    /// Same as [`wait`](Self::wait).
     pub fn wait_timeout_while<'a, T, F>(
         &self,
         mut guard: MutexGuard<'a, T>,
@@ -181,6 +220,19 @@ impl Condvar {
         Ok((guard, WaitTimeoutResult(false)))
     }
 
+    /// Block until notified or `dur` elapses.
+    ///
+    /// The guard is released while waiting and re-acquired before this
+    /// function returns. Returns a [`WaitTimeoutResult`] telling whether the
+    /// timeout expired.
+    ///
+    /// Note: [`WaitTimeoutResult`] is may's own type; `std::sync::Condvar`
+    /// returns `std::sync::WaitTimeoutResult`, whose constructor is private,
+    /// so the two types are not interchangeable.
+    ///
+    /// # Panics
+    ///
+    /// Same as [`wait`](Self::wait).
     pub fn wait_timeout<'a, T>(
         &self,
         guard: MutexGuard<'a, T>,
@@ -210,6 +262,10 @@ impl Condvar {
         }
     }
 
+    /// Wake one waiter, if any.
+    ///
+    /// Unlike a semaphore, the notification is not retained when nobody is
+    /// waiting.
     pub fn notify_one(&self) {
         // loop instead of recursing on the release chain: each popped
         // blocker may have registered a release action (it timed out or was
@@ -232,6 +288,7 @@ impl Condvar {
         }
     }
 
+    /// Wake all waiters.
     pub fn notify_all(&self) {
         while let Some(w) = self.to_wake.pop() {
             w.unpark();

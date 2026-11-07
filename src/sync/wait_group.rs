@@ -82,6 +82,12 @@ impl WaitGroup {
 
     /// Drops this reference and waits until all other references are dropped.
     ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting. This reference is already dropped, so the group's reference
+    /// count is unaffected.
+    ///
     /// # Examples
     ///
     /// ```
@@ -183,6 +189,24 @@ mod tests {
         for _ in 0..THREADS {
             rx.recv().unwrap();
         }
+    }
+
+    #[test]
+    fn wait_canceled_waiter() {
+        use crate::sleep::sleep;
+
+        let wg = WaitGroup::new();
+        let wg2 = wg.clone();
+        let h = go!(move || {
+            wg2.wait();
+        });
+        // let the waiter drop its reference and block
+        sleep(Duration::from_millis(50));
+        h.coroutine().cancel();
+        assert!(h.join().is_err());
+
+        // the only remaining reference returns immediately
+        wg.wait();
     }
 
     #[test]
