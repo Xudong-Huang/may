@@ -118,6 +118,9 @@ impl<T> Drop for RecvTimeoutSource<T> {
         while self.wait_kernel.load(Ordering::Acquire) {
             yield_now();
         }
+        // A cancellation may have taken the coroutine without removing the
+        // registration; drop whatever is left (a no-op on the normal path).
+        self.queue.timeout_wait.clear();
         self.remove_timer();
     }
 }
@@ -181,35 +184,69 @@ impl<T> Drop for Park<'_, T> {
         while self.wait_kernel.load(Ordering::Acquire) {
             yield_now();
         }
+        // A cancellation may have taken the coroutine without removing the
+        // registration; drop whatever is left (a no-op on the normal path).
+        self.queue.wait_co.clear();
     }
 }
 
 impl<T> EventSource for Park<'_, T> {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
+        let cancel = co_cancel_data(&co);
         // the queue could dropped if unpark by other thread
         let _g = self.delay_drop();
-        // register the coroutine
-        let wait_co = &self.queue.wait_co;
-        wait_co.store(Blocker::new_coroutine(co));
+
+        // The handle is shared with the cancel machinery, so exactly one of
+        // send/drop/cancel takes the coroutine out of it.
+        let wait_co = Arc::new(AtomicOption::some(co));
+        let slot = &self.queue.wait_co;
+        slot.store(Blocker::new_coroutine(wait_co.clone()));
+
         // re-check both queued data and disconnection, only clear once after
         // resume
         if !self.queue.queue.is_empty() || self.queue.channels.load(Ordering::Acquire) == 0 {
-            if let Some(co) = wait_co.take() {
-                run_coroutine(co.into_coroutine());
+            if let Some(w) = slot.take() {
+                if let Some(co) = w.into_coroutine() {
+                    run_coroutine(co);
+                }
             }
+            return;
+        }
+
+        // Register cancellation last, once the waiter is visible. The
+        // delay-drop guard keeps the coroutine's local data (including its
+        // `Cancel`) alive until subscribe returns, so `cancel` stays valid
+        // even if a concurrent send resumes the coroutine right now.
+        cancel.set_co(wait_co);
+        if cancel.is_canceled() {
+            cancel.cancel();
+            // the coroutine was scheduled by cancel(); drop the stale waiter
+            let _ = slot.take();
         }
     }
 }
 
+// The tagged handles below rely on the low bit being free. Both the
+// coroutine slot (an `Arc` allocation) and `Box<Thread>` are pointer-aligned.
+const _: () = assert!(std::mem::align_of::<AtomicOption<CoroutineImpl>>() >= 2);
+const _: () = assert!(std::mem::align_of::<Thread>() >= 2);
+
+/// A registered waiter: either a coroutine or a native thread, stored as a
+/// tagged pointer so `AtomicOption<Blocker>` stays lock-free.
+///
+/// The coroutine case points to a shared `Arc<AtomicOption<CoroutineImpl>>`
+/// (the same handle is registered with the cancel machinery). `send`,
+/// `drop_chan` and `Cancel::cancel` all race to `take()` the coroutine out of
+/// that slot, so exactly one of them resumes it.
 struct Blocker {
     handle: NonZeroUsize,
 }
 
 impl Blocker {
     #[inline]
-    fn new_coroutine(co: CoroutineImpl) -> Self {
-        let handle = NonZeroUsize::new(co.into_raw() as usize).unwrap();
+    fn new_coroutine(wait_co: Arc<AtomicOption<CoroutineImpl>>) -> Self {
+        let handle = NonZeroUsize::new(Arc::into_raw(wait_co) as usize).unwrap();
         Blocker { handle }
     }
 
@@ -221,10 +258,11 @@ impl Blocker {
     }
 
     #[inline]
-    fn into_coroutine(self) -> CoroutineImpl {
-        let co = unsafe { CoroutineImpl::from_raw(self.handle.get() as *mut _) };
+    fn into_coroutine(self) -> Option<CoroutineImpl> {
+        // safety: the handle was produced by `Arc::into_raw` above
+        let arc = unsafe { Arc::from_raw(self.handle.get() as *const AtomicOption<CoroutineImpl>) };
         std::mem::forget(self);
-        co
+        arc.take()
     }
 
     #[inline]
@@ -237,8 +275,9 @@ impl Blocker {
     #[inline]
     fn unpark(self) {
         if (self.handle.get() & 1) == 0 {
-            let co = self.into_coroutine();
-            get_scheduler().schedule(co);
+            if let Some(co) = self.into_coroutine() {
+                get_scheduler().schedule(co);
+            }
         } else {
             let thread = self.into_thread();
             thread.unpark();
@@ -249,8 +288,13 @@ impl Blocker {
 impl Drop for Blocker {
     fn drop(&mut self) {
         if (self.handle.get() & 1) == 0 {
-            // let co = self.into_coroutine();
-            unreachable!()
+            // release the shared handle; the coroutine may already have been
+            // taken by send/drop/cancel
+            unsafe {
+                drop(Arc::from_raw(
+                    self.handle.get() as *const AtomicOption<CoroutineImpl>
+                ))
+            };
         } else {
             let _thread: Box<Thread> = unsafe { Box::from_raw((self.handle.get() & !1) as *mut _) };
         }
@@ -524,6 +568,11 @@ impl<T> Receiver<T> {
     }
 
     /// Block until a value is available or the channel is disconnected.
+    ///
+    /// # Panics
+    ///
+    /// In a coroutine context, panics if the coroutine is canceled while
+    /// waiting.
     pub fn recv(&self) -> Result<T, RecvError> {
         loop {
             match self.inner.recv() {
@@ -872,6 +921,57 @@ mod tests {
         sleep(Duration::from_millis(50));
         handle.coroutine().cancel();
         assert!(handle.join().is_err());
+    }
+
+    /// A coroutine blocked in `recv()` must be woken by cancellation.
+    #[test]
+    fn recv_canceled_while_waiting() {
+        use crate::sleep::sleep;
+
+        let (tx, rx) = channel::<i32>();
+        let h = go!(move || {
+            let _ = rx.recv();
+        });
+        sleep(Duration::from_millis(50));
+        h.coroutine().cancel();
+
+        // bounded wait: without cancellation support join() would block
+        let start = Instant::now();
+        while !h.is_done() && start.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            h.is_done(),
+            "cancel did not wake a coroutine blocked in recv()"
+        );
+        drop(tx);
+        assert!(h.join().is_err());
+    }
+
+    /// Cancellation delivered before the coroutine parks must not spin in the
+    /// waiter's Drop (the wait-kernel flag is only set while subscribe runs).
+    #[test]
+    fn recv_canceled_before_parking() {
+        let running = Arc::new(AtomicBool::new(true));
+        let r = running.clone();
+        let (tx, rx) = channel::<i32>();
+        let h = go!(move || {
+            while r.load(Ordering::Acquire) {
+                std::hint::spin_loop();
+            }
+            let _ = rx.recv();
+        });
+
+        h.coroutine().cancel();
+        running.store(false, Ordering::Release);
+
+        let start = Instant::now();
+        while !h.is_done() && start.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(h.is_done(), "cancel before parking hung");
+        drop(tx);
+        assert!(h.join().is_err());
     }
 
     /// A sender dropping concurrently with `recv()` must not leave the
