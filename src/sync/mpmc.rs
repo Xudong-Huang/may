@@ -12,6 +12,7 @@ use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::semphore::WaitStatus;
 use super::Semphore;
 use crossbeam::queue::SegQueue;
 
@@ -55,13 +56,16 @@ impl<T> InnerQueue<T> {
             Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
         }
 
-        match dur {
-            None => self.sem.wait(),
-            Some(t) => {
-                if !self.sem.wait_timeout(t) {
-                    return Err(RecvTimeoutError::Timeout);
-                }
-            }
+        // The disconnect re-check is done *after* the waiter is registered
+        // (inside `wait_timeout_until`): a receiver that parks after the last
+        // sender's wakeup posts would otherwise never be woken again.
+        match self
+            .sem
+            .wait_timeout_until(dur, || self.tx_ports.load(Ordering::Acquire) == 0)
+        {
+            WaitStatus::Acquired => {}
+            WaitStatus::Stopped => return Err(RecvTimeoutError::Disconnected),
+            WaitStatus::Timeout => return Err(RecvTimeoutError::Timeout),
         }
 
         match self.queue.pop() {
@@ -97,9 +101,11 @@ impl<T> InnerQueue<T> {
     pub fn drop_tx(&self) {
         match self.tx_ports.fetch_sub(1, Ordering::SeqCst) {
             1 => {
-                // there is no tx port any more
-                // should tell all the waited rx to come back
-                while self.sem.get_value() == 0 {
+                // There is no tx port any more; wake every parked receiver
+                // so it observes the disconnect. No spare permit is left
+                // behind: receivers that register after this wakeup observe
+                // `tx_ports == 0` through `wait_timeout_until`.
+                while self.sem.has_waiters() {
                     self.sem.post();
                 }
             }
@@ -1033,5 +1039,44 @@ mod tests {
             }
         }
         assert!(rx1.try_recv().is_err());
+    }
+
+    /// Every receiver must observe the disconnect, including one that registers
+    /// for the semaphore after the last sender's wakeup posts have run.
+    ///
+    /// Regression: a single spare permit was left by `drop_tx`, so if another
+    /// receiver consumed it first, the late receiver parked forever.
+    #[test]
+    fn multi_receiver_disconnect_wakeup() {
+        use std::time::Instant;
+
+        const N: usize = 8;
+        for iter in 0..100 {
+            let (tx, rx) = channel::<i32>();
+            let done = Arc::new(AtomicUsize::new(0));
+            let mut handles = Vec::new();
+            for _ in 0..N {
+                let rx = rx.clone();
+                let done = done.clone();
+                handles.push(thread::spawn(move || {
+                    let _ = rx.recv();
+                    done.fetch_add(1, Ordering::SeqCst);
+                }));
+            }
+            drop(tx);
+
+            let start = Instant::now();
+            while done.load(Ordering::SeqCst) < N && start.elapsed() < Duration::from_secs(2) {
+                thread::sleep(Duration::from_millis(1));
+            }
+            let n = done.load(Ordering::SeqCst);
+            assert_eq!(
+                n, N,
+                "iter {iter}: only {n}/{N} receivers woke on disconnect"
+            );
+            for h in handles {
+                h.join().unwrap();
+            }
+        }
     }
 }

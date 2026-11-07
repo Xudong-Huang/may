@@ -50,6 +50,17 @@ pub struct Semphore {
 /// Alias for [`Semphore`] using the conventional spelling.
 pub type Semaphore = Semphore;
 
+/// Result of [`Semphore::wait_timeout_until`].
+pub(crate) enum WaitStatus {
+    /// A permit was acquired (or the wait was notified).
+    Acquired,
+    /// The `stop` predicate was true after the waiter registered; no permit
+    /// was consumed.
+    Stopped,
+    /// The timeout expired.
+    Timeout,
+}
+
 impl Semphore {
     /// create a semphore with the initial value
     pub fn new(init: usize) -> Self {
@@ -87,9 +98,23 @@ impl Semphore {
 
     // return false if timeout
     fn wait_timeout_impl(&self, dur: Option<Duration>) -> bool {
+        matches!(self.wait_timeout_until(dur, || false), WaitStatus::Acquired)
+    }
+
+    /// Wait for a permit, but leave without parking if `stop()` becomes true
+    /// after the waiter has been registered.
+    ///
+    /// Used by modules whose wakeup source can be "disconnected" (MPMC): the
+    /// registration's `cnt` RMW pairs with the producer's `post`, so a
+    /// disconnect that happened before the registration is observed by the
+    /// `stop()` check, and one that happens afterwards wakes the waiter.
+    pub(crate) fn wait_timeout_until<F>(&self, dur: Option<Duration>, stop: F) -> WaitStatus
+    where
+        F: Fn() -> bool,
+    {
         // try wait first
         if self.try_wait() {
-            return true;
+            return WaitStatus::Acquired;
         }
 
         let cur = SyncBlocker::current();
@@ -100,8 +125,24 @@ impl Semphore {
             self.wakeup_one();
         }
 
+        // Re-check after registering; the fetch_sub above synchronizes with
+        // the producer's post through the SeqCst modification order of `cnt`.
+        if stop() {
+            // A post may have handed us a permit concurrently. If so, consume
+            // it: a queued item must be delivered before the caller reports a
+            // disconnect. Only leave without the permit if none was acquired.
+            if cur.is_unparked() {
+                return WaitStatus::Acquired;
+            }
+            cur.set_release();
+            if cur.is_unparked() && cur.take_release() {
+                return WaitStatus::Acquired;
+            }
+            return WaitStatus::Stopped;
+        }
+
         match cur.park(dur) {
-            Ok(_) => true,
+            Ok(_) => WaitStatus::Acquired,
             Err(err) => {
                 // check the unpark status
                 if cur.is_unparked() {
@@ -119,9 +160,16 @@ impl Semphore {
                 if err == ParkError::Canceled {
                     trigger_cancel_panic();
                 }
-                false
+                WaitStatus::Timeout
             }
         }
+    }
+
+    /// Whether a waiter is currently registered (including waiters that are
+    /// about to leave via timeout/cancel).
+    #[inline]
+    pub(crate) fn has_waiters(&self) -> bool {
+        self.cnt.load(Ordering::Acquire) < 0
     }
 
     /// Wait for a semaphore.
