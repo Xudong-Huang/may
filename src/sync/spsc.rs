@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
+use super::delay_drop::{self, DelayDrop};
 use super::AtomicOption;
 use crate::coroutine_impl::{
     co_cancel_data, is_coroutine, run_coroutine, CoroutineImpl, EventSource,
@@ -28,7 +29,7 @@ use crate::coroutine_impl::{
 use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::TimeoutHandle;
-use crate::yield_now::{get_co_para, yield_now, yield_with};
+use crate::yield_now::{get_co_para, yield_with};
 
 use may_queue::spsc::Queue;
 
@@ -37,36 +38,15 @@ use may_queue::spsc::Queue;
 /// `CoroutineImpl`.
 type TimeoutCo = Arc<AtomicOption<CoroutineImpl>>;
 
-/// Guards the `wait_kernel` flag for the duration of an
-/// `EventSource::subscribe` call.
-///
-/// The wait source lives on the coroutine's stack and `subscribe` runs after
-/// the coroutine has suspended. A concurrent wake can resume the coroutine on
-/// another worker before `subscribe` returns; the source's `Drop` waits on
-/// this flag, which also keeps the coroutine's local data (including its
-/// `Cancel` registration) alive until the kernel is done.
-struct WaitKernel<'a>(&'a AtomicBool);
-
-impl<'a> WaitKernel<'a> {
-    fn new(flag: &'a AtomicBool) -> WaitKernel<'a> {
-        flag.store(true, Ordering::Release);
-        WaitKernel(flag)
-    }
-}
-
-impl Drop for WaitKernel<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
 /// EventSource for `recv_timeout`. It holds its own reference to the queue:
 /// once the coroutine is reachable by `send()` or the timer it may resume,
 /// finish and drop the channel on another worker while `subscribe` still runs.
 struct RecvTimeoutSource<T> {
     queue: Arc<InnerQueue<T>>,
     timeout: Duration,
-    wait_kernel: AtomicBool,
+    // the wait source lives on the coroutine stack; `Drop` waits until
+    // `subscribe` has finished before tearing it down
+    can_drop: DelayDrop,
     // the scheduler timer, removed if the wait ends before its deadline
     timer: AtomicPtr<TimeoutHandle<TimeoutCo>>,
 }
@@ -76,13 +56,13 @@ impl<T> RecvTimeoutSource<T> {
         RecvTimeoutSource {
             queue,
             timeout,
-            wait_kernel: AtomicBool::new(false),
+            can_drop: DelayDrop::new(),
             timer: AtomicPtr::new(ptr::null_mut()),
         }
     }
 
-    fn delay_drop(&self) -> WaitKernel<'_> {
-        WaitKernel::new(&self.wait_kernel)
+    fn delay_drop(&self) -> delay_drop::DropGuard<'_> {
+        self.can_drop.delay_drop()
     }
 
     fn set_timer(
@@ -115,9 +95,7 @@ impl<T> Drop for RecvTimeoutSource<T> {
     fn drop(&mut self) {
         // A concurrent wake may have resumed the coroutine while `subscribe`
         // was still running; wait for it before touching the source.
-        while self.wait_kernel.load(Ordering::Acquire) {
-            yield_now();
-        }
+        self.can_drop.wait();
         // A cancellation may have taken the coroutine without removing the
         // registration; drop whatever is left (a no-op on the normal path).
         self.queue.timeout_wait.clear();
@@ -161,29 +139,26 @@ impl<T> EventSource for RecvTimeoutSource<T> {
 
 struct Park<'a, T> {
     queue: &'a InnerQueue<T>,
-    // true while `subscribe` is running
-    wait_kernel: AtomicBool,
+    can_drop: DelayDrop,
 }
 
 impl<'a, T> Park<'a, T> {
     fn new(queue: &'a InnerQueue<T>) -> Park<'a, T> {
         Park {
             queue,
-            wait_kernel: AtomicBool::new(false),
+            can_drop: DelayDrop::new(),
         }
     }
 
-    fn delay_drop(&self) -> WaitKernel<'_> {
-        WaitKernel::new(&self.wait_kernel)
+    fn delay_drop(&self) -> delay_drop::DropGuard<'_> {
+        self.can_drop.delay_drop()
     }
 }
 
 impl<T> Drop for Park<'_, T> {
     fn drop(&mut self) {
         // wait the kernel finish
-        while self.wait_kernel.load(Ordering::Acquire) {
-            yield_now();
-        }
+        self.can_drop.wait();
         // A cancellation may have taken the coroutine without removing the
         // registration; drop whatever is left (a no-op on the normal path).
         self.queue.wait_co.clear();

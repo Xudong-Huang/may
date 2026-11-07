@@ -10,7 +10,6 @@ mod sync_flag;
 mod wait_group;
 
 pub(crate) mod atomic_dur;
-#[cfg(not(unix))]
 pub(crate) mod delay_drop;
 // pub(crate) mod fast_blocking;
 pub mod mpmc;

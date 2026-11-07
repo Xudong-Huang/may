@@ -9,9 +9,10 @@ use crate::cancel::Cancel;
 use crate::coroutine_impl::{co_cancel_data, run_coroutine, CoroutineImpl, EventSource};
 use crate::scheduler::get_scheduler;
 use crate::sync::atomic_dur::AtomicDuration;
+use crate::sync::delay_drop::{DelayDrop, DropGuard};
 use crate::sync::AtomicOption;
 use crate::timeout_list::TimeoutHandle;
-use crate::yield_now::{get_co_para, yield_now, yield_with};
+use crate::yield_now::{get_co_para, yield_with};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ParkError {
@@ -19,7 +20,6 @@ pub enum ParkError {
     Timeout,
 }
 
-pub struct DropGuard<'a>(&'a Park);
 pub struct Park {
     // the coroutine that waiting for this park instance
     wait_co: Arc<AtomicOption<CoroutineImpl>>,
@@ -32,7 +32,7 @@ pub struct Park {
     // timer handle, can be null
     timeout_handle: AtomicPtr<TimeoutHandle<Arc<AtomicOption<CoroutineImpl>>>>,
     // a flag if kernel is entered
-    wait_kernel: AtomicBool,
+    can_drop: DelayDrop,
 }
 
 impl Default for Park {
@@ -50,7 +50,7 @@ impl Park {
             check_cancel: AtomicBool::new(true),
             timeout: AtomicDuration::new(None),
             timeout_handle: AtomicPtr::new(ptr::null_mut()),
-            wait_kernel: AtomicBool::new(false),
+            can_drop: DelayDrop::new(),
         }
     }
 
@@ -144,9 +144,7 @@ impl Park {
         }
 
         // before a new yield wait the kernel done
-        while self.wait_kernel.load(Ordering::Acquire) {
-            yield_now();
-        }
+        self.can_drop.wait();
 
         self.timeout.store(dur);
 
@@ -173,23 +171,14 @@ impl Park {
     }
 
     fn delay_drop(&self) -> DropGuard<'_> {
-        self.wait_kernel.store(true, Ordering::Release);
-        DropGuard(self)
-    }
-}
-
-impl Drop for DropGuard<'_> {
-    fn drop(&mut self) {
-        self.0.wait_kernel.store(false, Ordering::Release);
+        self.can_drop.delay_drop()
     }
 }
 
 impl Drop for Park {
     fn drop(&mut self) {
         // wait the kernel finish
-        while self.wait_kernel.load(Ordering::Acquire) {
-            yield_now();
-        }
+        self.can_drop.wait();
 
         self.set_timeout_handle(None);
     }

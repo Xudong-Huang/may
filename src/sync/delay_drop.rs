@@ -1,7 +1,16 @@
 use crate::yield_now::yield_now;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// Clears the "kernel is running" marker when the guarded scope ends.
 pub struct DropGuard<'a>(&'a DelayDrop);
+
+/// Keeps a stack-resident wait source alive until its `subscribe` kernel has
+/// finished.
+///
+/// Call [`delay_drop`](Self::delay_drop) on entry to the kernel and drop the
+/// returned guard on exit. Dropping the `DelayDrop` (e.g. from a concurrent
+/// resume of the coroutine) waits until the kernel has finished, so the
+/// source and the coroutine's local data are not torn down under `subscribe`.
 pub struct DelayDrop {
     // can_drop & 0x1 is the flag that when kernel is done
     // can_drop & 0x2 is the flag that when kernel is started
@@ -20,14 +29,14 @@ impl DelayDrop {
         DropGuard(self)
     }
 
-    // #[inline]
-    // pub fn reset(&self) {
-    //     // wait the kernel finished
-    //     while self.can_drop.load(Ordering::Acquire) == 2 {
-    //         yield_now();
-    //     }
-    //     self.can_drop.store(0, Ordering::Release);
-    // }
+    /// Wait until the kernel (`delay_drop` guard) has finished.
+    ///
+    /// Safe to call from both the kernel owner and a concurrent `Drop`.
+    pub fn wait(&self) {
+        while self.can_drop.load(Ordering::Acquire) == 2 {
+            yield_now();
+        }
+    }
 }
 
 impl Drop for DropGuard<'_> {
@@ -40,8 +49,6 @@ impl Drop for DropGuard<'_> {
 impl Drop for DelayDrop {
     fn drop(&mut self) {
         // wait for drop
-        while self.can_drop.load(Ordering::Acquire) == 2 {
-            yield_now();
-        }
+        self.wait();
     }
 }
