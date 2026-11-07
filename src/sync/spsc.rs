@@ -1341,58 +1341,58 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn oneshot_single_thread_recv_timeout() {
-    //     let (tx, rx) = channel();
-    //     tx.send(()).unwrap();
-    //     assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
-    //     assert_eq!(
-    //         rx.recv_timeout(Duration::from_millis(1)),
-    //         Err(RecvTimeoutError::Timeout)
-    //     );
-    //     tx.send(()).unwrap();
-    //     assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
-    // }
+    #[test]
+    fn oneshot_single_thread_recv_timeout() {
+        let (tx, rx) = channel();
+        tx.send(()).unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(1)),
+            Err(RecvTimeoutError::Timeout)
+        );
+        tx.send(()).unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_millis(1)), Ok(()));
+    }
 
-    // #[test]
-    // fn stress_recv_timeout_two_threads() {
-    //     let (tx, rx) = channel();
-    //     let stress = stress_factor() + 100;
-    //     let timeout = Duration::from_millis(1);
+    #[test]
+    fn stress_recv_timeout_two_threads() {
+        let (tx, rx) = channel();
+        let stress = stress_factor() + 100;
+        let timeout = Duration::from_millis(1);
 
-    //     thread::spawn(move || {
-    //         for i in 0..stress {
-    //             if i % 2 == 0 {
-    //                 thread::sleep(timeout * 2);
-    //             }
-    //             tx.send(1usize).unwrap();
-    //         }
-    //     });
+        thread::spawn(move || {
+            for i in 0..stress {
+                if i % 2 == 0 {
+                    thread::sleep(timeout * 2);
+                }
+                tx.send(1usize).unwrap();
+            }
+        });
 
-    //     let mut recv_count = 0;
-    //     loop {
-    //         match rx.recv_timeout(timeout) {
-    //             Ok(n) => {
-    //                 assert_eq!(n, 1usize);
-    //                 recv_count += 1;
-    //             }
-    //             Err(RecvTimeoutError::Timeout) => continue,
-    //             Err(RecvTimeoutError::Disconnected) => break,
-    //         }
-    //     }
+        let mut recv_count = 0;
+        loop {
+            match rx.recv_timeout(timeout) {
+                Ok(n) => {
+                    assert_eq!(n, 1usize);
+                    recv_count += 1;
+                }
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
 
-    //     assert_eq!(recv_count, stress);
-    // }
+        assert_eq!(recv_count, stress);
+    }
 
-    // #[test]
-    // fn recv_timeout_upgrade() {
-    //     let (_tx, rx) = channel::<()>();
-    //     let timeout = Duration::from_millis(1);
+    #[test]
+    fn recv_timeout_upgrade() {
+        let (_tx, rx) = channel::<()>();
+        let timeout = Duration::from_millis(1);
 
-    //     let start = Instant::now();
-    //     assert_eq!(rx.recv_timeout(timeout), Err(RecvTimeoutError::Timeout));
-    //     assert!(Instant::now() >= start + timeout);
-    // }
+        let start = Instant::now();
+        assert_eq!(rx.recv_timeout(timeout), Err(RecvTimeoutError::Timeout));
+        assert!(Instant::now() >= start + timeout);
+    }
 
     #[test]
     fn recv_a_lot() {
