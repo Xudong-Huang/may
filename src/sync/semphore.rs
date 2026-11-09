@@ -165,13 +165,6 @@ impl Semphore {
         }
     }
 
-    /// Whether a waiter is currently registered (including waiters that are
-    /// about to leave via timeout/cancel).
-    #[inline]
-    pub(crate) fn has_waiters(&self) -> bool {
-        self.cnt.load(Ordering::Acquire) < 0
-    }
-
     /// Wait for a semaphore.
     ///
     /// If the semaphore value is bigger than zero the function returns
