@@ -14,7 +14,7 @@ use super::poison;
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
 
-use may_queue::mpsc::Queue;
+use crossbeam::queue::SegQueue as Queue;
 
 /// A mutual exclusion primitive useful for protecting shared data.
 ///
@@ -104,60 +104,50 @@ impl<T: ?Sized> Mutex<T> {
             Err(TryLockError::Poisoned(e)) => return Err(e),
         }
 
+        let wait_queue = self.to_wake.get_or_init(Queue::new);
         let cur = SyncBlocker::current();
         // register blocker first
-        self.to_wake.get_or_init(Queue::new).push(cur.clone());
+        wait_queue.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
-            let w = self
-                .to_wake
-                .get_or_init(Queue::new)
-                .pop()
-                .expect("got null blocker!");
-            if self.unpark_one(&w) {
+            let w = wait_queue.pop().expect("got null blocker!");
+            if w.take_release() {
                 self.unlock();
+            } else {
+                w.unpark();
             }
         }
-        loop {
-            match cur.park(None) {
-                Ok(_) => {
-                    break;
-                }
-                Err(ParkError::Timeout) => unreachable!("mutex timeout"),
-                Err(ParkError::Canceled) => {
-                    let b_ignore = if crate::coroutine_impl::is_coroutine() {
-                        let cancel = crate::coroutine_impl::current_cancel_data();
-                        cancel.is_disabled()
-                    } else {
-                        false
-                    };
-                    // check the unpark status
-                    if cur.is_unparked() {
-                        if b_ignore {
-                            break;
-                        }
+
+        match cur.park(None) {
+            Ok(_) => MutexGuard::new(self),
+            Err(ParkError::Timeout) => unreachable!("mutex timeout"),
+            Err(ParkError::Canceled) => {
+                // at this point, the couroutine can come alive from
+                // two possibilities: normal unpark or cancellation
+                // in normal unpark we don't set_release
+                if cur.is_unparked() {
+                    // need to wake next waiter before we panic
+                    self.unlock();
+                } else {
+                    // mark as canceled in the waiter queue
+                    // normal unlock would skip it
+                    cur.set_release();
+                    // check again the release status
+                    // if it becomes false means a normal unpark
+                    // we need to wakeup next waiter before we panic
+                    if !cur.is_released() {
                         self.unlock();
-                    } else if !b_ignore {
-                        // register the release action: if we get handed the
-                        // lock while unwinding, pass it on to the next waiter
-                        cur.set_release();
-                        // re-check unpark status
-                        if cur.is_unparked() && cur.take_release() {
-                            self.unlock();
-                        }
+                    } else {
+                        // now just leave the waiter in the wait_queue
+                        // and it is marked as **released**
+                        // normal `unlock()` sould pop it out with no action
                     }
-                    // we ignore the cancel, just to wait the actual event
-                    if b_ignore {
-                        continue;
-                    }
-
-                    // now we can safely go with the cancel panic
-                    trigger_cancel_panic();
                 }
+
+                // now we can safely go with the cancel panic
+                trigger_cancel_panic();
             }
         }
-
-        MutexGuard::new(self)
     }
 
     /// Attempts to acquire the mutex without blocking.
@@ -179,32 +169,20 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
-    /// unpark one waiter, return true if it registered a release action:
-    /// it is unwinding (canceled) and won't take the lock, so the hand-off
-    /// must continue with the next waiter
-    fn unpark_one(&self, w: &SyncBlocker) -> bool {
-        w.unpark();
-        w.take_release()
-    }
-
+    /// Pop one waiter from the queue and unpark it.
+    ///
+    /// This function is called internally when the mutex is unlocked to wake up
+    /// one of the waiting coroutines, if any. It will continue to unpark waiters
+    /// until it finds one that is not canceled.
     fn unlock(&self) {
-        // pass the lock down the waiter chain iteratively: a popped waiter
-        // that registered a release action is unwinding and won't take the
-        // lock, so the hand-off continues with the next waiter. Recursing
-        // here would overflow the (small, 32KB default) coroutine stack
-        // when a cancel storm leaves a chain of released waiters (see the
-        // same fix in condvar::notify_one).
+        let wait_queue = self.to_wake.get_or_init(Queue::new);
         let mut cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         while cnt > 1 {
-            let w = self
-                .to_wake
-                .get_or_init(Queue::new)
-                .pop()
-                .expect("got null blocker!");
-            if !self.unpark_one(&w) {
+            let w = wait_queue.pop().expect("got null blocker!");
+            if !w.take_release() {
+                w.unpark();
                 break;
             }
-            // the released waiter's slot is released as well
             cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         }
     }

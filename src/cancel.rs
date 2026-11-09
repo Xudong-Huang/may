@@ -130,6 +130,7 @@ impl<T: CancelIo> CancelImpl<T> {
     }
 
     // return if the coroutine cancel is disabled
+    #[allow(dead_code)]
     pub fn is_disabled(&self) -> bool {
         self.state.load(Ordering::Acquire) >= 2
     }

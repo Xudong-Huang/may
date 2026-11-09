@@ -15,8 +15,7 @@ use crate::park::ParkError;
 
 /// restores cancel delivery on drop, so that a panic between
 /// `disable_cancel` and `enable_cancel` cannot leave the coroutine with
-/// cancel permanently disabled (the cancel data state is inflated by 2 per
-/// disable and only deflated by a matching enable)
+/// cancel permanently disabled
 struct CancelDisableGuard(&'static Cancel);
 
 impl CancelDisableGuard {
@@ -83,16 +82,10 @@ impl Condvar {
         // enqueue the blocker
         let cur = SyncBlocker::current();
 
-        // we can't cancel panic here!!
-        let _g = cancel.map(CancelDisableGuard::new);
-
         self.to_wake.push(cur.clone());
 
         // unlock the mutex to let other continue
         mutex::unlock_mutex(lock);
-        // re-enable cancel before parking: a pending cancel is delivered
-        // by the park itself
-        drop(_g);
 
         // wait until coming back
         let ret = cur.park(dur);

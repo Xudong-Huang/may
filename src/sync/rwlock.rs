@@ -1,4 +1,4 @@
-//! compatible with std::sync::rwlock except for both thread and coroutine
+﻿//! compatible with std::sync::rwlock except for both thread and coroutine
 //! please ref the doc from std::sync::rwlock
 use std::cell::UnsafeCell;
 use std::fmt;
@@ -11,7 +11,6 @@ use std::sync::{LockResult, OnceLock, PoisonError, TryLockError, TryLockResult};
 use std::thread;
 
 use crate::cancel::trigger_cancel_panic;
-use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
 
@@ -36,8 +35,6 @@ use super::poison;
 /// under a constant stream of readers. Apart from that, waiter hand-off is
 /// FIFO.
 pub struct RwLock<T: ?Sized> {
-    // below two variables consist a global mutex
-    // we need to deal with the cancel logic differently
     // the waiting blocker list, allocated lazily on first contention
     // so that `RwLock::new` can be a const fn
     to_wake: OnceLock<SegQueue<Arc<SyncBlocker>>>,
@@ -132,32 +129,46 @@ impl<T: ?Sized> RwLock<T> {
             }
         }
 
+        let wait_queue = self.to_wake.get_or_init(SegQueue::new);
+
         let cur = SyncBlocker::current();
         // register blocker first
-        self.to_wake.get_or_init(SegQueue::new).push(cur.clone());
+        wait_queue.push(cur.clone());
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
-            self.to_wake
-                .get_or_init(SegQueue::new)
-                .pop()
-                .map(|w| self.unpark_one(&w))
-                .expect("got null blocker!");
+            let w = wait_queue.pop().expect("got null blocker!");
+            if w.take_release() {
+                self.unlock();
+            } else {
+                w.unpark();
+            }
         }
         match cur.park(None) {
             Ok(_) => Ok(()),
             Err(ParkError::Timeout) => unreachable!("rwlock timeout"),
             Err(ParkError::Canceled) => {
-                // check the unpark status
+                // at this point, the couroutine can come alive from
+                // two possibilities: normal unpark or cancellation
+                // in normal unpark we don't set_release
                 if cur.is_unparked() {
+                    // need to wake next waiter before we panic
                     self.unlock();
                 } else {
-                    // register
+                    // mark as canceled in the waiter queue
+                    // normal unlock would skip it
                     cur.set_release();
-                    // re-check unpark status
-                    if cur.is_unparked() && cur.take_release() {
+                    // check again the release status
+                    // if it becomes false means a normal unpark
+                    // we need to wakeup next waiter
+                    if !cur.is_released() {
                         self.unlock();
+                    } else {
+                        // now just leave the waiter in the wait_queue
+                        // and it is marked as **released**
+                        // normal `unlock()` sould pop it out with no action
                     }
                 }
+
                 Err(ParkError::Canceled)
             }
         }
@@ -180,40 +191,18 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
+    /// Pop one waiter from the queue and unpark it
+    /// until it finds one that is not canceled.
     fn unlock(&self) {
-        // pass the lock down the waiter chain iteratively: a popped waiter
-        // that registered a release action timed out or was canceled and
-        // won't take the lock, so the hand-off continues with the next
-        // waiter. Recursing here would overflow the (small, 32KB default)
-        // coroutine stack when a cancel storm leaves a long chain of
-        // released waiters (see the same fix in `Mutex::unlock` and
-        // `Condvar::notify_one`).
+        let wait_queue = self.to_wake.get_or_init(SegQueue::new);
         let mut cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         while cnt > 1 {
-            let w = self
-                .to_wake
-                .get_or_init(SegQueue::new)
-                .pop()
-                .expect("got null blocker!");
-
-            w.unpark();
-            // when release is taken, the waiter is leaving without the lock
-            // and its slot must be released as well
+            let w = wait_queue.pop().expect("got null blocker!");
             if !w.take_release() {
+                w.unpark();
                 break;
             }
             cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
-        }
-    }
-
-    /// Unpark one waiter for the first-grab path in [`lock`].
-    ///
-    /// If the waiter has already registered its release action, continue the
-    /// hand-off with the iterative [`unlock`] loop.
-    fn unpark_one(&self, w: &SyncBlocker) {
-        w.unpark();
-        if w.take_release() {
-            self.unlock();
         }
     }
 
@@ -288,27 +277,6 @@ impl<T: ?Sized> RwLock<T> {
     }
 
     fn read_unlock(&self) {
-        // this runs from `RwLockReadGuard::drop`, which may execute while a
-        // cancel panic is unwinding the coroutine. Two hazards to avoid:
-        // - parking here would suspend the unwind mid-flight, leaving
-        //   `thread::panicking()` set for the whole worker thread while
-        //   other coroutines run on it; their cancels would then be
-        //   silently swallowed by `check_cancel`'s panicking guard and
-        //   their guards spuriously poisoned
-        // - if a park had to happen while the cancel bit is set, the
-        //   park's subscribe would re-deliver the cancel and abort the
-        //   process with a panic-while-panicking
-        // so acquire the reader-count mutex without parking (see
-        // `try_lock_rlock`), and keep the cancel disabled as a
-        // belt-and-braces for the fallback path
-        let cancel = if is_coroutine() {
-            Some(current_cancel_data())
-        } else {
-            None
-        };
-        if let Some(c) = cancel.as_ref() {
-            c.disable_cancel();
-        }
         let mut r = if thread::panicking() {
             // we are inside an unwind (our own cancel panic, or another
             // coroutine's suspended one): avoid parking so the unwind is
@@ -318,11 +286,13 @@ impl<T: ?Sized> RwLock<T> {
             // normal drop: the blocking lock is cheap and safe here
             self.rlock.lock().expect("rwlock read_unlock")
         };
-        if let Some(c) = cancel.as_ref() {
-            c.enable_cancel();
-        }
+
         *r -= 1;
-        if *r == 0 {
+        let v = *r;
+
+        drop(r);
+
+        if v == 0 {
             self.unlock();
         }
     }
@@ -334,7 +304,7 @@ impl<T: ?Sized> RwLock<T> {
     /// only wait for the global lock after seeing *r == 0, i.e. while no
     /// read guard exists), so a bounded spin virtually always acquires.
     fn try_lock_rlock(&self) -> MutexGuard<'_, usize> {
-        for _ in 0..1_000_000 {
+        loop {
             match self.rlock.try_lock() {
                 Ok(r) => return r,
                 Err(TryLockError::Poisoned(_)) => {
@@ -343,13 +313,9 @@ impl<T: ?Sized> RwLock<T> {
                     self.rlock.clear_poison();
                     continue;
                 }
-                Err(TryLockError::WouldBlock) => std::hint::spin_loop(),
+                Err(TryLockError::WouldBlock) => crate::coroutine::yield_now(),
             }
         }
-        // pathological case: the holder is descheduled mid-section; fall
-        // back to the blocking lock. the cancel is disabled around this
-        // call so a re-delivered cancel cannot double-panic
-        self.rlock.lock().expect("rwlock read_unlock")
     }
 
     /// Locks this `RwLock` with exclusive write access, blocking the current

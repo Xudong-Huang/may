@@ -259,6 +259,12 @@ impl SyncBlocker {
         self.release.store(true, Ordering::SeqCst);
     }
 
+    /// read back release flag
+    #[inline]
+    pub fn is_released(&self) -> bool {
+        self.release.load(Ordering::SeqCst)
+    }
+
     /// Take the release flag. Returns true exactly once if it was set.
     #[inline]
     pub fn take_release(&self) -> bool {
