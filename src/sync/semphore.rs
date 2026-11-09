@@ -249,6 +249,32 @@ impl Semphore {
         }
     }
 
+    /// Increment the semaphore and wake one waiter if any exist.
+    /// Returns `true` if a waiter was woken, `false` if there were no waiters.
+    pub(crate) fn post_and_check(&self) -> bool {
+        // CAS loop so the counter is not wrapped before the overflow check
+        // can fire
+        let prev = loop {
+            let cur = self.cnt.load(Ordering::SeqCst);
+            assert!(cur < isize::MAX, "semaphore permit count overflow");
+            match self
+                .cnt
+                .compare_exchange_weak(cur, cur + 1, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => break cur,
+                Err(_) => continue,
+            }
+        };
+
+        // try to wakeup one waiter first
+        if prev < 0 {
+            self.wakeup_one();
+            true
+        } else {
+            false
+        }
+    }
+
     /// Return the current semaphore value.
     ///
     /// Queued waiters are not reported: the value is clamped to `0` while

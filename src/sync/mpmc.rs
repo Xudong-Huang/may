@@ -127,8 +127,15 @@ impl<T> InnerQueue<T> {
                 // so it observes the disconnect. No spare permit is left
                 // behind: receivers that register after this wakeup observe
                 // `tx_ports == 0` through `wait_timeout_until`.
-                while self.sem.has_waiters() {
-                    self.sem.post();
+                //
+                // Keep posting until no more waiters are woken. This handles
+                // the race where a receiver can register after we check for
+                // waiters but before we post. By repeatedly posting until
+                // post_and_check returns false, we ensure all receivers
+                // (including those registering concurrently) observe the
+                // disconnect.
+                while self.sem.post_and_check() {
+                    // Keep posting
                 }
             }
             n if n > 1 => {}
