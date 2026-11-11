@@ -234,3 +234,86 @@ fn cqueue_loop() {
 
     assert_eq!(result, 50);
 }
+
+// A selector panic observed by `poll` must propagate without poisoning the
+// cqueue: `Drop` still has to cancel and drain the other selectors.
+#[test]
+#[should_panic(expected = "panic in selector")]
+fn cqueue_panic_seen_by_poll() {
+    cqueue::scope(|cqueue| {
+        go!(cqueue, 0, |_es| {
+            panic!("panic in selector");
+        });
+        // stays alive while the panic above propagates through `poll`
+        cqueue_add_oneshot!(cqueue, 1, _ = coroutine::sleep(Duration::from_secs(30)) => {});
+
+        std::thread::sleep(Duration::from_millis(100));
+        let _ = cqueue.poll(None);
+    });
+}
+
+// A selector panic detected while the scope is already unwinding must be
+// dropped, not re-raised (that would abort the process).
+#[test]
+#[should_panic(expected = "panic in scope")]
+fn cqueue_selector_panic_while_unwinding() {
+    cqueue::scope(|cqueue| {
+        go!(cqueue, 0, |_es| {
+            panic!("panic in selector");
+        });
+        cqueue_add_oneshot!(cqueue, 1, _ = coroutine::sleep(Duration::from_secs(30)) => {});
+
+        // let the selector panic and queue its Done event, then unwind the
+        // scope while the other selector is still alive
+        std::thread::sleep(Duration::from_millis(100));
+        panic!("panic in scope");
+    });
+}
+
+#[test]
+fn cqueue_zero_timeout() {
+    cqueue::scope(|cqueue| {
+        cqueue_add_oneshot!(cqueue, 0, _ = coroutine::sleep(Duration::from_secs(30)) => {});
+        let start = std::time::Instant::now();
+        match cqueue.poll(Some(Duration::ZERO)) {
+            Err(Timeout) => {}
+            _ => unreachable!(),
+        }
+        assert!(start.elapsed() < Duration::from_secs(1));
+    });
+}
+
+// Concurrent `add` is not supported and is rejected in debug builds.
+#[test]
+#[cfg(debug_assertions)]
+fn cqueue_concurrent_add_is_rejected_in_debug() {
+    cqueue::scope(|cqueue| {
+        cqueue_add_oneshot!(cqueue, 0, _ = coroutine::sleep(Duration::from_secs(30)) => {});
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                // `poll` below owns the cqueue while it waits
+                std::thread::sleep(Duration::from_millis(50));
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _ = cqueue.add(1, |_es| {});
+                }));
+                let msg = r.err().map(|e| {
+                    e.downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                        .unwrap_or_default()
+                });
+                tx.send(msg).unwrap();
+            });
+            match cqueue.poll(Some(Duration::from_millis(200))) {
+                Err(Timeout) => {}
+                _ => unreachable!(),
+            }
+        });
+        let msg = rx.recv().unwrap();
+        assert!(
+            msg.as_deref().is_some_and(|m| m.contains("not supported")),
+            "unexpected panic: {msg:?}"
+        );
+    });
+}
