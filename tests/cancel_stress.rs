@@ -19,7 +19,7 @@ use may::coroutine;
 #[cfg(feature = "io_cancel")]
 use may::net::TcpListener;
 use may::sync::mpsc::channel;
-use may::sync::{Condvar, Mutex};
+use may::sync::{Condvar, Mutex, RwLock};
 
 fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
     matches!(err.downcast_ref::<Error>(), Some(Error::Cancel))
@@ -246,11 +246,13 @@ fn cancel_reported_at_completion() {
 /// *disabled* — the state `Condvar::wait_impl` enters for its internal
 /// re-lock — must not corrupt the mutex's waiter count.
 ///
-/// The first cancel wakes the coroutine from the condvar wait; it then
-/// re-locks the mutex with cancel disabled. The second cancel delivers a
-/// fresh `Canceled` into that mutex wait, exercising the deferred-cancel
-/// (`b_ignore`) path: the wait must keep waiting and the mutex must remain
-/// usable afterwards. Do NOT remove the second cancel — it is the trigger.
+/// The single cancel wakes the coroutine from the condvar wait with
+/// `Canceled`. It then re-locks the mutex with the cancel bit disabled, so
+/// that re-lock keeps waiting instead of panicking at the yield point: the
+/// coroutine only leaves once the mutex is handed over, and then releases the
+/// lock and propagates the cancel. This is the deferred-cancel (`b_ignore`)
+/// path, and it is fully exercised by one cancel — a second one arrives
+/// already canceled and is not needed.
 #[test]
 fn cancel_disabled_while_parked_on_mutex() {
     let pair = Arc::new((Mutex::new(0usize), Condvar::new()));
@@ -267,15 +269,12 @@ fn cancel_disabled_while_parked_on_mutex() {
     // let the coroutine reach the condvar wait
     thread::sleep(Duration::from_millis(100));
 
-    // hold the mutex so the coroutine's re-lock must park
-    let guard = pair.0.lock().unwrap();
+    // hold the mutex so the coroutine's re-lock has to park
+    let mut guard = pair.0.lock().unwrap();
+    *guard += 1;
 
-    // first cancel: the coroutine wakes from the condvar wait,
-    // disables cancel and parks on the mutex re-lock
-    h.coroutine().cancel();
-    thread::sleep(Duration::from_millis(200));
-
-    // second cancel: lands while parked on the mutex with cancel disabled
+    // the cancel wakes the condvar wait; the re-lock that follows runs with
+    // cancel disabled, so it parks on the mutex instead of panicking
     h.coroutine().cancel();
     thread::sleep(Duration::from_millis(200));
 
@@ -283,10 +282,170 @@ fn cancel_disabled_while_parked_on_mutex() {
     drop(guard);
     assert!(h.join().is_err_and(|e| is_cancel(&*e)));
 
-    // the mutex must be free and usable afterwards
+    // the mutex must be free and usable afterwards, with its data intact
     let g = pair
         .0
         .try_lock()
         .expect("mutex corrupted after cancel: try_lock failed on a free mutex");
+    assert_eq!(*g, 1, "mutex data corrupted after cancel");
     drop(g);
+}
+
+/// A cancel delivered while the coroutine is parked inside `Condvar`'s
+/// internal mutex re-lock, where cancellation is disabled, must not corrupt
+/// the mutex either.
+///
+/// That re-lock runs with the cancel bit disabled so it panics at a safe
+/// point instead of inside `wait_impl`; it therefore has to keep waiting for
+/// the hand-off, and the mutex must be left free and unlocked afterwards.
+///
+/// The second `cancel()` delivers the late cancel deterministically. A single
+/// `cancel()` can land in the same window whenever the coroutine has already
+/// moved from the condvar wait into the re-lock, so this is a real
+/// interleaving and not just a repeated-cancel corner case.
+#[test]
+fn late_cancel_during_condvar_relock_keeps_mutex_consistent() {
+    let pair = Arc::new((Mutex::new(0usize), Condvar::new()));
+
+    let p = pair.clone();
+    let h = go!(move || {
+        let (m, c) = &*p;
+        let g = m.lock().unwrap();
+        let _ = c.wait(g);
+        unreachable!("wait() returned after cancel");
+    });
+
+    // let the coroutine reach the condvar wait
+    thread::sleep(Duration::from_millis(100));
+
+    // hold the mutex so the re-lock that follows the cancel has to park
+    let mut guard = pair.0.lock().unwrap();
+    *guard += 1;
+
+    // first cancel: wakes the coroutine from the condvar wait
+    h.coroutine().cancel();
+    thread::sleep(Duration::from_millis(200));
+
+    // second cancel: lands while the re-lock is parked with cancel disabled
+    h.coroutine().cancel();
+    thread::sleep(Duration::from_millis(200));
+
+    drop(guard);
+    assert!(h.join().is_err_and(|e| is_cancel(&*e)));
+
+    let g = pair
+        .0
+        .try_lock()
+        .expect("mutex corrupted by a late cancel: try_lock failed on a free mutex");
+    assert_eq!(*g, 1, "mutex data corrupted by a late cancel");
+    drop(g);
+}
+
+/// A cancel that loses the race with a hand-off cannot wake the coroutine:
+/// `Cancel::cancel` needs to take the parked coroutine out of the parker, and
+/// the unlock already got there. The cancel bit is left set while the park
+/// returns `Ok`, so the lock wait has to re-check it. The guard may not be
+/// handed to an already-canceled wait, or the cancel is silently lost until
+/// the coroutine's next cancellation point, or forever.
+///
+/// The cancel can also arrive after the coroutine already finished, which is
+/// legitimate; `order` tells whether an acquisition really came after the
+/// cancel was issued, so only that case counts as a failure.
+#[test]
+fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
+    for _ in 0..10 {
+        let m = Arc::new(Mutex::new(0usize));
+        let ready = Arc::new(AtomicBool::new(false));
+        let order = Arc::new(AtomicUsize::new(0));
+        // position of the coroutine's acquisition in `order`, if it got that
+        // far
+        let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
+
+        // hold the lock so the coroutine has to park on it
+        let guard = m.lock().unwrap();
+
+        let p = m.clone();
+        let (r, s, a) = (ready.clone(), order.clone(), acquired_at.clone());
+        let h = go!(move || {
+            r.store(true, Ordering::SeqCst);
+            let mut g = p.lock().unwrap();
+            // a canceled wait has to panic inside `lock()`, not get here
+            a.store(s.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+            *g += 1;
+        });
+
+        while !ready.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        // let the coroutine reach the mutex wait
+        thread::sleep(Duration::from_millis(50));
+
+        // the unlock hands the lock over and consumes the park registration,
+        // so this cancel has nothing left to wake and only sets the bit
+        drop(guard);
+        h.coroutine().cancel();
+        let cancel_at = order.fetch_add(1, Ordering::SeqCst);
+
+        let _ = h.join();
+        let acq = acquired_at.load(Ordering::SeqCst);
+        assert!(
+            acq == usize::MAX || acq < cancel_at,
+            "canceled wait was handed the lock: acquired={acq} cancel={cancel_at}"
+        );
+        // the body only runs for the legitimate late-cancel ordering, and the
+        // mutex must be usable and consistent afterwards either way
+        let expected = if acq == usize::MAX { 0 } else { 1 };
+        assert_eq!(
+            *m.lock().unwrap(),
+            expected,
+            "mutex inconsistent after cancel"
+        );
+    }
+}
+
+/// Same as [`cancel_racing_handoff_is_not_lost_on_mutex_lock`], for the write
+/// side of an `RwLock`.
+#[test]
+fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
+    for _ in 0..10 {
+        let m = Arc::new(RwLock::new(0usize));
+        let ready = Arc::new(AtomicBool::new(false));
+        let order = Arc::new(AtomicUsize::new(0));
+        let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
+
+        // hold the write lock so the coroutine has to park on it
+        let guard = m.write().unwrap();
+
+        let p = m.clone();
+        let (r, s, a) = (ready.clone(), order.clone(), acquired_at.clone());
+        let h = go!(move || {
+            r.store(true, Ordering::SeqCst);
+            let mut g = p.write().unwrap();
+            a.store(s.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+            *g += 1;
+        });
+
+        while !ready.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        // let the coroutine reach the lock wait
+        thread::sleep(Duration::from_millis(50));
+
+        drop(guard);
+        h.coroutine().cancel();
+        let cancel_at = order.fetch_add(1, Ordering::SeqCst);
+
+        let _ = h.join();
+        let acq = acquired_at.load(Ordering::SeqCst);
+        assert!(
+            acq == usize::MAX || acq < cancel_at,
+            "canceled wait was handed the write lock: acquired={acq} cancel={cancel_at}"
+        );
+        let expected = if acq == usize::MAX { 0 } else { 1 };
+        assert_eq!(
+            *m.write().unwrap(),
+            expected,
+            "rwlock inconsistent after cancel"
+        );
+    }
 }

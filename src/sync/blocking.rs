@@ -14,8 +14,33 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::coroutine_impl::is_coroutine;
+use crate::coroutine_impl::{current_cancel_data, is_coroutine};
 use crate::park::{Park, ParkError};
+
+/// Whether cancellation is currently disabled for the running coroutine.
+///
+/// `Condvar`'s internal re-lock runs with cancellation disabled so that a
+/// cancel panics at a safe point instead of inside the re-lock, which means a
+/// lock wait has to survive the cancel and keep waiting rather than panic.
+#[inline]
+pub(crate) fn cancel_disabled() -> bool {
+    is_coroutine() && current_cancel_data().is_disabled()
+}
+
+/// Whether a cancel is pending that a successful park did not deliver.
+///
+/// `Cancel::cancel` has to take the parked coroutine out of the parker, and it
+/// loses that race when a producer's `unpark` got there first: the coroutine
+/// is woken normally and the cancel bit is left set with nothing to schedule.
+/// The parker then returns `Ok`, so a lock wait has to re-check the bit itself
+/// instead of handing the lock to a canceled waiter.
+///
+/// `is_canceled()` is false while cancellation is disabled, so this never
+/// fires in a deferred region.
+#[inline]
+pub(crate) fn cancel_pending() -> bool {
+    is_coroutine() && current_cancel_data().is_canceled()
+}
 
 /// A parker for the current OS thread, built on a mutex-protected token and a
 /// condition variable.
@@ -204,24 +229,24 @@ impl FastBlocker {
 
 /// A one-shot blocker with an asynchronous release hand-off.
 ///
-/// The parker ignores cancellation; the caller checks it, and when it leaves
-/// the wait without consuming the resource (timeout or cancel) records that
-/// with [`set_release`](Self::set_release). A producer that unparks this
-/// blocker afterwards sees the release flag and forwards the resource to the
-/// next waiter instead of losing it.
+/// The parker ignores cancellation; the caller checks it. When the wait ends
+/// without consuming the resource (timeout or cancel), the waiter and a
+/// producer that wants to hand the resource over must agree on which of them
+/// forwards it, and exactly one of them must.
 ///
-/// Consumers must use this exact ordering:
+/// Both halves of that handshake run under `spin_lock`, so the decision is
+/// made with mutual exclusion:
 ///
-/// 1. `park` returns `Err`;
-/// 2. if `is_unparked()` is true, forward the resource;
-/// 3. otherwise call `set_release()`, then re-check `is_unparked()` and
-///    forward if it became true.
+/// 1. `park` returns `Err`, so the waiter calls [`leave_wait`];
+/// 2. `leave_wait` returns `true` if the resource arrived anyway and the
+///    caller must forward it;
+/// 3. a producer calls [`try_hand_off`], which returns `false` if the waiter
+///    had already left and the caller must forward to the next waiter.
 ///
-/// The first check must happen before `set_release`, and `unpark` sets
-/// `unparked` before waking, so one side always observes the other and
-/// exactly one hand-off happens. The atomics are `SeqCst` because the two
-/// flags form a Dekker-style handshake that is not sound with plain
-/// `Acquire`/`Release` on weakly-ordered targets.
+/// A lock-free version of this handshake cannot work here: it would require
+/// both sides to publish their own flag before reading the other's, but the
+/// producer has to read `release` before deciding whether to set `unparked`,
+/// so both sides can miss each other and lose the resource.
 ///
 /// A `SyncBlocker` is used for a single wait only; the flags are never reset.
 #[derive(Debug)]
@@ -232,6 +257,8 @@ pub(crate) struct SyncBlocker {
     // used to register the release action
     release: AtomicBool,
     blocker: Blocker,
+    // a spin lock to protect cancellation handling and release flag updates
+    spin_lock: AtomicBool,
 }
 
 impl SyncBlocker {
@@ -244,6 +271,7 @@ impl SyncBlocker {
             unparked: AtomicBool::new(false),
             release: AtomicBool::new(false),
             blocker,
+            spin_lock: AtomicBool::new(false),
         })
     }
 
@@ -257,12 +285,6 @@ impl SyncBlocker {
     #[inline]
     pub fn set_release(&self) {
         self.release.store(true, Ordering::SeqCst);
-    }
-
-    /// read back release flag
-    #[inline]
-    pub fn is_released(&self) -> bool {
-        self.release.load(Ordering::SeqCst)
     }
 
     /// Take the release flag. Returns true exactly once if it was set.
@@ -284,6 +306,54 @@ impl SyncBlocker {
     pub fn unpark(&self) {
         self.unparked.store(true, Ordering::SeqCst);
         self.blocker.unpark();
+    }
+
+    /// Producer half of the hand-off: offer the resource to this waiter.
+    ///
+    /// Returns `true` if the waiter took it (it has been unparked), `false`
+    /// if it had already left — then the caller must forward the resource to
+    /// the next waiter.
+    #[inline]
+    pub fn try_hand_off(&self) -> bool {
+        self.acquire_spin_lock();
+        let taken = !self.take_release();
+        if taken {
+            self.unpark();
+        }
+        self.release_spin_lock();
+        taken
+    }
+
+    /// Waiter half of the hand-off, called when the wait ended without the
+    /// resource (timeout or cancel).
+    ///
+    /// Returns `true` if the resource arrived anyway, because a hand-off raced
+    /// with the cancellation — then the caller must forward it.
+    #[inline]
+    pub fn leave_wait(&self) -> bool {
+        self.acquire_spin_lock();
+        let handed = self.is_unparked();
+        if !handed {
+            self.set_release();
+        }
+        self.release_spin_lock();
+        handed
+    }
+
+    #[inline]
+    fn acquire_spin_lock(&self) {
+        while self
+            .spin_lock
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            std::hint::spin_loop();
+        }
+    }
+
+    #[inline]
+    fn release_spin_lock(&self) {
+        self.spin_lock.store(false, Ordering::SeqCst);
     }
 }
 

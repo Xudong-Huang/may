@@ -14,7 +14,7 @@ use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
 
-use super::blocking::SyncBlocker;
+use super::blocking::{cancel_disabled, cancel_pending, SyncBlocker};
 use super::mutex::{self, Mutex, MutexGuard};
 use super::poison;
 
@@ -137,36 +137,36 @@ impl<T: ?Sized> RwLock<T> {
         // inc the cnt, if it's the first grab, unpark the first waiter
         if self.cnt.fetch_add(1, Ordering::SeqCst) == 0 {
             let w = wait_queue.pop().expect("got null blocker!");
-            if w.take_release() {
+            if !w.try_hand_off() {
                 self.unlock();
-            } else {
-                w.unpark();
             }
         }
-        match cur.park(None) {
-            Ok(_) => Ok(()),
+        let mut ret = cur.park(None);
+        // A cancel that lands while cancellation is disabled is deferred, so
+        // the wait has to survive it and keep waiting for the lock. Stop as
+        // soon as the lock has been handed over to us.
+        while ret == Err(ParkError::Canceled) && !cur.is_unparked() && cancel_disabled() {
+            ret = cur.park(None);
+        }
+
+        match ret {
+            Ok(_) => {
+                // the wake can beat the cancel, which then has nothing left to
+                // schedule: the cancel bit is set but the park returned Ok, so
+                // the lock must not be handed to a canceled wait
+                if cancel_pending() {
+                    self.unlock();
+                    return Err(ParkError::Canceled);
+                }
+                Ok(())
+            }
             Err(ParkError::Timeout) => unreachable!("rwlock timeout"),
             Err(ParkError::Canceled) => {
-                // at this point, the couroutine can come alive from
-                // two possibilities: normal unpark or cancellation
-                // in normal unpark we don't set_release
-                if cur.is_unparked() {
-                    // need to wake next waiter before we panic
+                // the lock may have been handed over concurrently with the
+                // cancellation; `leave_wait` decides atomically which side
+                // forwards it
+                if cur.leave_wait() {
                     self.unlock();
-                } else {
-                    // mark as canceled in the waiter queue
-                    // normal unlock would skip it
-                    cur.set_release();
-                    // check again the release status
-                    // if it becomes false means a normal unpark
-                    // we need to wakeup next waiter
-                    if !cur.is_released() {
-                        self.unlock();
-                    } else {
-                        // now just leave the waiter in the wait_queue
-                        // and it is marked as **released**
-                        // normal `unlock()` sould pop it out with no action
-                    }
                 }
 
                 Err(ParkError::Canceled)
@@ -198,8 +198,7 @@ impl<T: ?Sized> RwLock<T> {
         let mut cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
         while cnt > 1 {
             let w = wait_queue.pop().expect("got null blocker!");
-            if !w.take_release() {
-                w.unpark();
+            if w.try_hand_off() {
                 break;
             }
             cnt = self.cnt.fetch_sub(1, Ordering::SeqCst);
