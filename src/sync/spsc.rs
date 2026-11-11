@@ -32,9 +32,7 @@ use std::time::{Duration, Instant};
 
 use super::delay_drop::{self, DelayDrop};
 use super::AtomicOption;
-use crate::coroutine_impl::{
-    co_cancel_data, is_coroutine, run_coroutine, CoroutineImpl, EventSource,
-};
+use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
 use crate::timeout_list::TimeoutHandle;
@@ -192,7 +190,14 @@ impl<T> EventSource for Park<'_, T> {
         if !self.queue.queue.is_empty() || self.queue.channels.load(Ordering::Acquire) == 0 {
             if let Some(w) = slot.take() {
                 if let Some(co) = w.into_coroutine() {
-                    run_coroutine(co);
+                    // Do not resume the coroutine inline here: it can return
+                    // from `recv`, drop this stack-resident `Park` and wait on
+                    // this very `DelayDrop` while `subscribe` is still using
+                    // it. That wait yields the coroutine, and a cancelled
+                    // coroutine cannot yield, so an inline resume deadlocks
+                    // the worker. Let the scheduler pick it up instead; the
+                    // wake semantics are the same as `send`'s unpark.
+                    get_scheduler().schedule(co);
                 }
             }
             return;

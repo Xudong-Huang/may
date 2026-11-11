@@ -19,6 +19,7 @@ use may::coroutine;
 #[cfg(feature = "io_cancel")]
 use may::net::TcpListener;
 use may::sync::mpsc::channel;
+use may::sync::spsc;
 use may::sync::{Condvar, Mutex, RwLock};
 
 fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
@@ -27,6 +28,43 @@ fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
 
 fn wait_a_bit() {
     thread::sleep(Duration::from_millis(2));
+}
+
+/// A wake-up that races with `recv()`'s park registration must not resume
+/// the coroutine inline: the resumed coroutine can return from `recv()`,
+/// drop the stack-resident wait source while its `subscribe` is still on the
+/// stack, and then `DelayDrop::wait` cannot yield because the coroutine is
+/// cancelled.
+#[test]
+fn cancel_racing_handoff_is_not_lost_on_spsc_recv() {
+    for round in 0..2000usize {
+        let (tx, rx) = spsc::channel::<usize>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop2 = stop.clone();
+        let sender = thread::spawn(move || {
+            let mut i = 0usize;
+            while !stop2.load(Ordering::Relaxed) {
+                if tx.send(i).is_err() {
+                    return;
+                }
+                i += 1;
+                thread::sleep(Duration::from_micros(20));
+            }
+        });
+
+        let h = go!(move || loop {
+            if rx.recv().is_err() {
+                return;
+            }
+        });
+
+        // cancel at varying points while the receiver parks and wakes
+        thread::sleep(Duration::from_micros((round % 61) as u64 + 1));
+        h.coroutine().cancel();
+        assert!(h.join().is_err(), "recv() did not observe the cancel");
+        stop.store(true, Ordering::Relaxed);
+        sender.join().unwrap();
+    }
 }
 
 /// Cancel a coroutine suspended on `coroutine::park()`.

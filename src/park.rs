@@ -127,13 +127,6 @@ impl Park {
         }
     }
 
-    #[inline]
-    fn fast_wake_up(&self) {
-        if let Some(co) = self.wait_co.take() {
-            run_coroutine(co);
-        }
-    }
-
     /// park current coroutine with specified timeout
     /// if timeout happens, return Err(ParkError::Timeout)
     /// if cancellation detected, return Err(ParkError::Canceled)
@@ -203,9 +196,18 @@ impl EventSource for Park {
 
         // re-check the state, only clear once after resume
         if self.state.load(Ordering::Acquire) {
-            // here may have recursive call for subscribe
-            // normally the recursion depth is not too deep
-            return self.fast_wake_up();
+            // Do not resume the coroutine inline here. The resumed coroutine
+            // can drop the last reference to the owner of this Park (e.g. a
+            // cancelled Mutex/RwLock waiter dropping its SyncBlocker) while
+            // this `subscribe` is still using it. `DelayDrop::wait` would wait
+            // for that subscribe to finish, but it yields the coroutine first,
+            // and a cancelled coroutine cannot yield (yield_now short-circuits
+            // on the cancel bit), so an inline resume deadlocks the worker.
+            // Hand the wake to the scheduler instead: this worker's queue
+            // usually picks it up right after `subscribe` returns, so the
+            // latency is the same, but the coroutine can no longer run while
+            // `subscribe` is still on the stack.
+            return self.wake_up(false);
         }
 
         // register the cancel data

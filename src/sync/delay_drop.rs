@@ -11,6 +11,12 @@ pub struct DropGuard<'a>(&'a DelayDrop);
 /// returned guard on exit. Dropping the `DelayDrop` (e.g. from a concurrent
 /// resume of the coroutine) waits until the kernel has finished, so the
 /// source and the coroutine's local data are not torn down under `subscribe`.
+///
+/// The wait yields the coroutine, so a `subscribe` must not resume the
+/// coroutine inline (`run_coroutine`) while holding the guard: if the
+/// resumed coroutine drops the source, the wait cannot make progress until
+/// the inline resume returns, and a cancelled coroutine cannot yield. Wake
+/// through the scheduler instead.
 pub struct DelayDrop {
     // can_drop & 0x1 is the flag that when kernel is done
     // can_drop & 0x2 is the flag that when kernel is started
