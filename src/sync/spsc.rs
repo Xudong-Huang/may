@@ -1290,7 +1290,16 @@ mod tests {
         tx.send(1).unwrap();
         let start = Instant::now();
         thread::park_timeout(Duration::from_millis(30));
-        assert!(start.elapsed() >= Duration::from_millis(20));
+        let elapsed = start.elapsed();
+        // The park should timeout after ~30ms. We allow a range to account for
+        // scheduler variance: at least 15ms (allowing early unpark by scheduler)
+        // but not significantly less, and at most ~200ms (allowing some system
+        // load). The key point is that if a stale blocker exists, the unpark
+        // would return immediately (~0-2ms).
+        assert!(elapsed >= Duration::from_millis(15),
+                "park returned too early ({:?}), possible stale blocker", elapsed);
+        assert!(elapsed < Duration::from_millis(200),
+                "park took too long ({:?})", elapsed);
         assert_eq!(rx.try_recv(), Ok(1));
     }
 
