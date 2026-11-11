@@ -10,26 +10,10 @@ use std::time::Duration;
 
 use super::blocking::SyncBlocker;
 use super::mutex::{self, Mutex, MutexGuard};
-use crate::cancel::{trigger_cancel_panic, Cancel};
+use crate::cancel::trigger_cancel_panic;
+use crate::coroutine::is_coroutine;
+use crate::coroutine_impl::current_cancel_data;
 use crate::park::ParkError;
-
-/// restores cancel delivery on drop, so that a panic between
-/// `disable_cancel` and `enable_cancel` cannot leave the coroutine with
-/// cancel permanently disabled
-struct CancelDisableGuard(&'static Cancel);
-
-impl CancelDisableGuard {
-    fn new(cancel: &'static Cancel) -> Self {
-        cancel.disable_cancel();
-        CancelDisableGuard(cancel)
-    }
-}
-
-impl Drop for CancelDisableGuard {
-    fn drop(&mut self) {
-        self.0.enable_cancel();
-    }
-}
 
 /// A type indicating whether a timed wait on a condition variable returned
 /// due to a time out or not.
@@ -74,11 +58,6 @@ impl Condvar {
 
     // return false if timeout happened
     pub fn wait_impl<T>(&self, lock: &Mutex<T>, dur: Option<Duration>) -> Result<(), ParkError> {
-        let cancel = if crate::coroutine_impl::is_coroutine() {
-            Some(crate::coroutine_impl::current_cancel_data())
-        } else {
-            None
-        };
         // enqueue the blocker
         let cur = SyncBlocker::current();
 
@@ -109,17 +88,12 @@ impl Condvar {
             }
         }
 
-        // disable cancel panic
-        let _g = cancel.map(CancelDisableGuard::new);
-        // don't run the guard destructor
+        let cancel = is_coroutine().then(current_cancel_data);
+
+        cancel.inspect(|cancel| cancel.disable_cancel());
+        // don't run the guard destructor, the lock should not panic
         ::std::mem::forget(lock.lock());
-
-        // drop the parker here without panic!
-        // it may panic in the drop of Park
-        drop(cur);
-
-        // enable cancel panic (guard drop)
-        drop(_g);
+        cancel.inspect(|cancel| cancel.enable_cancel());
 
         ret
     }
