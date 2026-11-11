@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[macro_use]
 extern crate may;
@@ -28,6 +28,20 @@ fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
 
 fn wait_a_bit() {
     thread::sleep(Duration::from_millis(2));
+}
+
+/// Yield the current coroutine for about `dur` without leaving the scheduler.
+///
+/// Do not use `coroutine::sleep` for this: the timer thread resumes sleepers
+/// inline, and it is not a scheduler worker (`WORKER_ID` is unset there), so a
+/// wake-up from the resumed coroutine goes to a global queue instead of the
+/// current worker's local run queue and can run concurrently on another
+/// thread.
+fn yield_for(dur: Duration) {
+    let deadline = Instant::now() + dur;
+    while Instant::now() < deadline {
+        coroutine::yield_now();
+    }
 }
 
 /// A wake-up that races with `recv()`'s park registration must not resume
@@ -419,8 +433,10 @@ fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
             });
 
             ready_rx.recv().unwrap();
-            // let the waiter reach the mutex wait
-            coroutine::sleep(Duration::from_millis(50));
+            // Let the waiter reach the mutex wait without leaving this
+            // scheduler worker: the hand-off below must be queued on the local
+            // run queue, so the waiter cannot run until the cancel bit is set.
+            yield_for(Duration::from_millis(50));
 
             // the unlock hands the lock over and consumes the park
             // registration, so this cancel has nothing left to wake and only
@@ -475,8 +491,10 @@ fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
             });
 
             ready_rx.recv().unwrap();
-            // let the waiter reach the lock wait
-            coroutine::sleep(Duration::from_millis(50));
+            // Let the waiter reach the lock wait without leaving this
+            // scheduler worker: the hand-off below must be queued on the local
+            // run queue, so the waiter cannot run until the cancel bit is set.
+            yield_for(Duration::from_millis(50));
 
             // the unlock hands the lock over and consumes the park
             // registration, so this cancel has nothing left to wake and only
