@@ -1296,10 +1296,16 @@ mod tests {
         // but not significantly less, and at most ~200ms (allowing some system
         // load). The key point is that if a stale blocker exists, the unpark
         // would return immediately (~0-2ms).
-        assert!(elapsed >= Duration::from_millis(15),
-                "park returned too early ({:?}), possible stale blocker", elapsed);
-        assert!(elapsed < Duration::from_millis(200),
-                "park took too long ({:?})", elapsed);
+        assert!(
+            elapsed >= Duration::from_millis(15),
+            "park returned too early ({:?}), possible stale blocker",
+            elapsed
+        );
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "park took too long ({:?})",
+            elapsed
+        );
         assert_eq!(rx.try_recv(), Ok(1));
     }
 
