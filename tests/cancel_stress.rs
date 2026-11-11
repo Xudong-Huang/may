@@ -487,3 +487,57 @@ fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
         );
     }
 }
+
+/// The condvar twin of [`cancel_racing_handoff_is_not_lost_on_mutex_lock`]: a
+/// `notify_one` that beats `cancel()` consumes the park registration, so the
+/// cancel only sets the bit and the wait resumes with `Ok`.
+/// `Condvar::wait` must then take the cancel path — release the guard and
+/// panic — instead of handing the guard back to a canceled wait.
+#[test]
+fn cancel_racing_notify_is_not_lost_on_condvar_wait() {
+    for _ in 0..10 {
+        let pair = Arc::new((Mutex::new(0usize), Condvar::new()));
+        let ready = Arc::new(AtomicBool::new(false));
+        let order = Arc::new(AtomicUsize::new(0));
+        // position of the wait's return in `order`, if it returned at all
+        let returned_at = Arc::new(AtomicUsize::new(usize::MAX));
+
+        let p = pair.clone();
+        let (r, s, ret) = (ready.clone(), order.clone(), returned_at.clone());
+        let h = go!(move || {
+            let (m, c) = &*p;
+            let g = m.lock().unwrap();
+            r.store(true, Ordering::SeqCst);
+            let g = c.wait(g).unwrap();
+            // a canceled wait has to panic inside `wait`, not get here
+            ret.store(s.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+            drop(g);
+        });
+
+        while !ready.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        // let the coroutine reach the condvar wait
+        thread::sleep(Duration::from_millis(50));
+
+        // the notify delivers the signal and consumes the park registration,
+        // so this cancel has nothing left to wake and only sets the bit
+        pair.1.notify_one();
+        h.coroutine().cancel();
+        let cancel_at = order.fetch_add(1, Ordering::SeqCst);
+
+        let _ = h.join();
+        let ret = returned_at.load(Ordering::SeqCst);
+        assert!(
+            ret == usize::MAX || ret < cancel_at,
+            "canceled wait returned the guard: returned={ret} cancel={cancel_at}"
+        );
+        // the wait released the mutex on its way out
+        let g = pair
+            .0
+            .try_lock()
+            .expect("mutex corrupted by a canceled condvar wait");
+        assert_eq!(*g, 0, "mutex data corrupted by a canceled condvar wait");
+        drop(g);
+    }
+}

@@ -74,10 +74,9 @@ impl SyncFlag {
     #[inline]
     fn wakeup_all(&self) {
         while let Some(w) = self.to_wake.pop() {
-            w.unpark();
-            // consume the flag to keep the blocker's state consistent;
-            // nothing needs to be forwarded for a broadcast wakeup
-            let _ = w.take_release();
+            // nothing needs to be forwarded for a broadcast wakeup; the
+            // result only says whether the waiter was still live
+            w.try_hand_off();
         }
     }
 
@@ -99,16 +98,11 @@ impl SyncFlag {
         match cur.park(dur) {
             Ok(_) => true,
             Err(err) => {
-                // check the unpark status
-                if cur.is_unparked() {
+                // a fire may have woken us concurrently; a fire is
+                // level-triggered so re-firing is harmless, but it must not be
+                // lost for the remaining waiters
+                if cur.leave_wait() {
                     self.fire();
-                } else {
-                    // register
-                    cur.set_release();
-                    // re-check unpark status
-                    if cur.is_unparked() && cur.take_release() {
-                        self.fire();
-                    }
                 }
 
                 // now we can safely go with the cancel panic

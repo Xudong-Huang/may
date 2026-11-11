@@ -82,9 +82,8 @@ impl Semphore {
         loop {
             let w = self.to_wake.pop().expect("got null blocker!");
 
-            w.unpark();
-            if !w.take_release() {
-                // a live waiter consumed the permit
+            // `true` means a live waiter took the permit
+            if w.try_hand_off() {
                 break;
             }
 
@@ -131,11 +130,7 @@ impl Semphore {
             // A post may have handed us a permit concurrently. If so, consume
             // it: a queued item must be delivered before the caller reports a
             // disconnect. Only leave without the permit if none was acquired.
-            if cur.is_unparked() {
-                return WaitStatus::Acquired;
-            }
-            cur.set_release();
-            if cur.is_unparked() && cur.take_release() {
+            if cur.leave_wait() {
                 return WaitStatus::Acquired;
             }
             return WaitStatus::Stopped;
@@ -144,16 +139,10 @@ impl Semphore {
         match cur.park(dur) {
             Ok(_) => WaitStatus::Acquired,
             Err(err) => {
-                // check the unpark status
-                if cur.is_unparked() {
+                // a permit may have been handed to us concurrently; we are
+                // leaving, so it has to be forwarded to the next waiter
+                if cur.leave_wait() {
                     self.post();
-                } else {
-                    // register
-                    cur.set_release();
-                    // re-check unpark status
-                    if cur.is_unparked() && cur.take_release() {
-                        self.post();
-                    }
                 }
 
                 // now we can safely go with the cancel panic

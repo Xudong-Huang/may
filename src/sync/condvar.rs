@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::{LockResult, PoisonError};
 use std::time::Duration;
 
-use super::blocking::SyncBlocker;
+use super::blocking::{cancel_pending, SyncBlocker};
 use super::mutex::{self, Mutex, MutexGuard};
 use crate::cancel::trigger_cancel_panic;
 use crate::coroutine::is_coroutine;
@@ -69,23 +69,23 @@ impl Condvar {
         // wait until coming back
         let ret = cur.park(dur);
 
-        // when timed out or canceled, register the release action BEFORE
-        // the re-lock below: the re-lock can block indefinitely, and a
-        // notify that pops our blocker while we are blocked must forward
-        // the signal to the next live waiter instead of delivering it to
-        // a waiter that is already leaving
-        if ret.is_err() {
-            // check the unpark status
-            if cur.is_unparked() {
-                self.notify_one();
-            } else {
-                // register
-                cur.set_release();
-                // re-check unpark status
-                if cur.is_unparked() && cur.take_release() {
-                    self.notify_one();
-                }
-            }
+        // A cancel can lose the race with a notify's unpark: `Cancel::cancel`
+        // then finds no coroutine left to schedule, so it only sets the bit
+        // and the park returns `Ok`. The waiter must not keep the mutex and
+        // swallow the notification in that state.
+        let ret = match ret {
+            Ok(_) if cancel_pending() => Err(ParkError::Canceled),
+            ret => ret,
+        };
+
+        // When timed out or canceled, register the release action BEFORE the
+        // re-lock below: the re-lock can block indefinitely, and a notify that
+        // pops our blocker while we are blocked must forward the signal to the
+        // next live waiter instead of delivering it to a waiter that is already
+        // leaving. `leave_wait` registers it atomically against the notifier,
+        // and reports whether the signal arrived anyway so it can be forwarded.
+        if ret.is_err() && cur.leave_wait() {
+            self.notify_one();
         }
 
         let cancel = is_coroutine().then(current_cancel_data);
@@ -240,16 +240,9 @@ impl Condvar {
         // be passed on to the next waiter. A cancel storm can queue many
         // released blockers back to back, and a recursive call would
         // overflow the (small, 32KB default) coroutine stack and abort
-        loop {
-            let w = self.to_wake.pop();
-
-            if let Some(w) = w {
-                w.unpark();
-                // when release is taken, pass the signal to the next waiter
-                if !w.take_release() {
-                    break;
-                }
-            } else {
+        while let Some(w) = self.to_wake.pop() {
+            // `false` means the waiter had already left: pass the signal on
+            if w.try_hand_off() {
                 break;
             }
         }
@@ -258,7 +251,9 @@ impl Condvar {
     /// Wake all waiters.
     pub fn notify_all(&self) {
         while let Some(w) = self.to_wake.pop() {
-            w.unpark();
+            // a broadcast has no signal to forward, so released waiters are
+            // simply dropped from the queue
+            w.try_hand_off();
         }
     }
 

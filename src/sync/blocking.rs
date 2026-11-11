@@ -283,13 +283,13 @@ impl SyncBlocker {
 
     /// Record that the waiter is leaving without consuming the resource.
     #[inline]
-    pub fn set_release(&self) {
+    fn set_release(&self) {
         self.release.store(true, Ordering::SeqCst);
     }
 
     /// Take the release flag. Returns true exactly once if it was set.
     #[inline]
-    pub fn take_release(&self) -> bool {
+    fn take_release(&self) -> bool {
         self.release.swap(false, Ordering::SeqCst)
     }
 
@@ -303,7 +303,7 @@ impl SyncBlocker {
     /// `unparked` is stored *before* waking so that the woken waiter observes
     /// it; the wake itself also provides the happens-before edge.
     #[inline]
-    pub fn unpark(&self) {
+    fn unpark(&self) {
         self.unparked.store(true, Ordering::SeqCst);
         self.blocker.unpark();
     }
