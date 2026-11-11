@@ -386,105 +386,121 @@ fn late_cancel_during_condvar_relock_keeps_mutex_consistent() {
 /// handed to an already-canceled wait, or the cancel is silently lost until
 /// the coroutine's next cancellation point, or forever.
 ///
-/// The cancel can also arrive after the coroutine already finished, which is
-/// legitimate; `order` tells whether an acquisition really came after the
-/// cancel was issued, so only that case counts as a failure.
+/// The holder runs as a coroutine and issues the cancel immediately after the
+/// hand-off, without yielding in between: the wake schedules the waiter on
+/// the holder's local run queue (see `Scheduler::schedule`), so the waiter
+/// cannot resume until after the cancel bit is set. Racing the hand-off from
+/// another OS thread instead lets the waiter resume between the two, pass its
+/// post-park check, and acquire the lock; that is a legitimate late cancel
+/// (the lock was granted first), not a lost one, and `order` misreports it as
+/// a failure when the waiter is descheduled before recording its acquisition.
 #[test]
 fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
     for _ in 0..10 {
         let m = Arc::new(Mutex::new(0usize));
-        let ready = Arc::new(AtomicBool::new(false));
         let order = Arc::new(AtomicUsize::new(0));
         // position of the coroutine's acquisition in `order`, if it got that
         // far
         let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
+        let (ready_tx, ready_rx) = channel();
 
-        // hold the lock so the coroutine has to park on it
-        let guard = m.lock().unwrap();
+        let (p, s, a) = (m.clone(), order.clone(), acquired_at.clone());
+        let holder = go!(move || {
+            // hold the lock so the waiter has to park on it
+            let guard = p.lock().unwrap();
 
-        let p = m.clone();
-        let (r, s, a) = (ready.clone(), order.clone(), acquired_at.clone());
-        let h = go!(move || {
-            r.store(true, Ordering::SeqCst);
-            let mut g = p.lock().unwrap();
-            // a canceled wait has to panic inside `lock()`, not get here
-            a.store(s.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
-            *g += 1;
+            let (wp, ws, wa) = (p.clone(), s.clone(), a.clone());
+            let waiter = go!(move || {
+                ready_tx.send(()).unwrap();
+                let mut g = wp.lock().unwrap();
+                // a canceled wait has to panic inside `lock()`, not get here
+                wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+                *g += 1;
+            });
+
+            ready_rx.recv().unwrap();
+            // let the waiter reach the mutex wait
+            coroutine::sleep(Duration::from_millis(50));
+
+            // the unlock hands the lock over and consumes the park
+            // registration, so this cancel has nothing left to wake and only
+            // sets the bit
+            drop(guard);
+            waiter.coroutine().cancel();
+            let cancel_at = s.fetch_add(1, Ordering::SeqCst);
+
+            let _ = waiter.join();
+            let acq = a.load(Ordering::SeqCst);
+            assert!(
+                acq == usize::MAX || acq < cancel_at,
+                "canceled wait was handed the lock: acquired={acq} cancel={cancel_at}"
+            );
+            // the body only runs for the legitimate late-cancel ordering, and
+            // the mutex must be usable and consistent afterwards either way
+            let expected = if acq == usize::MAX { 0 } else { 1 };
+            assert_eq!(
+                *p.lock().unwrap(),
+                expected,
+                "mutex inconsistent after cancel"
+            );
         });
-
-        while !ready.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(1));
-        }
-        // let the coroutine reach the mutex wait
-        thread::sleep(Duration::from_millis(50));
-
-        // the unlock hands the lock over and consumes the park registration,
-        // so this cancel has nothing left to wake and only sets the bit
-        drop(guard);
-        h.coroutine().cancel();
-        let cancel_at = order.fetch_add(1, Ordering::SeqCst);
-
-        let _ = h.join();
-        let acq = acquired_at.load(Ordering::SeqCst);
-        assert!(
-            acq == usize::MAX || acq < cancel_at,
-            "canceled wait was handed the lock: acquired={acq} cancel={cancel_at}"
-        );
-        // the body only runs for the legitimate late-cancel ordering, and the
-        // mutex must be usable and consistent afterwards either way
-        let expected = if acq == usize::MAX { 0 } else { 1 };
-        assert_eq!(
-            *m.lock().unwrap(),
-            expected,
-            "mutex inconsistent after cancel"
-        );
+        holder.join().unwrap();
     }
 }
 
 /// Same as [`cancel_racing_handoff_is_not_lost_on_mutex_lock`], for the write
-/// side of an `RwLock`.
+/// side of an `RwLock`: the holder coroutine performs the hand-off and the
+/// cancel back to back, so the woken waiter cannot pass its post-park check
+/// in between.
 #[test]
 fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
     for _ in 0..10 {
         let m = Arc::new(RwLock::new(0usize));
-        let ready = Arc::new(AtomicBool::new(false));
         let order = Arc::new(AtomicUsize::new(0));
         let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
+        let (ready_tx, ready_rx) = channel();
 
-        // hold the write lock so the coroutine has to park on it
-        let guard = m.write().unwrap();
+        let (p, s, a) = (m.clone(), order.clone(), acquired_at.clone());
+        let holder = go!(move || {
+            // hold the write lock so the waiter has to park on it
+            let guard = p.write().unwrap();
 
-        let p = m.clone();
-        let (r, s, a) = (ready.clone(), order.clone(), acquired_at.clone());
-        let h = go!(move || {
-            r.store(true, Ordering::SeqCst);
-            let mut g = p.write().unwrap();
-            a.store(s.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
-            *g += 1;
+            let (wp, ws, wa) = (p.clone(), s.clone(), a.clone());
+            let waiter = go!(move || {
+                ready_tx.send(()).unwrap();
+                let mut g = wp.write().unwrap();
+                // a canceled wait has to panic inside `write()`, not get here
+                wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+                *g += 1;
+            });
+
+            ready_rx.recv().unwrap();
+            // let the waiter reach the lock wait
+            coroutine::sleep(Duration::from_millis(50));
+
+            // the unlock hands the lock over and consumes the park
+            // registration, so this cancel has nothing left to wake and only
+            // sets the bit
+            drop(guard);
+            waiter.coroutine().cancel();
+            let cancel_at = s.fetch_add(1, Ordering::SeqCst);
+
+            let _ = waiter.join();
+            let acq = a.load(Ordering::SeqCst);
+            assert!(
+                acq == usize::MAX || acq < cancel_at,
+                "canceled wait was handed the write lock: acquired={acq} cancel={cancel_at}"
+            );
+            // the body only runs for the legitimate late-cancel ordering, and
+            // the rwlock must be usable and consistent afterwards either way
+            let expected = if acq == usize::MAX { 0 } else { 1 };
+            assert_eq!(
+                *p.write().unwrap(),
+                expected,
+                "rwlock inconsistent after cancel"
+            );
         });
-
-        while !ready.load(Ordering::SeqCst) {
-            thread::sleep(Duration::from_millis(1));
-        }
-        // let the coroutine reach the lock wait
-        thread::sleep(Duration::from_millis(50));
-
-        drop(guard);
-        h.coroutine().cancel();
-        let cancel_at = order.fetch_add(1, Ordering::SeqCst);
-
-        let _ = h.join();
-        let acq = acquired_at.load(Ordering::SeqCst);
-        assert!(
-            acq == usize::MAX || acq < cancel_at,
-            "canceled wait was handed the write lock: acquired={acq} cancel={cancel_at}"
-        );
-        let expected = if acq == usize::MAX { 0 } else { 1 };
-        assert_eq!(
-            *m.write().unwrap(),
-            expected,
-            "rwlock inconsistent after cancel"
-        );
+        holder.join().unwrap();
     }
 }
 
