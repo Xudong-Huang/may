@@ -124,6 +124,16 @@ impl<T: ?Sized> Mutex<T> {
         while ret == Err(ParkError::Canceled) && !cur.is_unparked() && cancel_disabled() {
             ret = cur.park(None);
         }
+        // A deferred cancel can race with the hand-off: `cancel` takes the
+        // park registration first, then the unlock pops our blocker and counts
+        // us as the owner. The canceled park reports `Canceled`, but the lock
+        // is ours, so take it and let the caller handle the deferred cancel
+        // after it re-enables cancellation. Panicking here would unwind
+        // through `Condvar`'s caller-owned guard and unlock a mutex this wait
+        // no longer owns.
+        if ret == Err(ParkError::Canceled) && cur.is_unparked() && cancel_disabled() {
+            ret = Ok(());
+        }
 
         match ret {
             Ok(_) => {

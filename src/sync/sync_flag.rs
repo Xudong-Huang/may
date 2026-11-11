@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::blocking::SyncBlocker;
+use super::blocking::{cancel_pending, SyncBlocker};
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
@@ -96,7 +96,17 @@ impl SyncFlag {
         }
 
         match cur.park(dur) {
-            Ok(_) => true,
+            Ok(_) => {
+                // A `fire` can beat `cancel` and consume the park
+                // registration, leaving only the cancel bit set. `fire` is
+                // level-triggered, so no wakeup has to be forwarded, but the
+                // wait must still unwind instead of returning to a canceled
+                // coroutine.
+                if cancel_pending() {
+                    trigger_cancel_panic();
+                }
+                true
+            }
             Err(err) => {
                 // a fire may have woken us concurrently; a fire is
                 // level-triggered so re-firing is harmless, but it must not be

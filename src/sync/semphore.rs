@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::blocking::SyncBlocker;
+use super::blocking::{cancel_pending, SyncBlocker};
 use crate::cancel::trigger_cancel_panic;
 use crate::park::ParkError;
 use crossbeam::queue::SegQueue;
@@ -131,13 +131,32 @@ impl Semphore {
             // it: a queued item must be delivered before the caller reports a
             // disconnect. Only leave without the permit if none was acquired.
             if cur.leave_wait() {
+                // As in the parked case, a cancel can lose to that post and
+                // only set the bit; forward the permit rather than deliver it
+                // to a canceled waiter.
+                if cancel_pending() {
+                    self.post();
+                    trigger_cancel_panic();
+                }
                 return WaitStatus::Acquired;
             }
             return WaitStatus::Stopped;
         }
 
         match cur.park(dur) {
-            Ok(_) => WaitStatus::Acquired,
+            Ok(_) => {
+                // A post can lose the race with `cancel`: the permit is handed
+                // over by `try_hand_off`, so the cancel finds no registration
+                // left and only sets the bit. Forward the permit to the next
+                // waiter and unwind instead of returning to a canceled waiter.
+                if cancel_pending() {
+                    if cur.leave_wait() {
+                        self.post();
+                    }
+                    trigger_cancel_panic();
+                }
+                WaitStatus::Acquired
+            }
             Err(err) => {
                 // a permit may have been handed to us concurrently; we are
                 // leaving, so it has to be forwarded to the next waiter

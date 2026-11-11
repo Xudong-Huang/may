@@ -520,11 +520,20 @@ fn cancel_racing_notify_is_not_lost_on_condvar_wait() {
         // let the coroutine reach the condvar wait
         thread::sleep(Duration::from_millis(50));
 
-        // the notify delivers the signal and consumes the park registration,
-        // so this cancel has nothing left to wake and only sets the bit
+        // Hold the mutex across the notify and the cancel. The notify delivers
+        // the signal and consumes the park registration, so the cancel has
+        // nothing left to wake and only sets the bit. Holding the mutex keeps
+        // the woken waiter from finishing its re-lock until the cancel is
+        // issued, which guarantees the waiter observes the bit before it can
+        // return the guard. Without this, a waiter that checks just before the
+        // bit is set may return first and only be descheduled before writing
+        // `returned_at`, which would make the marker land after `cancel_at`
+        // even though the wait was not canceled.
+        let hold = pair.0.lock().unwrap();
         pair.1.notify_one();
         h.coroutine().cancel();
         let cancel_at = order.fetch_add(1, Ordering::SeqCst);
+        drop(hold);
 
         let _ = h.join();
         let ret = returned_at.load(Ordering::SeqCst);

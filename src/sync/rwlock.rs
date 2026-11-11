@@ -148,6 +148,13 @@ impl<T: ?Sized> RwLock<T> {
         while ret == Err(ParkError::Canceled) && !cur.is_unparked() && cancel_disabled() {
             ret = cur.park(None);
         }
+        // Same race as `Mutex::lock`: the deferred cancel can lose to the
+        // hand-off, which counts us as the owner while the canceled park
+        // reports `Canceled`. Take the lock and let the caller handle the
+        // deferred cancel after it re-enables cancellation.
+        if ret == Err(ParkError::Canceled) && cur.is_unparked() && cancel_disabled() {
+            ret = Ok(());
+        }
 
         match ret {
             Ok(_) => {

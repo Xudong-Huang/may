@@ -73,7 +73,7 @@ impl Condvar {
         // then finds no coroutine left to schedule, so it only sets the bit
         // and the park returns `Ok`. The waiter must not keep the mutex and
         // swallow the notification in that state.
-        let ret = match ret {
+        let mut ret = match ret {
             Ok(_) if cancel_pending() => Err(ParkError::Canceled),
             ret => ret,
         };
@@ -94,6 +94,18 @@ impl Condvar {
         // don't run the guard destructor, the lock should not panic
         ::std::mem::forget(lock.lock());
         cancel.inspect(|cancel| cancel.enable_cancel());
+
+        // A cancel that lands while cancellation is disabled is deferred, and
+        // the re-lock above may block for a long time. Now that the bit is
+        // observable again, honor it instead of returning the guard to a
+        // canceled waiter: an `Ok` park consumed a notification that has to be
+        // passed on, and the caller has to unwind either way.
+        if cancel_pending() {
+            if ret.is_ok() && cur.leave_wait() {
+                self.notify_one();
+            }
+            ret = Err(ParkError::Canceled);
+        }
 
         ret
     }
