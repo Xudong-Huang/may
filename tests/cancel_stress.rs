@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[macro_use]
 extern crate may;
@@ -28,20 +28,6 @@ fn is_cancel(err: &(dyn std::any::Any + Send)) -> bool {
 
 fn wait_a_bit() {
     thread::sleep(Duration::from_millis(2));
-}
-
-/// Yield the current coroutine for about `dur` without leaving the scheduler.
-///
-/// Do not use `coroutine::sleep` for this: the timer thread resumes sleepers
-/// inline, and it is not a scheduler worker (`WORKER_ID` is unset there), so a
-/// wake-up from the resumed coroutine goes to a global queue instead of the
-/// current worker's local run queue and can run concurrently on another
-/// thread.
-fn yield_for(dur: Duration) {
-    let deadline = Instant::now() + dur;
-    while Instant::now() < deadline {
-        coroutine::yield_now();
-    }
 }
 
 /// A wake-up that races with `recv()`'s park registration must not resume
@@ -400,14 +386,15 @@ fn late_cancel_during_condvar_relock_keeps_mutex_consistent() {
 /// handed to an already-canceled wait, or the cancel is silently lost until
 /// the coroutine's next cancellation point, or forever.
 ///
-/// The holder runs as a coroutine and issues the cancel immediately after the
-/// hand-off, without yielding in between: the wake schedules the waiter on
-/// the holder's local run queue (see `Scheduler::schedule`), so the waiter
-/// cannot resume until after the cancel bit is set. Racing the hand-off from
-/// another OS thread instead lets the waiter resume between the two, pass its
-/// post-park check, and acquire the lock; that is a legitimate late cancel
-/// (the lock was granted first), not a lost one, and `order` misreports it as
-/// a failure when the waiter is descheduled before recording its acquisition.
+/// The holder runs as a coroutine, runs the waiter inline with `spawn_local`
+/// until it parks, then issues the cancel immediately after the hand-off
+/// without yielding in between. The wake schedules the waiter on the holder's
+/// local run queue (see `Scheduler::schedule`), so the waiter cannot resume
+/// until after the cancel bit is set. Racing the hand-off from another OS
+/// thread instead lets the waiter resume between the two, pass its post-park
+/// check, and acquire the lock; that is a legitimate late cancel (the lock was
+/// granted first), not a lost one, and `order` misreports it as a failure when
+/// the waiter is descheduled before recording its acquisition.
 #[test]
 fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
     for _ in 0..10 {
@@ -416,27 +403,29 @@ fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
         // position of the coroutine's acquisition in `order`, if it got that
         // far
         let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
-        let (ready_tx, ready_rx) = channel();
 
         let (p, s, a) = (m.clone(), order.clone(), acquired_at.clone());
         let holder = go!(move || {
             // hold the lock so the waiter has to park on it
             let guard = p.lock().unwrap();
 
+            // Run the waiter inline until it parks on the lock. The lock is
+            // still held, so the wait must park, and `spawn_local` returns
+            // only after that: the "waiter is parked" instant needs no timing
+            // assumption. The holder also never leaves its worker, so the
+            // hand-off below is queued on this worker's local run queue and
+            // the waiter cannot run until the cancel bit is set.
             let (wp, ws, wa) = (p.clone(), s.clone(), a.clone());
-            let waiter = go!(move || {
-                ready_tx.send(()).unwrap();
-                let mut g = wp.lock().unwrap();
-                // a canceled wait has to panic inside `lock()`, not get here
-                wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
-                *g += 1;
-            });
-
-            ready_rx.recv().unwrap();
-            // Let the waiter reach the mutex wait without leaving this
-            // scheduler worker: the hand-off below must be queued on the local
-            // run queue, so the waiter cannot run until the cancel bit is set.
-            yield_for(Duration::from_millis(50));
+            let waiter = unsafe {
+                coroutine::Builder::new().spawn_local(move || {
+                    let mut g = wp.lock().unwrap();
+                    // a canceled wait has to panic inside `lock()`, not get
+                    // here
+                    wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+                    *g += 1;
+                })
+            }
+            .unwrap();
 
             // the unlock hands the lock over and consumes the park
             // registration, so this cancel has nothing left to wake and only
@@ -465,36 +454,35 @@ fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
 }
 
 /// Same as [`cancel_racing_handoff_is_not_lost_on_mutex_lock`], for the write
-/// side of an `RwLock`: the holder coroutine performs the hand-off and the
-/// cancel back to back, so the woken waiter cannot pass its post-park check
-/// in between.
+/// side of an `RwLock`: the holder coroutine parks the waiter inline and then
+/// performs the hand-off and the cancel back to back, so the woken waiter
+/// cannot pass its post-park check in between.
 #[test]
 fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
     for _ in 0..10 {
         let m = Arc::new(RwLock::new(0usize));
         let order = Arc::new(AtomicUsize::new(0));
         let acquired_at = Arc::new(AtomicUsize::new(usize::MAX));
-        let (ready_tx, ready_rx) = channel();
 
         let (p, s, a) = (m.clone(), order.clone(), acquired_at.clone());
         let holder = go!(move || {
             // hold the write lock so the waiter has to park on it
             let guard = p.write().unwrap();
 
+            // Run the waiter inline until it parks on the lock: `spawn_local`
+            // returns only once the wait is parked, so no timing assumption is
+            // needed, and the holder stays on its worker for the hand-off.
             let (wp, ws, wa) = (p.clone(), s.clone(), a.clone());
-            let waiter = go!(move || {
-                ready_tx.send(()).unwrap();
-                let mut g = wp.write().unwrap();
-                // a canceled wait has to panic inside `write()`, not get here
-                wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
-                *g += 1;
-            });
-
-            ready_rx.recv().unwrap();
-            // Let the waiter reach the lock wait without leaving this
-            // scheduler worker: the hand-off below must be queued on the local
-            // run queue, so the waiter cannot run until the cancel bit is set.
-            yield_for(Duration::from_millis(50));
+            let waiter = unsafe {
+                coroutine::Builder::new().spawn_local(move || {
+                    let mut g = wp.write().unwrap();
+                    // a canceled wait has to panic inside `write()`, not get
+                    // here
+                    wa.store(ws.fetch_add(1, Ordering::SeqCst), Ordering::SeqCst);
+                    *g += 1;
+                })
+            }
+            .unwrap();
 
             // the unlock hands the lock over and consumes the park
             // registration, so this cancel has nothing left to wake and only
