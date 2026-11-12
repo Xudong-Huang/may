@@ -111,7 +111,7 @@ impl Selector {
     /// This cancels the coroutine; it is removed from the cqueue
     /// asynchronously, once it reaches a cancellation point.
     pub fn remove(self) {
-        self.co.cancel();
+        unsafe { self.co.cancel() };
     }
 }
 
@@ -403,7 +403,7 @@ impl Drop for Cqueue {
         // first cancel all the select coroutines if they are running
         for join in self.selectors.lock().unwrap().iter().flatten() {
             if !join.is_done() {
-                join.coroutine().cancel();
+                unsafe { join.coroutine().cancel() };
             }
         }
 

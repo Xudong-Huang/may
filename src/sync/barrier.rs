@@ -220,7 +220,7 @@ fn test_barrier_canceled_waiter() {
     });
     // let the waiter enqueue
     sleep(Duration::from_millis(50));
-    h.coroutine().cancel();
+    unsafe { h.coroutine().cancel() };
     assert!(h.join().is_err());
 
     // The canceled waiter counted as arrived for this generation, so a new

@@ -202,7 +202,7 @@ mod tests {
         });
         // let the waiter drop its reference and block
         sleep(Duration::from_millis(50));
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
         assert!(h.join().is_err());
 
         // the only remaining reference returns immediately

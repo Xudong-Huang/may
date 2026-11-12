@@ -456,7 +456,7 @@ mod tests {
         const M: usize = 3;
         // we cancel some of the coroutine
         for co in vec.iter().take(M) {
-            co.coroutine().cancel();
+            unsafe { co.coroutine().cancel() };
         }
 
         // note that cancel and notify has contention here
@@ -611,7 +611,7 @@ mod tests {
         // registers its release action, then blocks in its mutex re-lock.
         rx.recv().unwrap();
         let g = m3.lock().unwrap();
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         sleep(Duration::from_millis(100));
         // pops W1's blocker: the signal must be forwarded to W2
         c3.notify_one();

@@ -217,7 +217,7 @@ mod tests {
         sleep(Duration::from_millis(100));
         println!("flag1={flag1:?}");
         // cancel h1
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
         // release the SyncFlag
         flag1.fire();
@@ -298,7 +298,7 @@ mod tests {
         // released blocker behind
         sleep(Duration::from_millis(50));
         for w in &waiters {
-            w.coroutine().cancel();
+            unsafe { w.coroutine().cancel() };
         }
         for w in waiters {
             assert!(w.join().is_err());

@@ -953,7 +953,7 @@ mod tests {
             cancel_id = 1;
         }
         // println!("cancel id = {}", cancel_id);
-        vec[cancel_id - 1].coroutine().cancel();
+        unsafe { vec[cancel_id - 1].coroutine().cancel() };
 
         // let all coroutine to continue
         let (lock, cond) = &*sync;
@@ -1003,7 +1003,7 @@ mod tests {
         });
 
         // cancel read coroutine that is waiting for the rwlock
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
         h.join().unwrap_err();
 
         // release the write lock, so that other thread can got the lock
@@ -1040,7 +1040,7 @@ mod tests {
         // let h1 hold the write lock
         sleep(Duration::from_millis(100));
         // cancel h1 while it holds the lock
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
         h2.join().unwrap();
 
@@ -1065,7 +1065,7 @@ mod tests {
 
         // let h1 grab the read lock
         sleep(Duration::from_millis(100));
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
 
         // the read guard must have been released during the unwind and
@@ -1108,7 +1108,7 @@ mod tests {
                 sleep(Duration::from_millis(50));
             });
             sleep(Duration::from_millis(1));
-            h.coroutine().cancel();
+            unsafe { h.coroutine().cancel() };
             h.join().unwrap_err();
         }
 
@@ -1155,7 +1155,7 @@ mod tests {
         // blocker in the hand-off queue
         std::thread::sleep(std::time::Duration::from_millis(100));
         for w in &waiters {
-            w.coroutine().cancel();
+            unsafe { w.coroutine().cancel() };
         }
         for w in waiters {
             assert!(w.join().is_err());

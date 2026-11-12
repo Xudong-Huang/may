@@ -653,7 +653,7 @@ mod tests {
         // wait h1 and h2 enqueue
         sleep(Duration::from_millis(100));
         // cancel h1
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
         // release the mutex
         drop(g);
@@ -694,7 +694,7 @@ mod tests {
         drop(g);
         sleep(Duration::from_millis(50));
         // cancel h1 while h1 hold the lock
-        h1.coroutine().cancel();
+        unsafe { h1.coroutine().cancel() };
         h1.join().unwrap_err();
         h2.join().unwrap();
         let g = mutex1.lock().unwrap();
@@ -745,7 +745,7 @@ mod tests {
         // cancel all waiters while they are parked on the mutex: each one
         // registers a release action and then unwinds
         for h in &handles {
-            h.coroutine().cancel();
+            unsafe { h.coroutine().cancel() };
         }
         for h in handles {
             assert!(h.join().is_err());

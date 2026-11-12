@@ -949,7 +949,7 @@ mod tests {
         let (_tx, rx) = channel::<i32>();
         let handle = go!(move || rx.recv_timeout(Duration::from_secs(5)));
         sleep(Duration::from_millis(50));
-        handle.coroutine().cancel();
+        unsafe { handle.coroutine().cancel() };
         assert!(handle.join().is_err());
     }
 
@@ -963,7 +963,7 @@ mod tests {
             let _ = rx.recv();
         });
         sleep(Duration::from_millis(50));
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
 
         // bounded wait: without cancellation support join() would block
         let start = Instant::now();
@@ -992,7 +992,7 @@ mod tests {
             let _ = rx.recv();
         });
 
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
         running.store(false, Ordering::Release);
 
         let start = Instant::now();

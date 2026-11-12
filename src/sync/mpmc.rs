@@ -449,7 +449,7 @@ mod tests {
             let _ = rx.recv();
         });
         sleep(Duration::from_millis(50));
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
 
         let start = Instant::now();
         while !h.is_done() && start.elapsed() < Duration::from_secs(2) {

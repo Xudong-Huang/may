@@ -141,8 +141,13 @@ impl Coroutine {
     /// all the resources it currently holds. As with a panic, this may have
     /// unexpected side effects if the coroutine is not cancellation-safe.
     ///
-    /// Change to safe since version 0.3.52.
-    pub fn cancel(&self) {
+    /// # Safety
+    ///
+    /// Calling this function can cause the coroutine to unwind at any point.
+    /// It has the same safety concerns as calling `panic!` inside a coroutine.
+    /// Just be careful when calling this function, and you are fully aware of
+    /// the potential side effects.
+    pub unsafe fn cancel(&self) {
         self.inner.cancel.cancel();
     }
 

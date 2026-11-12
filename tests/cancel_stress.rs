@@ -1,4 +1,4 @@
-//! Stress tests for `Coroutine::cancel` exercised from safe code.
+//! Stress tests for the unsafe `Coroutine::cancel`.
 //!
 //! Meant to be run on Windows to exercise the IOCP-backed cancel path (raw
 //! `CancelIoEx` on a stack-resident `EventData`), the timer path and the park
@@ -60,7 +60,7 @@ fn cancel_racing_handoff_is_not_lost_on_spsc_recv() {
 
         // cancel at varying points while the receiver parks and wakes
         thread::sleep(Duration::from_micros((round % 61) as u64 + 1));
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
         assert!(h.join().is_err(), "recv() did not observe the cancel");
         stop.store(true, Ordering::Relaxed);
         sender.join().unwrap();
@@ -79,7 +79,7 @@ fn cancel_parked() {
         });
         rx.recv().unwrap();
         wait_a_bit();
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
 }
@@ -96,7 +96,7 @@ fn cancel_sleeping() {
         });
         rx.recv().unwrap();
         wait_a_bit();
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
 }
@@ -114,7 +114,7 @@ fn cancel_running() {
         });
         rx.recv().unwrap();
         thread::sleep(Duration::from_micros(200));
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
 }
@@ -136,7 +136,7 @@ fn cancel_concurrently() {
         let hs: Vec<_> = (0..4)
             .map(|_| {
                 let co = co.clone();
-                thread::spawn(move || co.cancel())
+                thread::spawn(move || unsafe { co.cancel() })
             })
             .collect();
         for h in hs {
@@ -168,7 +168,7 @@ fn cancel_runs_drop_once() {
         });
         rx.recv().unwrap();
         wait_a_bit();
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
         assert_eq!(drops.load(Ordering::SeqCst), 1);
     }
@@ -188,7 +188,7 @@ fn cancel_accept() {
         });
         let _addr = rx.recv().unwrap();
         wait_a_bit();
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
 }
@@ -227,7 +227,7 @@ fn cancel_read_racing_completion() {
 
         // race the cancel against the completion
         thread::sleep(Duration::from_micros((i % 300) as u64));
-        co.cancel();
+        unsafe { co.cancel() };
         writer.join().unwrap();
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
@@ -240,8 +240,8 @@ fn cancel_after_finish() {
         let j = go!(|| 42usize);
         let co = j.coroutine().clone();
         assert_eq!(j.join().unwrap(), 42);
-        co.cancel();
-        co.cancel();
+        unsafe { co.cancel() };
+        unsafe { co.cancel() };
     }
 }
 
@@ -274,7 +274,7 @@ fn cancel_reported_at_completion() {
         rx.recv().unwrap();
         // the coroutine cannot finish before this: `running` is only
         // cleared after the cancel flag is set
-        j.coroutine().cancel();
+        unsafe { j.coroutine().cancel() };
         running.store(false, Ordering::Release);
         assert!(j.join().is_err_and(|e| is_cancel(&*e)));
     }
@@ -313,7 +313,7 @@ fn cancel_disabled_while_parked_on_mutex() {
 
     // the cancel wakes the condvar wait; the re-lock that follows runs with
     // cancel disabled, so it parks on the mutex instead of panicking
-    h.coroutine().cancel();
+    unsafe { h.coroutine().cancel() };
     thread::sleep(Duration::from_millis(200));
 
     // hand the mutex over to the coroutine
@@ -361,11 +361,11 @@ fn late_cancel_during_condvar_relock_keeps_mutex_consistent() {
     *guard += 1;
 
     // first cancel: wakes the coroutine from the condvar wait
-    h.coroutine().cancel();
+    unsafe { h.coroutine().cancel() };
     thread::sleep(Duration::from_millis(200));
 
     // second cancel: lands while the re-lock is parked with cancel disabled
-    h.coroutine().cancel();
+    unsafe { h.coroutine().cancel() };
     thread::sleep(Duration::from_millis(200));
 
     drop(guard);
@@ -431,7 +431,7 @@ fn cancel_racing_handoff_is_not_lost_on_mutex_lock() {
             // registration, so this cancel has nothing left to wake and only
             // sets the bit
             drop(guard);
-            waiter.coroutine().cancel();
+            unsafe { waiter.coroutine().cancel() };
             let cancel_at = s.fetch_add(1, Ordering::SeqCst);
 
             let _ = waiter.join();
@@ -488,7 +488,7 @@ fn cancel_racing_handoff_is_not_lost_on_rwlock_write() {
             // registration, so this cancel has nothing left to wake and only
             // sets the bit
             drop(guard);
-            waiter.coroutine().cancel();
+            unsafe { waiter.coroutine().cancel() };
             let cancel_at = s.fetch_add(1, Ordering::SeqCst);
 
             let _ = waiter.join();
@@ -553,7 +553,7 @@ fn cancel_racing_notify_is_not_lost_on_condvar_wait() {
         // even though the wait was not canceled.
         let hold = pair.0.lock().unwrap();
         pair.1.notify_one();
-        h.coroutine().cancel();
+        unsafe { h.coroutine().cancel() };
         let cancel_at = order.fetch_add(1, Ordering::SeqCst);
         drop(hold);
 
