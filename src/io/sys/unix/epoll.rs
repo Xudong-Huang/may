@@ -79,11 +79,14 @@ impl Selector {
     ) -> io::Result<Option<u64>> {
         assert!(id < self.vec.len());
         #[cfg(feature = "io_timeout")]
-        let timeout_ms = _timeout
+        let timeout = _timeout;
+        #[cfg(not(feature = "io_timeout"))]
+        // `next_expire == Some(0)` from the event loop asks for a
+        // non-blocking reactor poll; anything else keeps blocking forever
+        let timeout = _timeout.filter(|to| *to == 0);
+        let timeout_ms = timeout
             .map(|to| EpollTimeout::try_from(to.div_ceil(1_000_000)).unwrap())
             .unwrap_or(EpollTimeout::NONE);
-        #[cfg(not(feature = "io_timeout"))]
-        let timeout_ms = EpollTimeout::NONE;
         // info!("select; timeout={:?}", timeout_ms);
 
         let single_selector = &self.vec[id];
@@ -136,9 +139,10 @@ impl Selector {
         // timeout handler resumes its coroutine inline on this worker, and
         // that coroutine can schedule more work locally (e.g. by yielding).
         // `run_queued_tasks` must stay the last step before `select` returns,
-        // because a local enqueue does not wake the selector. Anything left
-        // in the queue would otherwise sleep until the next wakeup, which can
-        // be the next io timer.
+        // because a local enqueue does not wake the selector. The drain is
+        // budgeted; if it stops with work left, `has_local_tasks` makes the
+        // event loop poll again with a zero timeout instead of blocking, so
+        // the remaining tasks run after one non-blocking reactor round.
         #[cfg(feature = "io_timeout")]
         let next_expire = single_selector
             .timer_list

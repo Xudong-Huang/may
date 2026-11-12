@@ -123,14 +123,17 @@ impl Selector {
                 tv_nsec: dur.subsec_nanos() as libc::c_long,
             }
         });
-
-        #[cfg(feature = "io_timeout")]
+        #[cfg(not(feature = "io_timeout"))]
+        // `next_expire == Some(0)` from the event loop asks for a
+        // non-blocking reactor poll; anything else keeps blocking forever
+        let timeout_spec = (_timeout == Some(0)).then_some(libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        });
         let timeout = timeout_spec
             .as_ref()
             .map(|s| s as *const _)
             .unwrap_or(ptr::null());
-        #[cfg(not(feature = "io_timeout"))]
-        let timeout = ptr::null();
         // debug!("select; timeout={:?}", timeout_spec);
 
         let single_selector = &self.vec[id];
@@ -185,9 +188,10 @@ impl Selector {
         // timeout handler resumes its coroutine inline on this worker, and
         // that coroutine can schedule more work locally (e.g. by yielding).
         // `run_queued_tasks` must stay the last step before `select` returns,
-        // because a local enqueue does not wake the selector. Anything left
-        // in the queue would otherwise sleep until the next wakeup, which can
-        // be the next io timer.
+        // because a local enqueue does not wake the selector. The drain is
+        // budgeted; if it stops with work left, `has_local_tasks` makes the
+        // event loop poll again with a zero timeout instead of blocking, so
+        // the remaining tasks run after one non-blocking reactor round.
         #[cfg(feature = "io_timeout")]
         let next_expire = single_selector
             .timer_list

@@ -37,6 +37,13 @@ impl EventLoop {
                     error!("select error = {e:?}");
                     Some(timeout_ns)
                 }
+            };
+
+            // A budgeted drain can leave local tasks behind, and a local
+            // enqueue does not wake the selector. Poll instead of blocking so
+            // they run on the next round without a self-wakeup syscall.
+            if scheduler.has_local_tasks(id) {
+                next_expire = Some(0);
             }
         }
     }

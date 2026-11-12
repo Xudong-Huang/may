@@ -34,6 +34,18 @@ thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX
 // another event may try to consume the coroutine while the timer thread does
 type TimerThread = timeout_list::TimerThread<WaitCo>;
 
+/// Maximum number of coroutines a worker runs from its local queue in one
+/// drain before it returns to the selector.
+///
+/// A coroutine that keeps re-queueing itself locally (a `yield_now` loop, or a
+/// wake-up loop through the sync primitives) would otherwise keep the drain
+/// loop busy forever. The worker would never re-enter `select`, so the io
+/// completions and io timers bound to its selector could never be serviced;
+/// with a single worker that is a deadlock. The value trades batching (fewer
+/// selector round-trips) against reactor latency; it is in the same range as
+/// tokio's default `event_interval`.
+const LOCAL_TASK_BUDGET: usize = 64;
+
 // The scheduler is created once and never dropped, so it is leaked and
 // published through an atomic pointer. This cannot be a plain static: other
 // threads may read it on the fast path in `get_scheduler` while
@@ -207,9 +219,15 @@ impl Scheduler {
     #[cfg(not(feature = "work_steal"))]
     pub fn run_queued_tasks(&self, id: usize) {
         let local = unsafe { self.local_queues.get_unchecked(id) };
-        while let Some(co) = local.pop() {
-            run_coroutine(co);
+        for _ in 0..LOCAL_TASK_BUDGET {
+            match local.pop() {
+                Some(co) => run_coroutine(co),
+                None => return,
+            }
         }
+        // Anything left in the queue is reported by `has_local_tasks`, which
+        // makes the event loop poll the selector instead of blocking; this
+        // worker then resumes draining after one non-blocking reactor round.
     }
 
     /// Re-borrow the local queue of worker `id` from its `UnsafeCell`.
@@ -246,11 +264,24 @@ impl Scheduler {
         #[cfg(feature = "rand_work_steal")]
         let mut rng = fastrand::Rng::new();
 
+        // see `LOCAL_TASK_BUDGET`: bound the drain so the worker returns to
+        // `select` even when coroutines keep re-queueing themselves locally
+        let mut remaining = LOCAL_TASK_BUDGET;
+
         'work: loop {
+            if remaining == 0 {
+                // Anything left in the queue is reported by
+                // `has_local_tasks`, which makes the event loop poll the
+                // selector instead of blocking; this worker then resumes
+                // draining after one non-blocking reactor round.
+                return;
+            }
+
             // derive the borrow for this operation only, see `local_queue`
             let popped = unsafe { self.local_queue(id) }.pop();
             match popped {
                 Some(co) => {
+                    remaining -= 1;
                     run_coroutine(co);
                     continue 'work;
                 }
@@ -274,12 +305,35 @@ impl Scheduler {
                 let stealer = self.stealers.get(target).unwrap();
                 let stolen = stealer.steal_into(unsafe { self.local_queue(id) });
                 if let Some(co) = stolen {
+                    remaining -= 1;
                     run_coroutine(co);
                     continue 'work;
                 }
             }
             return;
         }
+    }
+
+    /// Whether worker `id` still has coroutines in its local run queue.
+    ///
+    /// The event loop calls this after `select` returns. A budgeted drain may
+    /// stop while local work remains, and a local enqueue does not wake the
+    /// selector; this tells the event loop to poll the selector with a zero
+    /// timeout instead of blocking, so the remaining work runs after one
+    /// non-blocking reactor round.
+    #[inline]
+    #[cfg(feature = "work_steal")]
+    pub fn has_local_tasks(&self, id: usize) -> bool {
+        // SAFETY: this is called on the worker that owns `id`; the borrow is
+        // derived for this check only, see `local_queue`
+        unsafe { self.local_queue(id) }.has_tasks()
+    }
+
+    /// See the `work_steal` variant above.
+    #[inline]
+    #[cfg(not(feature = "work_steal"))]
+    pub fn has_local_tasks(&self, id: usize) -> bool {
+        !unsafe { self.local_queues.get_unchecked(id) }.is_empty()
     }
 
     /// put the coroutine to correct queue so that next time it can be scheduled

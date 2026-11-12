@@ -124,6 +124,10 @@ impl Selector {
         timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         assert!(id < self.vec.len());
+        #[cfg(not(feature = "io_timeout"))]
+        // Without I/O timers, only a zero timeout is needed to poll the
+        // reactor between budgeted local-task drains.
+        let timeout = timeout.filter(|to| *to == 0);
         let timeout = timeout.map(Duration::from_nanos);
         // info!("select; timeout={:?}", timeout);
         let single_selector = &self.vec[id];
@@ -199,7 +203,10 @@ impl Selector {
             crate::coroutine_impl::run_coroutine(co);
         }
 
-        // run all the local tasks
+        // Run the local tasks. The drain is budgeted; if it stops with work
+        // left, `has_local_tasks` makes the event loop poll again with a zero
+        // timeout instead of blocking, so it must stay the last step before
+        // returning to `select`.
         scheduler.run_queued_tasks(id);
 
         // deal with the timer list
