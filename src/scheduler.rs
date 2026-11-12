@@ -98,7 +98,18 @@ fn init_scheduler() {
         // this panics on the poisoned `Once` and the thread exits instead of
         // running against a half-initialized scheduler
         let s = get_scheduler();
-        s.timer_thread.run(&timer_event_handler);
+        loop {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                s.timer_thread.run(&timer_event_handler);
+            }));
+            if let Err(panic_info) = result {
+                error!("timer thread panicked, restarting: {:?}", panic_info);
+                // continue the loop to restart the timer thread
+            } else {
+                // normal exit (should not happen as timer_thread.run is infinite)
+                break;
+            }
+        }
     });
 
     // io event loop thread
@@ -110,7 +121,21 @@ fn init_scheduler() {
             }
             // see the timer thread above
             let s = get_scheduler();
-            s.event_loop.run(id);
+            loop {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    s.event_loop.run(id);
+                }));
+                if let Err(panic_info) = result {
+                    error!(
+                        "worker thread {} panicked, restarting: {:?}",
+                        id, panic_info
+                    );
+                    // continue the loop to restart the event loop
+                } else {
+                    // normal exit (should not happen as event_loop.run is infinite)
+                    break;
+                }
+            }
         });
     }
 
