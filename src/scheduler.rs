@@ -60,12 +60,27 @@ fn load_scheduler() -> Option<&'static Scheduler> {
 #[cold]
 fn init_scheduler() {
     let workers = config().get_workers();
-    let b: Box<Scheduler> = Scheduler::new(workers);
-    let sched: &'static Scheduler = Box::leak(b);
-    SCHED.store(
-        sched as *const Scheduler as *mut Scheduler,
-        Ordering::Release,
-    );
+    let pin_cores = config().get_worker_pin();
+    // Fetch the core ids only when pinning is requested, and never fail the
+    // whole startup over them: a missing affinity mask just means the workers
+    // run unpinned.
+    let core_ids = if pin_cores {
+        match core_affinity::get_core_ids() {
+            Some(ids) if !ids.is_empty() => Some(ids),
+            _ => {
+                warn!("can't get core ids, worker pinning disabled");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Keep ownership of the scheduler until every fallible startup step below
+    // has completed. The new threads obtain it through `get_scheduler`, which
+    // blocks on the `Once` the initializing thread is currently inside, so
+    // nothing can observe the `SCHED` pointer before it is stored.
+    let sched: Box<Scheduler> = Scheduler::new(workers);
 
     // timer thread
     thread::spawn(move || {
@@ -80,22 +95,31 @@ fn init_scheduler() {
             }
         };
 
-        let s = load_scheduler().expect("scheduler published before spawn");
+        // wait until `init_scheduler` publishes the scheduler; if it panicked
+        // this panics on the poisoned `Once` and the thread exits instead of
+        // running against a half-initialized scheduler
+        let s = get_scheduler();
         s.timer_thread.run(&timer_event_handler);
     });
 
-    let core_ids = core_affinity::get_core_ids().unwrap();
-    let pin_cores = config().get_worker_pin();
     // io event loop thread
-    for (id, core) in (0..workers).zip(core_ids.into_iter().cycle()) {
+    for id in 0..workers {
+        let core = core_ids.as_ref().map(|ids| ids[id % ids.len()]);
         thread::spawn(move || {
-            if pin_cores {
+            if let Some(core) = core {
                 core_affinity::set_for_current(core);
             }
-            let s = load_scheduler().expect("scheduler published before spawn");
+            // see the timer thread above
+            let s = get_scheduler();
             s.event_loop.run(id);
         });
     }
+
+    // Publish only after all threads have been spawned. If a step above
+    // panicked, `sched` is dropped during unwinding and `SCHED` stays null, so
+    // later callers see the poisoned `Once` instead of a scheduler with
+    // missing workers.
+    SCHED.store(Box::into_raw(sched), Ordering::Release);
 }
 
 #[inline]
