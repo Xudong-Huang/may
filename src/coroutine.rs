@@ -5,6 +5,6 @@ pub use crate::coroutine_impl::{
 };
 pub use crate::join::JoinHandle;
 pub use crate::park::ParkError;
-pub use crate::scoped::scope;
+pub use crate::scoped::{scope, Scope, ScopedJoinHandle};
 pub use crate::sleep::sleep;
 pub use crate::yield_now::yield_now;

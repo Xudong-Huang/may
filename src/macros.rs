@@ -30,7 +30,10 @@ macro_rules! go {
         }
         let f = _go_check($func);
         let b = $builder;
-        unsafe { b.spawn(f) }
+        // `Builder::spawn` is unsafe while `Scope::spawn` is safe
+        #[allow(unused_unsafe)]
+        let handle = unsafe { b.spawn(f) };
+        handle
     }};
 
     // for cqueue add spawn

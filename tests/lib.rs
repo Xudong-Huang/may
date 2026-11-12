@@ -229,6 +229,150 @@ fn scoped_coroutine() {
 }
 
 #[test]
+fn scope_returns_value() {
+    let value = coroutine::scope(|_scope| 42);
+    assert_eq!(value, 42);
+}
+
+#[test]
+fn scoped_handle_join_returns_result() {
+    let mut x = 0;
+    let value = coroutine::scope(|scope| {
+        let handle = scope.spawn(|| {
+            x += 1;
+            x * 2
+        });
+        handle.join().unwrap()
+    });
+
+    assert_eq!(value, 2);
+    assert_eq!(x, 1);
+}
+
+#[test]
+fn scoped_handle_join_returns_panic() {
+    let had_panic = coroutine::scope(|scope| {
+        let handle = scope.spawn(|| -> () { panic!("scoped panic") });
+        handle.join().is_err()
+    });
+
+    assert!(had_panic);
+}
+
+#[test]
+#[should_panic(expected = "scoped panic")]
+fn scoped_unjoined_panic_propagates() {
+    coroutine::scope(|scope| {
+        scope.spawn(|| -> () { panic!("scoped panic") });
+    });
+}
+
+#[test]
+fn scoped_nested_spawn() {
+    let mut x = 0;
+    coroutine::scope(|scope| {
+        scope.spawn(|| {
+            scope.spawn(|| {
+                x += 1;
+            });
+        });
+    });
+
+    assert_eq!(x, 1);
+}
+
+#[test]
+fn scoped_defer_runs_lifo() {
+    use std::sync::Mutex;
+
+    let order = Mutex::new(Vec::new());
+    coroutine::scope(|scope| {
+        scope.defer(|| order.lock().unwrap().push(1));
+        scope.defer(|| order.lock().unwrap().push(2));
+    });
+
+    assert_eq!(*order.lock().unwrap(), vec![2, 1]);
+}
+
+#[test]
+fn scoped_panicking_defer_still_joins() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let child_done = Arc::new(AtomicBool::new(false));
+    let c = child_done.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        coroutine::scope(|scope| {
+            scope.spawn(move || {
+                coroutine::sleep(Duration::from_millis(10));
+                c.store(true, Ordering::SeqCst);
+            });
+            // this dtor runs before the auto-join of the coroutine above
+            scope.defer(|| panic!("defer panic"));
+        })
+    }));
+
+    assert!(result.is_err());
+    assert!(child_done.load(Ordering::SeqCst));
+}
+
+#[test]
+fn scoped_body_panic_still_joins() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let child_done = Arc::new(AtomicBool::new(false));
+    let c = child_done.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        coroutine::scope(|scope| -> () {
+            scope.spawn(move || {
+                coroutine::sleep(Duration::from_millis(10));
+                c.store(true, Ordering::SeqCst);
+            });
+            panic!("body panic");
+        })
+    }));
+
+    assert!(result.is_err());
+    assert!(child_done.load(Ordering::SeqCst));
+}
+
+#[test]
+fn scoped_handle_is_finished() {
+    coroutine::scope(|scope| {
+        let handle = scope.spawn(|| ());
+        while !handle.is_finished() {
+            yield_now();
+        }
+        assert!(handle.join().is_ok());
+    });
+}
+
+#[test]
+fn scoped_builder_spawn() {
+    let value = coroutine::scope(|scope| {
+        coroutine::Builder::new()
+            .stack_size(0x20_000)
+            .spawn_scoped(scope, || 21)
+            .unwrap()
+            .join()
+            .unwrap()
+    });
+
+    assert_eq!(value, 21);
+}
+
+#[test]
+fn scoped_builder_spawn_invalid_id() {
+    coroutine::scope(|scope| {
+        let result = coroutine::Builder::new()
+            .id(usize::MAX)
+            .spawn_scoped(scope, || ());
+        assert!(result.is_err());
+    });
+}
+
+#[test]
 fn yield_from_gen() {
     let mut a = 0;
     coroutine::scope(|scope| {
