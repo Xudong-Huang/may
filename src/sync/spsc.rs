@@ -21,8 +21,7 @@ use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 // Re-exported so the error types are reachable through this module's path,
 // matching `super::mpsc` (and `std::sync::mpsc`).
 pub use std::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
@@ -50,7 +49,7 @@ struct RecvTimeoutSource<T> {
     // `subscribe` has finished before tearing it down
     can_drop: DelayDrop,
     // the scheduler timer, removed if the wait ends before its deadline
-    timer: AtomicPtr<TimeoutHandle<WaitCo>>,
+    timer: AtomicOption<TimeoutHandle<WaitCo>>,
 }
 
 impl<T> RecvTimeoutSource<T> {
@@ -59,7 +58,7 @@ impl<T> RecvTimeoutSource<T> {
             queue,
             timeout,
             can_drop: DelayDrop::new(),
-            timer: AtomicPtr::new(ptr::null_mut()),
+            timer: AtomicOption::none(),
         }
     }
 
@@ -68,15 +67,9 @@ impl<T> RecvTimeoutSource<T> {
     }
 
     fn set_timer(&self, handle: Option<TimeoutHandle<WaitCo>>) -> Option<TimeoutHandle<WaitCo>> {
-        let ptr = match handle {
-            None => ptr::null_mut(),
-            Some(h) => h.into_ptr(),
-        };
-        let old = self.timer.swap(ptr, Ordering::Relaxed);
-        if old.is_null() {
-            None
-        } else {
-            Some(unsafe { TimeoutHandle::from_ptr(old) })
+        match handle {
+            Some(h) => self.timer.swap(h),
+            None => self.timer.take(),
         }
     }
 

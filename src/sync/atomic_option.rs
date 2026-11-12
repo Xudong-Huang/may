@@ -2,6 +2,7 @@ use crossbeam::atomic::AtomicCell;
 
 use super::Blocker;
 use crate::coroutine_impl::CoroutineImpl;
+use crate::timeout_list::TimeoutHandle;
 
 use std::sync::Arc;
 
@@ -16,6 +17,8 @@ pub(crate) type WaitCo = Arc<AtomicOption<CoroutineImpl>>;
 const _: () = assert!(AtomicCell::<Option<CoroutineImpl>>::is_lock_free());
 const _: () = assert!(AtomicCell::<Option<Arc<Blocker>>>::is_lock_free());
 const _: () = assert!(AtomicCell::<Option<WaitCo>>::is_lock_free());
+// the timer handle slots of `park::Park` and `spsc::RecvTimeoutSource`
+const _: () = assert!(AtomicCell::<Option<TimeoutHandle<WaitCo>>>::is_lock_free());
 
 /// A minimal atomic `Option<T>`.
 ///
@@ -52,6 +55,12 @@ impl<T> AtomicOption<T> {
     #[inline]
     pub fn take(&self) -> Option<T> {
         self.inner.take()
+    }
+
+    /// Replace the value in the slot, returning the previous value.
+    #[inline]
+    pub fn swap(&self, t: T) -> Option<T> {
+        self.inner.swap(Some(t))
     }
 
     /// Empty the slot, dropping any value.

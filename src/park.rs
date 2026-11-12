@@ -1,7 +1,6 @@
 use std::fmt;
 use std::io::ErrorKind;
-use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,7 +32,7 @@ pub struct Park {
     // timeout settings in ms, 0 is none (park forever)
     timeout: AtomicDuration,
     // timer handle, can be null
-    timeout_handle: AtomicPtr<TimeoutHandle<WaitCo>>,
+    timeout_handle: AtomicOption<TimeoutHandle<WaitCo>>,
     // a flag if kernel is entered
     can_drop: DelayDrop,
 }
@@ -52,7 +51,7 @@ impl Park {
             state: AtomicBool::new(false),
             check_cancel: AtomicBool::new(true),
             timeout: AtomicDuration::new(None),
-            timeout_handle: AtomicPtr::new(ptr::null_mut()),
+            timeout_handle: AtomicOption::none(),
             can_drop: DelayDrop::new(),
         }
     }
@@ -67,16 +66,9 @@ impl Park {
         &self,
         handle: Option<TimeoutHandle<WaitCo>>,
     ) -> Option<TimeoutHandle<WaitCo>> {
-        let ptr = match handle {
-            None => ptr::null_mut(),
-            Some(h) => h.into_ptr(),
-        };
-
-        let old_ptr = self.timeout_handle.swap(ptr, Ordering::Relaxed);
-        if old_ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { TimeoutHandle::from_ptr(old_ptr) })
+        match handle {
+            Some(h) => self.timeout_handle.swap(h),
+            None => self.timeout_handle.take(),
         }
     }
 
