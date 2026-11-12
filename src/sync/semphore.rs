@@ -74,24 +74,67 @@ impl Semphore {
     // wake up the first live waiter, forwarding the permit past waiters that
     // have already timed out or been canceled (their `release` flag is set).
     //
+    // Returns `true` if a live waiter took the permit and `false` if there
+    // was no live waiter queued, in which case the permit stays in `cnt`.
+    //
+    // The walk must not stop on a positive `cnt`: waiters that already
+    // registered (and are queued behind a released blocker) are covered by
+    // permits, so `cnt >= 0` does not mean that no live waiter is left.
+    //
     // Iterative on purpose: a cancel storm can leave many released blockers
     // back to back in the queue, and recursing through `post` would overflow
     // the (small, 32KB default) coroutine stack and abort.
     #[inline]
-    fn wakeup_one(&self) {
-        loop {
-            let w = self.to_wake.pop().expect("got null blocker!");
-
+    fn wakeup_one(&self) -> bool {
+        while let Some(w) = self.to_wake.pop() {
             // `true` means a live waiter took the permit
             if w.try_hand_off() {
-                break;
+                return true;
             }
 
             // the released waiter no longer counts as waiting (`cnt += 1`);
-            // forward the permit if there are still waiters behind it
-            if self.cnt.fetch_add(1, Ordering::SeqCst) >= 0 {
-                break;
-            }
+            // keep looking for a live waiter to forward the permit to
+            self.cnt.fetch_add(1, Ordering::SeqCst);
+        }
+
+        // The queue is empty although the counter said otherwise. Receivers
+        // that pushed a blocker but have not yet decremented `cnt`, or that
+        // were already woken by a broadcast drain, are the common cause; the
+        // permit simply stays in `cnt`.
+        false
+    }
+
+    /// Account an already-pushed blocker as a waiter.
+    ///
+    /// A permit can be posted between the fast path and this registration.
+    /// Hand it to the oldest waiter; if there is none, it stays available in
+    /// `cnt`.
+    #[inline]
+    fn record_waiter(&self) {
+        // dec the cnt, if it's positive, unpark one waiter
+        if self.cnt.fetch_sub(1, Ordering::SeqCst) > 0 {
+            self.wakeup_one();
+        }
+    }
+
+    /// Wake every queued waiter.
+    ///
+    /// This is a broadcast for a predicate that has become permanently true
+    /// (an MPMC receiver observing a disconnect): each queued blocker is
+    /// retired (`cnt += 1` undoes its registration) and its waiter is
+    /// unparked. Receivers that pushed a blocker but have not yet run
+    /// `record_waiter` are woken too; the same `+1` retires the registration
+    /// they are about to add.
+    ///
+    /// Unlike [`post`](Self::post), the wakeup is not permit based, so
+    /// waiters that were not yet accounted for cannot make it stop early.
+    pub(crate) fn wake_all(&self) {
+        while let Some(w) = self.to_wake.pop() {
+            // retire the waiter's registration, exactly like the
+            // released-blocker path in `wakeup_one`
+            self.cnt.fetch_add(1, Ordering::SeqCst);
+            // live waiters are unparked; released blockers are just dropped
+            w.try_hand_off();
         }
     }
 
@@ -119,10 +162,9 @@ impl Semphore {
         let cur = SyncBlocker::current();
         // register blocker first
         self.to_wake.push(cur.clone());
-        // dec the cnt, if it's positive, unpark one waiter
-        if self.cnt.fetch_sub(1, Ordering::SeqCst) > 0 {
-            self.wakeup_one();
-        }
+        // dec the cnt, and forward a permit that was posted in between to the
+        // oldest waiter (which can end up being this one)
+        self.record_waiter();
 
         // Re-check after registering; the fetch_sub above synchronizes with
         // the producer's post through the SeqCst modification order of `cnt`.
@@ -247,32 +289,6 @@ impl Semphore {
         // try to wakeup one waiter first
         if prev < 0 {
             self.wakeup_one();
-        }
-    }
-
-    /// Increment the semaphore and wake one waiter if any exist.
-    /// Returns `true` if a waiter was woken, `false` if there were no waiters.
-    pub(crate) fn post_and_check(&self) -> bool {
-        // CAS loop so the counter is not wrapped before the overflow check
-        // can fire
-        let prev = loop {
-            let cur = self.cnt.load(Ordering::SeqCst);
-            assert!(cur < isize::MAX, "semaphore permit count overflow");
-            match self
-                .cnt
-                .compare_exchange_weak(cur, cur + 1, Ordering::SeqCst, Ordering::SeqCst)
-            {
-                Ok(_) => break cur,
-                Err(_) => continue,
-            }
-        };
-
-        // try to wakeup one waiter first
-        if prev < 0 {
-            self.wakeup_one();
-            true
-        } else {
-            false
         }
     }
 
@@ -490,5 +506,56 @@ mod tests {
         assert_eq!(sem.get_value(), 1);
         assert!(sem.try_wait());
         assert_eq!(sem.get_value(), 0);
+    }
+
+    /// Regression test for the MPMC disconnect wakeup.
+    ///
+    /// A waiter pushes its blocker before it decrements `cnt`. Two waiters
+    /// preempted inside that window used to absorb the disconnect posts and
+    /// the spare permit, so `drop_tx`'s post-while-waiters loop stopped while
+    /// a third, fully registered waiter was still parked. A broadcast drain
+    /// must wake it regardless of the counter.
+    ///
+    /// Completing the registration of the two window waiters also exercises
+    /// `wakeup_one` on an empty queue: their `fetch_sub` sees the permits
+    /// retired by the drain and must not panic with "got null blocker!".
+    #[test]
+    fn broadcast_wakeup_ignores_unaccounted_waiters() {
+        use std::time::Instant;
+
+        let sem = Arc::new(Semphore::new(0));
+
+        // two waiters are preempted right after pushing their blocker and
+        // before decrementing the counter
+        let w1 = SyncBlocker::current();
+        let w2 = SyncBlocker::current();
+        sem.to_wake.push(w1.clone());
+        sem.to_wake.push(w2.clone());
+
+        // a third waiter registers completely and parks
+        let waiter = {
+            let sem = sem.clone();
+            thread::spawn(move || sem.wait_timeout(Duration::from_secs(5)))
+        };
+        let start = Instant::now();
+        while sem.cnt.load(Ordering::SeqCst) != -1 {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "waiter did not register"
+            );
+            thread::yield_now();
+        }
+
+        // the producers broadcast the disconnect
+        sem.wake_all();
+
+        // the window waiters now finish their registration
+        for w in [&w1, &w2] {
+            sem.record_waiter();
+            assert!(w.is_unparked());
+        }
+
+        assert!(waiter.join().unwrap(), "parked waiter was not woken");
+        assert_eq!(sem.cnt.load(Ordering::SeqCst), 0);
     }
 }

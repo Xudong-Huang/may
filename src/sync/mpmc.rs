@@ -124,19 +124,21 @@ impl<T> InnerQueue<T> {
         match self.tx_ports.fetch_sub(1, Ordering::SeqCst) {
             1 => {
                 // There is no tx port any more; wake every parked receiver
-                // so it observes the disconnect. No spare permit is left
-                // behind: receivers that register after this wakeup observe
-                // `tx_ports == 0` through `wait_timeout_until`.
+                // so it observes the disconnect.
                 //
-                // Keep posting until no more waiters are woken. This handles
-                // the race where a receiver can register after we check for
-                // waiters but before we post. By repeatedly posting until
-                // post_and_check returns false, we ensure all receivers
-                // (including those registering concurrently) observe the
-                // disconnect.
-                while self.sem.post_and_check() {
-                    // Keep posting
-                }
+                // This must be a broadcast, not a "post while waiters exist"
+                // loop: a receiver pushes its blocker *before* decrementing
+                // the semaphore counter, and while it sits in that window the
+                // counter under-reports the parked receivers. Two receivers
+                // in that window can absorb the posts (and the spare permit)
+                // and make the loop stop while a fully registered receiver is
+                // still parked. Draining the waiter queue wakes everyone
+                // registered at this point regardless of the counter.
+                //
+                // Receivers that register after the drain observe
+                // `tx_ports == 0` through `wait_timeout_until`, so no wakeup
+                // is lost.
+                self.sem.wake_all();
             }
             n if n > 1 => {}
             n => {
