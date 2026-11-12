@@ -2,7 +2,7 @@ use std::cell::Cell;
 #[cfg(feature = "work_steal")]
 use std::cell::UnsafeCell;
 use std::io;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
@@ -35,13 +35,37 @@ thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX
 type TimerData = Arc<AtomicOption<CoroutineImpl>>;
 type TimerThread = timeout_list::TimerThread<TimerData>;
 
-static mut SCHED: *const Scheduler = std::ptr::null();
+// The scheduler is created once and never dropped, so it is leaked and
+// published through an atomic pointer. This cannot be a plain static: other
+// threads may read it on the fast path in `get_scheduler` while
+// `init_scheduler` is still publishing it.
+static SCHED: AtomicPtr<Scheduler> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Return the published scheduler, or `None` if initialization has not
+/// completed yet.
+#[inline]
+fn load_scheduler() -> Option<&'static Scheduler> {
+    let ptr = SCHED.load(Ordering::Acquire);
+    if ptr.is_null() {
+        None
+    } else {
+        // SAFETY: the pointer is only ever stored once, and it points to a
+        // leaked `Scheduler` that lives for the rest of the process. The
+        // Acquire load synchronizes with the Release store in
+        // `init_scheduler`, so the Scheduler's contents are fully visible.
+        Some(unsafe { &*ptr })
+    }
+}
 
 #[cold]
 fn init_scheduler() {
     let workers = config().get_workers();
     let b: Box<Scheduler> = Scheduler::new(workers);
-    unsafe { SCHED = Box::into_raw(b) };
+    let sched: &'static Scheduler = Box::leak(b);
+    SCHED.store(
+        sched as *const Scheduler as *mut Scheduler,
+        Ordering::Release,
+    );
 
     // timer thread
     thread::spawn(move || {
@@ -56,7 +80,7 @@ fn init_scheduler() {
             }
         };
 
-        let s = unsafe { &*SCHED };
+        let s = load_scheduler().expect("scheduler published before spawn");
         s.timer_thread.run(&timer_event_handler);
     });
 
@@ -68,7 +92,7 @@ fn init_scheduler() {
             if pin_cores {
                 core_affinity::set_for_current(core);
             }
-            let s = unsafe { &*SCHED };
+            let s = load_scheduler().expect("scheduler published before spawn");
             s.event_loop.run(id);
         });
     }
@@ -76,14 +100,18 @@ fn init_scheduler() {
 
 #[inline]
 pub fn get_scheduler() -> &'static Scheduler {
-    unsafe {
-        if likely(!SCHED.is_null()) {
-            return &*SCHED;
-        }
+    let ptr = SCHED.load(Ordering::Acquire);
+    if likely(!ptr.is_null()) {
+        // SAFETY: the pointer is stored once, points at a leaked Scheduler
+        // that lives for the rest of the process, and this Acquire load
+        // synchronizes with the Release store in `init_scheduler`.
+        return unsafe { &*ptr };
     }
     static ONCE: Once = Once::new();
     ONCE.call_once(init_scheduler);
-    unsafe { &*SCHED }
+    // `call_once` synchronizes with the initializing thread, so the Release
+    // store in `init_scheduler` is visible here.
+    load_scheduler().expect("scheduler initialized by `call_once`")
 }
 
 #[repr(align(128))]
