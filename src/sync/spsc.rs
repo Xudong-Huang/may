@@ -31,7 +31,7 @@ use std::thread::Thread;
 use std::time::{Duration, Instant};
 
 use super::delay_drop::{self, DelayDrop};
-use super::AtomicOption;
+use super::{AtomicOption, WaitCo};
 use crate::coroutine_impl::{co_cancel_data, is_coroutine, CoroutineImpl, EventSource};
 use crate::likely::{likely, unlikely};
 use crate::scheduler::get_scheduler;
@@ -39,11 +39,6 @@ use crate::timeout_list::TimeoutHandle;
 use crate::yield_now::{get_co_para, yield_with};
 
 use may_queue::spsc::Queue;
-
-/// The coroutine handle shared between `send`/`drop_chan`, the scheduler
-/// timer and the cancel machinery; exactly one of them takes the
-/// `CoroutineImpl`.
-type TimeoutCo = Arc<AtomicOption<CoroutineImpl>>;
 
 /// EventSource for `recv_timeout`. It holds its own reference to the queue:
 /// once the coroutine is reachable by `send()` or the timer it may resume,
@@ -55,7 +50,7 @@ struct RecvTimeoutSource<T> {
     // `subscribe` has finished before tearing it down
     can_drop: DelayDrop,
     // the scheduler timer, removed if the wait ends before its deadline
-    timer: AtomicPtr<TimeoutHandle<TimeoutCo>>,
+    timer: AtomicPtr<TimeoutHandle<WaitCo>>,
 }
 
 impl<T> RecvTimeoutSource<T> {
@@ -72,10 +67,7 @@ impl<T> RecvTimeoutSource<T> {
         self.can_drop.delay_drop()
     }
 
-    fn set_timer(
-        &self,
-        handle: Option<TimeoutHandle<TimeoutCo>>,
-    ) -> Option<TimeoutHandle<TimeoutCo>> {
+    fn set_timer(&self, handle: Option<TimeoutHandle<WaitCo>>) -> Option<TimeoutHandle<WaitCo>> {
         let ptr = match handle {
             None => ptr::null_mut(),
             Some(h) => h.into_ptr(),
@@ -224,7 +216,7 @@ const _: () = assert!(std::mem::align_of::<Thread>() >= 2);
 /// A registered waiter: either a coroutine or a native thread, stored as a
 /// tagged pointer so `AtomicOption<Blocker>` stays lock-free.
 ///
-/// The coroutine case points to a shared `Arc<AtomicOption<CoroutineImpl>>`
+/// The coroutine case points to a shared [`WaitCo`]
 /// (the same handle is registered with the cancel machinery). `send`,
 /// `drop_chan` and `Cancel::cancel` all race to `take()` the coroutine out of
 /// that slot, so exactly one of them resumes it.
@@ -234,7 +226,7 @@ struct Blocker {
 
 impl Blocker {
     #[inline]
-    fn new_coroutine(wait_co: Arc<AtomicOption<CoroutineImpl>>) -> Self {
+    fn new_coroutine(wait_co: WaitCo) -> Self {
         let handle = NonZeroUsize::new(Arc::into_raw(wait_co) as usize).unwrap();
         Blocker { handle }
     }
@@ -298,7 +290,7 @@ struct InnerQueue<T> {
     // thread/coroutine for wake up, must use differently address for each round
     wait_co: AtomicOption<Blocker>,
     /// Coroutine waiting on `recv_timeout` (timer + send share this Arc).
-    timeout_wait: AtomicOption<Arc<AtomicOption<CoroutineImpl>>>,
+    timeout_wait: AtomicOption<WaitCo>,
     // The number of tx channels which are currently using this queue.
     channels: AtomicUsize,
     // if rx is dropped
@@ -1284,28 +1276,19 @@ mod tests {
             rx.recv_timeout(Duration::from_millis(10)),
             Err(RecvTimeoutError::Timeout)
         );
-        // send() must not find a registered waiter: if the timeout left a
-        // stale blocker behind, send() would unpark us here and the next
-        // park would return immediately instead of sleeping.
+        // A timeout must clear its registration before returning. Check the
+        // slot directly: if a blocker were left behind, the send() below
+        // would find it and unpark this thread. Timing the following park
+        // cannot prove that, because `thread::park_timeout` is allowed to
+        // wake spuriously (and `Instant` can under-report the wait when the
+        // thread is descheduled).
+        assert!(
+            rx.inner.wait_co.take().is_none(),
+            "recv_timeout left a stale blocker behind"
+        );
+        // With no waiter registered, send() only queues the value.
         tx.send(1).unwrap();
-        let start = Instant::now();
-        thread::park_timeout(Duration::from_millis(30));
-        let elapsed = start.elapsed();
-        // The park should timeout after ~30ms. We allow a range to account for
-        // scheduler variance: at least 15ms (allowing early unpark by scheduler)
-        // but not significantly less, and at most ~200ms (allowing some system
-        // load). The key point is that if a stale blocker exists, the unpark
-        // would return immediately (~0-2ms).
-        assert!(
-            elapsed >= Duration::from_millis(15),
-            "park returned too early ({:?}), possible stale blocker",
-            elapsed
-        );
-        assert!(
-            elapsed < Duration::from_millis(200),
-            "park took too long ({:?})",
-            elapsed
-        );
+        assert!(rx.inner.wait_co.take().is_none());
         assert_eq!(rx.try_recv(), Ok(1));
     }
 

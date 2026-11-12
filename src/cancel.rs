@@ -1,15 +1,13 @@
 use std::cell::Cell;
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::thread;
 
-use crate::coroutine_impl::CoroutineImpl;
 #[cfg(feature = "io_cancel")]
 use crate::io::cancel::CancelIoImpl;
 use crate::likely::unlikely;
 use crate::scheduler::get_scheduler;
-use crate::sync::AtomicOption;
+use crate::sync::{AtomicOption, WaitCo};
 use crate::yield_now::{get_co_para, set_co_para};
 use generator::Error;
 
@@ -105,7 +103,7 @@ pub struct CancelImpl<T: CancelIo> {
     // other suspended type would register the co itself
     // can't set io and co at the same time!
     // most of the time this is park based API
-    co: AtomicOption<Arc<AtomicOption<CoroutineImpl>>>,
+    co: AtomicOption<WaitCo>,
 }
 
 impl<T: CancelIo> Default for CancelImpl<T> {
@@ -187,7 +185,7 @@ impl<T: CancelIo> CancelImpl<T> {
 
     // set the cancel co data
     // can't both set_io and set_co
-    pub fn set_co(&self, co: Arc<AtomicOption<CoroutineImpl>>) {
+    pub fn set_co(&self, co: WaitCo) {
         self.co.store(co);
     }
 

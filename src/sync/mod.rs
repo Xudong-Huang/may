@@ -27,7 +27,9 @@ pub(crate) mod delay_drop;
 pub mod mpmc;
 pub mod mpsc;
 pub mod spsc;
+
 pub use atomic_option::AtomicOption;
+pub(crate) use atomic_option::WaitCo;
 pub use barrier::{Barrier, BarrierWaitResult};
 pub use blocking::{Blocker, FastBlocker};
 pub use condvar::{Condvar, WaitTimeoutResult};

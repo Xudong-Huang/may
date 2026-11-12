@@ -3,7 +3,7 @@ use std::cell::Cell;
 use std::cell::UnsafeCell;
 use std::io;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
-use std::sync::{Arc, Once};
+use std::sync::Once;
 use std::thread;
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
 use crate::io::{EventLoop, Selector};
 use crate::likely::likely;
 use crate::pool::CoroutinePool;
-use crate::sync::AtomicOption;
+use crate::sync::WaitCo;
 use crate::timeout_list;
 use crate::yield_now::set_co_para;
 use may_queue::mpsc::Queue;
@@ -30,10 +30,9 @@ cfg_if::cfg_if! {
 // thread id, only workers are normal ones
 thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX) }; }
 
-// here we use Arc<AtomicOption<>> for that in the select implementation
-// other event may try to consume the coroutine while timer thread consume it
-type TimerData = Arc<AtomicOption<CoroutineImpl>>;
-type TimerThread = timeout_list::TimerThread<TimerData>;
+// the timer holds a per-wait handle, since in the select implementation
+// another event may try to consume the coroutine while the timer thread does
+type TimerThread = timeout_list::TimerThread<WaitCo>;
 
 // The scheduler is created once and never dropped, so it is leaked and
 // published through an atomic pointer. This cannot be a plain static: other
@@ -85,7 +84,7 @@ fn init_scheduler() {
     // timer thread
     thread::spawn(move || {
         // timer function
-        let timer_event_handler = |c: Arc<AtomicOption<CoroutineImpl>>| {
+        let timer_event_handler = |c: WaitCo| {
             // just re-push the co to the visit list
             if let Some(mut co) = c.take() {
                 // set the timeout result for the coroutine
@@ -332,16 +331,12 @@ impl Scheduler {
     }
 
     #[inline]
-    pub fn add_timer(
-        &self,
-        dur: Duration,
-        co: Arc<AtomicOption<CoroutineImpl>>,
-    ) -> timeout_list::TimeoutHandle<TimerData> {
+    pub fn add_timer(&self, dur: Duration, co: WaitCo) -> timeout_list::TimeoutHandle<WaitCo> {
         self.timer_thread.add_timer(dur, co)
     }
 
     #[inline]
-    pub fn del_timer(&self, handle: timeout_list::TimeoutHandle<TimerData>) {
+    pub fn del_timer(&self, handle: timeout_list::TimeoutHandle<WaitCo>) {
         self.timer_thread.del_timer(handle);
     }
 

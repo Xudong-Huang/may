@@ -5,6 +5,18 @@ use crate::coroutine_impl::CoroutineImpl;
 
 use std::sync::Arc;
 
+/// The shared hand-off handle for one suspended coroutine.
+///
+/// The coroutine is taken out of it by exactly one of: an unpark, a
+/// cancellation, or the scheduler timer armed for that wait. The `Arc` lets
+/// the timer and the cancel machinery keep a claim on their own wait after it
+/// has ended, without ever reaching a later wait registered elsewhere.
+pub(crate) type WaitCo = Arc<AtomicOption<CoroutineImpl>>;
+
+const _: () = assert!(AtomicCell::<Option<CoroutineImpl>>::is_lock_free());
+const _: () = assert!(AtomicCell::<Option<Arc<Blocker>>>::is_lock_free());
+const _: () = assert!(AtomicCell::<Option<WaitCo>>::is_lock_free());
+
 /// A minimal atomic `Option<T>`.
 ///
 /// Used by the synchronization primitives as a single-slot hand-off. It is
@@ -14,9 +26,6 @@ use std::sync::Arc;
 pub struct AtomicOption<T> {
     inner: AtomicCell<Option<T>>,
 }
-
-const _: () = assert!(AtomicCell::<Option<CoroutineImpl>>::is_lock_free());
-const _: () = assert!(AtomicCell::<Option<Arc<Blocker>>>::is_lock_free());
 
 impl<T> AtomicOption<T> {
     /// Create an empty slot.
