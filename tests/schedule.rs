@@ -1,7 +1,7 @@
 //! Scheduler-level behavior tests.
 //!
-//! Both tests drive the process-global runtime with one worker, so they take
-//! `SERIAL` and run one at a time. Integration tests in one file share a
+//! The tests below drive the process-global runtime with one worker, so they
+//! take `SERIAL` and run one at a time. Integration tests in one file share a
 //! process, hence one leaked scheduler: the scheduler is initialized once and
 //! `set_workers` is only read at initialization. Serializing keeps each test
 //! from observing the other's coroutines on that single worker.
@@ -77,6 +77,74 @@ fn self_yielding_coroutine_does_not_starve_select() {
     done_rx
         .recv_timeout(Duration::from_secs(5))
         .expect("the self-yielding coroutine starved the worker's selector");
+}
+
+/// Bursts of external spawns must all run even though the scheduler coalesces
+/// wakeups behind one in-flight selector wakeup per worker.
+///
+/// Only the first push to a sleeping worker pays the wakeup syscall; the rest
+/// of the burst ride on it. The dangerous interleaving is a producer
+/// coalescing onto a wakeup the worker has already consumed: the worker must
+/// disarm the flag and drain its global queue before it blocks again, or the
+/// coalesced push is stranded. A lost wakeup leaves one of the coroutines
+/// below unrunnable, so the receive times out.
+#[test]
+fn burst_spawns_from_outside_are_all_run() {
+    let _guard = serial();
+
+    // One worker: every push from the os thread targets the same global
+    // queue, which maximizes wakeup coalescing.
+    may::config().set_workers(1);
+
+    // A resident coroutine that keeps re-queueing itself locally, so the
+    // work-stealing drain never finds the local queue empty. The global queue
+    // is then only collected from the selector wakeup event and from the
+    // event loop's disarm, i.e. exactly the coalescing-safe paths.
+    let started = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let spin_started = started.clone();
+    let spin_stop = stop.clone();
+    may::go!(move || {
+        spin_started.store(true, Ordering::Release);
+        while !spin_stop.load(Ordering::Acquire) {
+            may::coroutine::yield_now();
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !started.load(Ordering::Acquire) {
+        assert!(
+            Instant::now() < deadline,
+            "the spinning coroutine did not start"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    const ROUNDS: usize = 200;
+    const BURST: usize = 32;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    for round in 0..ROUNDS {
+        for i in 0..BURST {
+            let tx = tx.clone();
+            may::go!(move || {
+                let _ = tx.send((round, i));
+            });
+        }
+    }
+    drop(tx);
+
+    // The pushes race with the worker draining earlier coroutines, so this
+    // covers producers arriving both while the worker sleeps and while it is
+    // already awake with a wakeup armed.
+    let mut seen = std::collections::HashSet::with_capacity(ROUNDS * BURST);
+    for _ in 0..ROUNDS * BURST {
+        let item = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("a coalesced wakeup was lost");
+        assert!(seen.insert(item), "coroutine ran twice: {item:?}");
+    }
+
+    stop.store(true, Ordering::Release);
 }
 
 /// Work scheduled by the io-timeout handler must run before the worker parks.
@@ -160,8 +228,8 @@ mod io_timeout {
             let _ = done_tx.send(());
         });
 
-        done_rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("work scheduled by the io-timeout handler slept until the next selector wakeup");
+        done_rx.recv_timeout(Duration::from_secs(5)).expect(
+            "work scheduled by the io-timeout handler slept until the next selector wakeup",
+        );
     }
 }

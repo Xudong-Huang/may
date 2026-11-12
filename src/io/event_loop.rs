@@ -31,6 +31,16 @@ impl EventLoop {
         let timeout_ns = 1_000_000_000; // 1s
 
         loop {
+            // Disarm the in-flight wakeup flag just before deciding whether
+            // to block. A `true` result means a producer may have coalesced
+            // its push into a wakeup we already consumed, so drain the global
+            // queue and poll instead of blocking this round.
+            let woken = scheduler.disarm_wakeup(id);
+            if woken {
+                scheduler.collect_global(id);
+                next_expire = Some(0);
+            }
+
             next_expire = match selector.select(scheduler, id, &mut events_buf, next_expire) {
                 Ok(t) => t.or(Some(timeout_ns)),
                 Err(e) => {

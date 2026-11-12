@@ -369,7 +369,17 @@ impl Builder {
         let s = get_scheduler();
 
         match id {
-            None => s.schedule_global(co),
+            None => {
+                // When spawning from inside a coroutine the child can go to
+                // the local queue, which needs no wakeup syscall at all.
+                // With work stealing enabled idle workers can still take it.
+                #[cfg(feature = "work_steal")]
+                s.schedule(co);
+                // Without stealing a local push would pin every child to the
+                // spawning worker, so keep the round-robin global spread.
+                #[cfg(not(feature = "work_steal"))]
+                s.schedule_global(co);
+            }
             Some(id) => s.schedule_global_with_id(co, id),
         }
 

@@ -2,10 +2,12 @@ use std::cell::Cell;
 #[cfg(feature = "work_steal")]
 use std::cell::UnsafeCell;
 use std::io;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Once;
 use std::thread;
 use std::time::Duration;
+
+use crossbeam::utils::CachePadded;
 
 use crate::config::config;
 use crate::coroutine_impl::{run_coroutine, CoroutineImpl};
@@ -183,6 +185,14 @@ pub struct Scheduler {
     #[cfg(feature = "work_steal")]
     stealers: Vec<Steal<CoroutineImpl>>,
     global_queues: Vec<Queue<CoroutineImpl>>,
+    /// One per worker: `true` while a wakeup for that worker is in flight, or
+    /// until the worker disarms it right before going to sleep.
+    ///
+    /// Producers only issue the selector wakeup on the `false -> true`
+    /// transition, so a burst of global pushes costs at most one syscall per
+    /// worker instead of one per push. Cache padded because producers on other
+    /// threads hammer these while the owning worker is trying to sleep.
+    wakeup_armed: Vec<CachePadded<AtomicBool>>,
     event_loop: EventLoop,
     timer_thread: TimerThread,
     pub pool: CoroutinePool,
@@ -202,6 +212,8 @@ impl Scheduler {
         let local_queues = Vec::from_iter(queues.into_iter().map(|(_s, l)| UnsafeCell::new(l)));
 
         let global_queues = Vec::from_iter((0..workers).map(|_| Queue::new()));
+        let wakeup_armed =
+            Vec::from_iter((0..workers).map(|_| CachePadded::new(AtomicBool::new(false))));
 
         Box::new(Scheduler {
             pool: CoroutinePool::new(),
@@ -210,6 +222,7 @@ impl Scheduler {
             #[cfg(feature = "work_steal")]
             stealers,
             global_queues,
+            wakeup_armed,
             timer_thread: TimerThread::new(),
             workers,
         })
@@ -373,8 +386,11 @@ impl Scheduler {
             .rem_euclid(self.workers);
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
-        // signal one waiting thread if any
-        self.get_selector().wakeup(thread_id);
+        // signal one waiting thread if any; skip the syscall when a wakeup
+        // for this worker is already in flight
+        if !self.arm_wakeup(thread_id) {
+            self.get_selector().wakeup(thread_id);
+        }
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -384,8 +400,37 @@ impl Scheduler {
         // println!("Scheduling to {thread_id}");
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
-        // signal one waiting thread if any
-        self.get_selector().wakeup(thread_id);
+        // signal one waiting thread if any; see `schedule_global`
+        if !self.arm_wakeup(thread_id) {
+            self.get_selector().wakeup(thread_id);
+        }
+    }
+
+    /// Mark a wakeup for worker `id` as in flight, returning whether one was
+    /// already armed.
+    ///
+    /// When `true` is returned the caller must skip the syscall: the armed
+    /// wakeup event, or the owning worker's drain before it blocks, already
+    /// covers this push. The worker consumes the flag with
+    /// [`Self::disarm_wakeup`].
+    #[inline]
+    fn arm_wakeup(&self, id: usize) -> bool {
+        self.wakeup_armed[id].swap(true, Ordering::AcqRel)
+    }
+
+    /// Disarm the in-flight wakeup flag for worker `id`, returning whether one
+    /// was armed.
+    ///
+    /// A worker calls this immediately before it decides to block in the
+    /// selector. On `true` it must drain its global queue and poll with a zero
+    /// timeout instead of blocking: a producer may have coalesced its push
+    /// into a wakeup event that was already consumed, leaving queued work with
+    /// no event to trigger the drain. The swap orders the worker against every
+    /// producer that skipped its syscall, so a skipped push is guaranteed to
+    /// be drained in that round.
+    #[inline]
+    pub fn disarm_wakeup(&self, id: usize) -> bool {
+        self.wakeup_armed[id].swap(false, Ordering::AcqRel)
     }
 
     #[inline]
