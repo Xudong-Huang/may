@@ -132,19 +132,25 @@ impl Selector {
             crate::coroutine_impl::run_coroutine(co);
         }
 
-        // run all the local tasks
-        scheduler.run_queued_tasks(id);
-
-        // free the unused event_data
-        self.free_unused_event_data(id);
-
-        // deal with the timer list
+        // Deal with the timer list before draining the local queue: the
+        // timeout handler resumes its coroutine inline on this worker, and
+        // that coroutine can schedule more work locally (e.g. by yielding).
+        // `run_queued_tasks` must stay the last step before `select` returns,
+        // because a local enqueue does not wake the selector. Anything left
+        // in the queue would otherwise sleep until the next wakeup, which can
+        // be the next io timer.
         #[cfg(feature = "io_timeout")]
         let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
         #[cfg(not(feature = "io_timeout"))]
         let next_expire = None;
+
+        // run all the local tasks
+        scheduler.run_queued_tasks(id);
+
+        // free the unused event_data
+        self.free_unused_event_data(id);
         Ok(next_expire)
     }
 
