@@ -398,13 +398,7 @@ impl Scheduler {
         let thread_id = NEXT_THREAD_ID
             .fetch_add(1, Ordering::Relaxed)
             .rem_euclid(self.workers);
-        let global = unsafe { self.global_queues.get_unchecked(thread_id) };
-        global.push(co);
-        // signal one waiting thread if any; skip the syscall when a wakeup
-        // for this worker is already in flight
-        if !self.arm_wakeup(thread_id) {
-            self.get_selector().wakeup(thread_id);
-        }
+        self.push_global_with_wakeup(co, thread_id);
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
@@ -416,10 +410,17 @@ impl Scheduler {
     pub fn schedule_global_with_id(&self, co: CoroutineImpl, id: usize) {
         debug_assert!(id < self.workers, "worker id {id} out of range");
         let thread_id = id.rem_euclid(self.workers);
-        // println!("Scheduling to {thread_id}");
+        self.push_global_with_wakeup(co, thread_id);
+    }
+
+    /// Push a coroutine to a global queue and signal the worker if needed.
+    ///
+    /// Signal one waiting thread if any; skip the syscall when a wakeup
+    /// for this worker is already in flight.
+    #[inline]
+    fn push_global_with_wakeup(&self, co: CoroutineImpl, thread_id: usize) {
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
         global.push(co);
-        // signal one waiting thread if any; see `schedule_global`
         if !self.arm_wakeup(thread_id) {
             self.get_selector().wakeup(thread_id);
         }
@@ -452,22 +453,29 @@ impl Scheduler {
         self.wakeup_armed[id].swap(false, Ordering::AcqRel)
     }
 
+    /// Helper to push a coroutine to the local queue, abstracting the push method
+    /// based on the feature flag.
+    #[inline]
+    #[cfg(feature = "work_steal")]
+    fn local_push(&self, id: usize, co: CoroutineImpl) {
+        // SAFETY: the caller must own `id`
+        unsafe { self.local_queue(id) }.push_back(co);
+    }
+
+    #[inline]
+    #[cfg(not(feature = "work_steal"))]
+    fn local_push(&self, id: usize, co: CoroutineImpl) {
+        let local = unsafe { self.local_queues.get_unchecked(id) };
+        local.push(co);
+    }
+
     #[inline]
     pub fn collect_global(&self, id: usize) {
-        #[cfg(feature = "work_steal")]
-        // SAFETY: this runs on the worker owning `id`; `bulk_pop` below never
-        // re-enters the scheduler, so the borrow is not invalidated here.
-        let local = unsafe { self.local_queue(id) };
-        #[cfg(not(feature = "work_steal"))]
-        let local = unsafe { self.local_queues.get_unchecked(id) };
         let global = unsafe { self.global_queues.get_unchecked(id) };
         let mut v = global.bulk_pop();
         while !v.is_empty() {
             for co in v {
-                #[cfg(feature = "work_steal")]
-                local.push_back(co);
-                #[cfg(not(feature = "work_steal"))]
-                local.push(co);
+                self.local_push(id, co);
             }
             v = global.bulk_pop();
         }
