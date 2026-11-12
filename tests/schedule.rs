@@ -16,6 +16,34 @@ fn serial() -> MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(|poison| poison.into_inner())
 }
 
+/// A worker id outside `0..workers` must be rejected, not silently reduced
+/// modulo the worker count and run on an unrelated worker.
+#[test]
+fn builder_id_out_of_range_is_rejected() {
+    let _guard = serial();
+    may::config().set_workers(1);
+
+    for id in [1, usize::MAX] {
+        let result = unsafe { may::coroutine::Builder::new().id(id).spawn(|| ()) };
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("worker id {id} should not be accepted"));
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // a valid id still schedules the coroutine
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = unsafe {
+        may::coroutine::Builder::new()
+            .id(0)
+            .spawn(move || tx.send(()).unwrap())
+            .unwrap()
+    };
+    rx.recv_timeout(Duration::from_secs(5))
+        .expect("coroutine spawned with a valid id did not run");
+    handle.join().unwrap();
+}
+
 /// A coroutine that keeps re-queueing itself locally must not keep its worker
 /// out of `select`.
 ///

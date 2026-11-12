@@ -174,10 +174,11 @@ impl fmt::Debug for Coroutine {
 ///
 /// Methods can be chained on it in order to configure it.
 ///
-/// The two configurations available are:
+/// The configurations available are:
 ///
 /// - [`name`]: specifies an [associated name for the coroutine][naming-coroutines]
 /// - [`stack_size`]: specifies the [desired stack size for the coroutine][stack-size]
+/// - [`id`]: selects the worker that first runs the coroutine
 ///
 /// The [`spawn`] method will take ownership of the builder and create an
 /// `io::Result` to the coroutine handle with the given configuration.
@@ -207,6 +208,7 @@ impl fmt::Debug for Coroutine {
 /// [`coroutine::spawn`]: ./fn.spawn.html
 /// [`stack_size`]: ./struct.Builder.html#method.stack_size
 /// [`name`]: ./struct.Builder.html#method.name
+/// [`id`]: ./struct.Builder.html#method.id
 /// [`spawn`]: ./struct.Builder.html#method.spawn
 /// [naming-coroutines]: ./index.html#naming-coroutine
 /// [stack-size]: ./index.html#stack-siz
@@ -216,7 +218,7 @@ pub struct Builder {
     name: Option<String>,
     // The size of the stack for the spawned coroutine
     stack_size: Option<usize>,
-    // The associated id of the coroutine, would select a specific thread to run
+    // The worker this coroutine is initially placed on; not a pin
     id: Option<usize>,
 }
 
@@ -244,7 +246,22 @@ impl Builder {
         self
     }
 
-    /// Sets the id of the coroutine, would select a specific thread to run
+    /// Selects the worker that should first run the coroutine.
+    ///
+    /// The coroutine is initially queued for worker `id`, which normally runs
+    /// it first. This is a placement hint, not a pin: work stealing can pick
+    /// it up before that, and once it yields or blocks the normal scheduling
+    /// rules apply. A wakeup delivered on another worker or an io completion
+    /// on the selector that owns the file descriptor can also resume it on a
+    /// different worker.
+    ///
+    /// `id` must be less than the configured worker count; [`spawn`] returns
+    /// an [`InvalidInput`] error otherwise. [`spawn_local`] ignores this
+    /// setting because the coroutine first runs on the calling thread.
+    ///
+    /// [`spawn`]: ./struct.Builder.html#method.spawn
+    /// [`spawn_local`]: ./struct.Builder.html#method.spawn_local
+    /// [`InvalidInput`]: https://doc.rust-lang.org/std/io/enum.ErrorKind.html#variant.InvalidInput
     pub fn id(mut self, id: usize) -> Builder {
         self.id = Some(id);
         self
@@ -365,8 +382,21 @@ impl Builder {
     {
         // we will still get optimizations in spawn_impl
         let id = self.id;
-        let (co, handle) = self.spawn_impl(f)?;
         let s = get_scheduler();
+        if let Some(id) = id {
+            // Reject an id that does not name a worker instead of silently
+            // aliasing it modulo the worker count.
+            if id >= s.workers {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "coroutine worker id {id} is out of range for {} workers",
+                        s.workers
+                    ),
+                ));
+            }
+        }
+        let (co, handle) = self.spawn_impl(f)?;
 
         match id {
             None => {
@@ -388,6 +418,9 @@ impl Builder {
 
     /// first run the coroutine in current thread, you should always use
     /// `spawn` instead of this API.
+    ///
+    /// The [`Builder::id`] setting is ignored: the coroutine starts on the
+    /// calling thread, and its later scheduling follows the normal rules.
     ///
     /// # Safety
     ///

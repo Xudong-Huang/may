@@ -394,8 +394,13 @@ impl Scheduler {
     }
 
     /// put the coroutine to global queue so that next time it can be scheduled
+    ///
+    /// `id` must name a worker (`id < self.workers`); `Builder::spawn`
+    /// validates it before calling this. The modulo below is only a defensive
+    /// fallback so an out-of-range id can never index out of bounds.
     #[inline]
     pub fn schedule_global_with_id(&self, co: CoroutineImpl, id: usize) {
+        debug_assert!(id < self.workers, "worker id {id} out of range");
         let thread_id = id.rem_euclid(self.workers);
         // println!("Scheduling to {thread_id}");
         let global = unsafe { self.global_queues.get_unchecked(thread_id) };
