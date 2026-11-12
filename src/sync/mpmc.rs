@@ -74,7 +74,19 @@ impl<T> InnerQueue<T> {
             .wait_timeout_until(dur, || self.tx_ports.load(Ordering::Acquire) == 0)
         {
             WaitStatus::Acquired => {}
-            WaitStatus::Stopped => return Err(RecvTimeoutError::Disconnected),
+            WaitStatus::Stopped => {
+                // The wait ended on the disconnect. A sender may still have
+                // published its last value before dropping its port, and the
+                // value's permit can race with the broadcast wakeup (the
+                // drain pops the blocker, but `leave_wait` wins the hand-off
+                // spin lock first), so `Stopped` does not imply that no value
+                // is buffered. Queued values must be delivered before the
+                // disconnect is reported.
+                return match self.queue.pop() {
+                    Some(data) => Ok(data),
+                    None => Err(RecvTimeoutError::Disconnected),
+                };
+            }
             WaitStatus::Timeout => return Err(RecvTimeoutError::Timeout),
         }
 
@@ -82,8 +94,13 @@ impl<T> InnerQueue<T> {
             Some(data) => Ok(data),
             None => match self.tx_ports.load(Ordering::Acquire) {
                 // a disconnect wakeup has no item; this is the normal
-                // disconnect path
-                0 => Err(RecvTimeoutError::Disconnected),
+                // disconnect path. The queue is final once the port count
+                // reads 0, so retry the pop: the first one may have raced
+                // with the last publish.
+                0 => match self.queue.pop() {
+                    Some(data) => Ok(data),
+                    None => Err(RecvTimeoutError::Disconnected),
+                },
                 _ => {
                     // A permit with no item while senders are alive means the
                     // semaphore/queue accounting diverged. Report the channel
@@ -99,7 +116,14 @@ impl<T> InnerQueue<T> {
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         if !self.sem.try_wait() {
             return match self.tx_ports.load(Ordering::Acquire) {
-                0 => Err(TryRecvError::Disconnected),
+                // Disconnected: a sender may have published its last value
+                // between the failed `try_wait` and this load, so check the
+                // queue before reporting the disconnect. Once the port count
+                // reads 0, no further value can be published.
+                0 => match self.queue.pop() {
+                    Some(data) => Ok(data),
+                    None => Err(TryRecvError::Disconnected),
+                },
                 _ => Err(TryRecvError::Empty),
             };
         }
@@ -107,7 +131,13 @@ impl<T> InnerQueue<T> {
         match self.queue.pop() {
             Some(data) => Ok(data),
             None => match self.tx_ports.load(Ordering::Acquire) {
-                0 => Err(TryRecvError::Disconnected),
+                // the queue is final once the port count reads 0, so retry
+                // the pop before reporting the disconnect: the first one may
+                // have raced with the last publish
+                0 => match self.queue.pop() {
+                    Some(data) => Ok(data),
+                    None => Err(TryRecvError::Disconnected),
+                },
                 _ => {
                     debug_assert!(false, "mpmc: a semaphore permit had no queued item");
                     Err(TryRecvError::Empty)
@@ -1132,6 +1162,24 @@ mod tests {
         tx2.send(()).unwrap();
         rx3.recv().unwrap();
         assert_eq!(rx1.try_recv(), Err(TryRecvError::Disconnected));
+    }
+
+    /// A value published before the last sender dropped must still be
+    /// delivered when the receiver's permit attempt raced with the
+    /// disconnect: reporting `Disconnected` with the value still queued
+    /// loses it for a single receiver.
+    #[test]
+    fn disconnect_does_not_hide_a_queued_value() {
+        let (tx, rx) = channel::<i32>();
+        tx.send(1).unwrap();
+        // Simulate a receiver that raced with the final publish: the permit
+        // was consumed (a hand-off that lost to a waiter leaving) while the
+        // value stays queued.
+        assert!(rx.inner.sem.try_wait());
+        drop(tx);
+
+        assert_eq!(rx.try_recv(), Ok(1));
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 
     // This bug used to end up in a livelock inside of the Receiver destructor
