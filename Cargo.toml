@@ -68,8 +68,7 @@ serde_derive = "1.0"
 default = ["io_cancel", "io_timeout", "work_steal"]
 io_cancel = []
 io_timeout = []
-work_steal = []
-rand_work_steal = ["work_steal", "dep:fastrand"]
+work_steal = ["dep:fastrand"]
 crossbeam_queue_steal = ["work_steal"]
 
 

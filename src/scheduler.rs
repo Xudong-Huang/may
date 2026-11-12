@@ -272,14 +272,12 @@ impl Scheduler {
     #[inline]
     #[cfg(feature = "work_steal")]
     pub fn run_queued_tasks(&self, id: usize) {
-        let max_steal: usize = std::cmp::min(3, self.workers - 1);
-
-        #[cfg(feature = "rand_work_steal")]
-        let mut rng = fastrand::Rng::new();
-
         // see `LOCAL_TASK_BUDGET`: bound the drain so the worker returns to
         // `select` even when coroutines keep re-queueing themselves locally
         let mut remaining = LOCAL_TASK_BUDGET;
+
+        // Number of other workers; a single worker has nothing to steal from.
+        let targets = self.workers - 1;
 
         'work: loop {
             if remaining == 0 {
@@ -306,15 +304,31 @@ impl Scheduler {
                 }
             }
 
-            // The i variable is unused if rand_work_steal is enabled since it selects the steal target randomly instead.
-            for _i in 0..max_steal {
-                cfg_if::cfg_if! {
-                    if #[cfg(feature = "rand_work_steal")] {
-                        let target = rng.usize(0..self.workers);
-                    } else {
-                        let target = (id + _i + 1) % self.workers;
-                    }
-                };
+            if targets == 0 {
+                return;
+            }
+
+            // Visit every other worker once, starting at a random offset.
+            //
+            // The exhaustive sweep is what keeps the scheduler
+            // work-conserving: a bounded scan could retry the same victims
+            // forever while the only busy queue sat outside the window, and
+            // a local enqueue does not wake a worker parked in `select`.
+            // The random start only varies the probe order - it keeps
+            // concurrent thieves from herding on the same victim and spreads
+            // theft around the worker set; every victim is still visited
+            // before this worker sleeps.
+            //
+            // A failed probe is three acquire loads and no RMW, and the
+            // queues of idle workers are not written, so a sweep of empty
+            // queues is cheap. `steal_into` moves a whole block, so one
+            // successful probe is enough to keep this worker busy.
+            let start = fastrand::usize(0..targets);
+            for k in 0..targets {
+                // compacted victim index in `0..targets`, mapped to a worker
+                // id by skipping our own
+                let v = (start + k) % targets;
+                let target = if v >= id { v + 1 } else { v };
                 let stealer = self.stealers.get(target).unwrap();
                 let stolen = stealer.steal_into(unsafe { self.local_queue(id) });
                 if let Some(co) = stolen {
