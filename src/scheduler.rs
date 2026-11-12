@@ -164,25 +164,51 @@ impl Scheduler {
         }
     }
 
+    /// Re-borrow the local queue of worker `id` from its `UnsafeCell`.
+    ///
+    /// The local queue is owned by the worker with this `id`: that thread
+    /// pushes and pops, while other workers only [`Steal`] from it. Every
+    /// access still goes through the `UnsafeCell`, so a fresh `&mut` has to be
+    /// derived for each use and dropped before the next derivation. In
+    /// particular it must not be held across `run_coroutine` (the coroutine
+    /// may yield and re-enter `schedule_with_id` for this same `id`) or across
+    /// `collect_global` (which derives its own borrow of the same cell).
+    /// Stacked Borrows treats each re-derivation as invalidating the previous
+    /// reference, so a long-lived `&mut` here would be UB.
+    ///
+    /// # Safety
+    ///
+    /// * Only the worker thread that owns `id` may access its local queue.
+    /// * The returned reference must not be used after `local_queue` is called
+    ///   again for the same `id`.
+    #[inline]
+    #[cfg(feature = "work_steal")]
+    // the returned `&mut` comes out of an `UnsafeCell`, which is what gates
+    // access; the safety contract above covers the aliasing rules
+    #[allow(clippy::mut_from_ref)]
+    unsafe fn local_queue(&self, id: usize) -> &mut Local<CoroutineImpl> {
+        unsafe { &mut *self.local_queues.get_unchecked(id).get() }
+    }
+
     #[inline]
     #[cfg(feature = "work_steal")]
     pub fn run_queued_tasks(&self, id: usize) {
-        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
-
         let max_steal: usize = std::cmp::min(3, self.workers - 1);
 
         #[cfg(feature = "rand_work_steal")]
         let mut rng = fastrand::Rng::new();
 
         'work: loop {
-            match local.pop() {
+            // derive the borrow for this operation only, see `local_queue`
+            let popped = unsafe { self.local_queue(id) }.pop();
+            match popped {
                 Some(co) => {
                     run_coroutine(co);
                     continue 'work;
                 }
                 None => {
                     self.collect_global(id);
-                    if local.has_tasks() {
+                    if unsafe { self.local_queue(id) }.has_tasks() {
                         continue 'work;
                     }
                 }
@@ -198,7 +224,8 @@ impl Scheduler {
                     }
                 };
                 let stealer = self.stealers.get(target).unwrap();
-                if let Some(co) = stealer.steal_into(local) {
+                let stolen = stealer.steal_into(unsafe { self.local_queue(id) });
+                if let Some(co) = stolen {
                     run_coroutine(co);
                     continue 'work;
                 }
@@ -223,8 +250,9 @@ impl Scheduler {
     #[inline]
     #[cfg(feature = "work_steal")]
     pub fn schedule_with_id(&self, co: CoroutineImpl, id: usize) {
-        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
-        local.push_back(co);
+        // SAFETY: this runs on the worker owning `id`, and the borrow ends
+        // with the push, before any coroutine code can run.
+        unsafe { self.local_queue(id) }.push_back(co);
     }
 
     #[inline]
@@ -261,7 +289,9 @@ impl Scheduler {
     #[inline]
     pub fn collect_global(&self, id: usize) {
         #[cfg(feature = "work_steal")]
-        let local = unsafe { &mut *self.local_queues.get_unchecked(id).get() };
+        // SAFETY: this runs on the worker owning `id`; `bulk_pop` below never
+        // re-enters the scheduler, so the borrow is not invalidated here.
+        let local = unsafe { self.local_queue(id) };
         #[cfg(not(feature = "work_steal"))]
         let local = unsafe { self.local_queues.get_unchecked(id) };
         let global = unsafe { self.global_queues.get_unchecked(id) };
