@@ -260,4 +260,64 @@ mod io_timeout {
             "work scheduled by the io-timeout handler slept until the next selector wakeup",
         );
     }
+
+    /// A cancelled timed read leaves its io timer armed. If the same io data is
+    /// reused for a later timed read, the stale timer fires and resumes the new
+    /// wait with a spurious `TimedOut`; once the io data is dropped it fires
+    /// into freed memory. The cancel path must disarm the timer.
+    #[cfg(feature = "io_cancel")]
+    #[test]
+    fn cancelled_read_does_not_time_out_a_later_wait() {
+        let _guard = super::serial();
+        may::config().set_workers(1);
+
+        let (client, peer) = tcp_pair();
+        let stream = Arc::new(may::sync::Mutex::new(may_stream(client)));
+
+        // a timed read that blocks on the io event, so its timer stays armed
+        // until the coroutine is cancelled
+        let s = stream.clone();
+        let cancelled = may::go!(move || {
+            let mut s = s.lock().unwrap();
+            s.set_read_timeout(Some(Duration::from_millis(100)))
+                .unwrap();
+            let mut buf = [0u8; 1];
+            let _ = s.read(&mut buf);
+            unreachable!("read returned after cancel");
+        });
+
+        // let the read suspend with its timer armed, then cancel it
+        std::thread::sleep(Duration::from_millis(30));
+        unsafe { cancelled.coroutine().cancel() };
+        assert!(cancelled.join().is_err());
+
+        // reuse the same io data for a later timed read with a much longer
+        // timeout; the timer of the cancelled read is due in ~70ms
+        let (done_tx, done_rx) = mpsc::channel();
+        let s = stream.clone();
+        let later = may::go!(move || {
+            let mut s = s.lock().unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut buf = [0u8; 1];
+            let _ = done_tx.send(s.read(&mut buf));
+        });
+
+        match done_rx.recv_timeout(Duration::from_millis(300)) {
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Ok(res) => panic!("stale timer fired into the new wait: {res:?}"),
+            Err(e) => panic!("new wait ended before the peer was closed: {e:?}"),
+        }
+
+        // closing the peer releases the read with EOF; without the stale timer
+        // this is the first thing that can end the wait
+        drop(peer);
+        assert_eq!(
+            done_rx
+                .recv_timeout(Duration::from_secs(5))
+                .expect("read did not resume after the peer closed")
+                .unwrap(),
+            0
+        );
+        later.join().unwrap();
+    }
 }

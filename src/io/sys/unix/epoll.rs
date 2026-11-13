@@ -120,14 +120,7 @@ impl Selector {
 
             // it's safe to remove the timer since we are running the timer_list in the same thread
             #[cfg(feature = "io_timeout")]
-            data.timer.borrow_mut().take().map(|h| {
-                unsafe {
-                    // tell the timer handler not to cancel the io
-                    // it's not always true that you can really remove the timer entry
-                    h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
-                }
-                h.remove()
-            });
+            data.take_timer();
 
             #[cfg(feature = "work_steal")]
             scheduler.schedule_with_id(co, id);
@@ -214,16 +207,12 @@ impl Selector {
 
     #[inline]
     pub fn del_fd(&self, io_data: &IoData) {
+        // mark the timer as removed if any, this only happened when cancel
+        // an IO. what if the timer expired at the same time? because we run
+        // this func in the user space, so the timer handler will not got the
+        // coroutine
         #[cfg(feature = "io_timeout")]
-        if let Some(h) = io_data.timer.borrow_mut().take() {
-            unsafe {
-                // mark the timer as removed if any, this only happened
-                // when cancel an IO. what if the timer expired at the same time?
-                // because we run this func in the user space, so the timer handler
-                // will not got the coroutine
-                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
-            }
-        }
+        io_data.take_timer();
 
         let fd = io_data.fd;
         let id = fd as usize % self.vec.len();
@@ -248,6 +237,10 @@ impl Selector {
     #[inline]
     #[cfg(feature = "io_timeout")]
     pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
+        // a previous wait on this io data may have been aborted while its
+        // timer was still armed (e.g. cancelled). Disarm it before replacing
+        // the handle, otherwise the stale entry can fire into this new wait.
+        io.take_timer();
         let id = io.fd as usize % self.vec.len();
         // info!("io timeout = {:?}", dur);
         let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());

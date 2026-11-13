@@ -143,6 +143,30 @@ impl EventData {
         }
     }
 
+    /// Disarm the timer registered for this io request, if any.
+    ///
+    /// The `event_data` pointer in the timer data is cleared first: the entry
+    /// may be the last node of the timer list, in which case `remove` cannot
+    /// unlink it, and the timeout handler relies on the null pointer to ignore
+    /// the stale entry. Removing the entry is what keeps an aborted wait (e.g.
+    /// a cancelled io) from firing later: without it the timer stays armed and
+    /// can take the coroutine of a later wait that reuses the same fd, and
+    /// then dereference this `EventData` after it is freed.
+    #[cfg(feature = "io_timeout")]
+    #[inline]
+    pub fn take_timer(&self) {
+        let h = match self.timer.borrow_mut().take() {
+            Some(h) => h,
+            None => return,
+        };
+        unsafe {
+            // tell the timer handler not to cancel the io
+            // it's not always true that you can really remove the timer entry
+            h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
+        }
+        let _ = h.remove();
+    }
+
     #[inline]
     pub fn schedule(&self) {
         let co = match self.co.take() {
@@ -152,14 +176,7 @@ impl EventData {
 
         // it's safe to remove the timer since we are running the timer_list in the same thread
         #[cfg(feature = "io_timeout")]
-        self.timer.borrow_mut().take().map(|h| {
-            unsafe {
-                // tell the timer function not to cancel the io
-                // it's not always true that you can really remove the timer entry
-                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
-            }
-            h.remove()
-        });
+        self.take_timer();
 
         // schedule the coroutine
         get_scheduler().schedule(co);
@@ -175,14 +192,7 @@ impl EventData {
 
         // it's safe to remove the timer since we are running the timer_list in the same thread
         #[cfg(feature = "io_timeout")]
-        self.timer.borrow_mut().take().map(|h| {
-            unsafe {
-                // tell the timer function not to cancel the io
-                // it's not always true that you can really remove the timer entry
-                h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
-            }
-            h.remove()
-        });
+        self.take_timer();
 
         // run the coroutine
         run_coroutine(co);

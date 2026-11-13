@@ -25,6 +25,13 @@ impl CancelIo for CancelIoImpl {
     fn cancel(&self) -> Option<std::io::Result<()>> {
         if let Some(e) = self.0.take() {
             if let Some(co) = e.co.take() {
+                // the io wait is abandoned, disarm its timer before resuming
+                // the coroutine. Otherwise the timer stays armed, and if the
+                // fd is reused for another timed wait it can fire and resume
+                // that wait's coroutine with a spurious timeout. It may also
+                // outlive this `EventData` and fire into freed memory.
+                #[cfg(feature = "io_timeout")]
+                e.take_timer();
                 get_scheduler().schedule(co);
                 return Some(Ok(()));
             }
