@@ -159,11 +159,11 @@ impl EventData {
             Some(h) => h,
             None => return,
         };
-        unsafe {
-            // tell the timer handler not to cancel the io
-            // it's not always true that you can really remove the timer entry
-            h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
-        }
+        // tell the timer handler not to cancel the io
+        // it's not always true that you can really remove the timer entry
+        h.with_mut_data(|value| value.data.event_data = std::ptr::null_mut());
+        // a no-op when the timer already fired: its value is gone, so `remove`
+        // returns `None` without touching the node
         let _ = h.remove();
     }
 

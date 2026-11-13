@@ -153,18 +153,12 @@ impl Selector {
             // coroutine resumes, and the cancel path holds its own Arc.
             let mut co = data.co.take().expect("can't get co in selector");
 
-            // it's safe to remove the timer since we are
-            // running the timer_list in the same thread
-            // this is not true when running in multi-thread environment
+            // the timer list is driven by this same thread
             #[cfg(feature = "io_timeout")]
             data.timer.borrow_mut().take().map(|h| {
-                unsafe {
-                    // tell the timer function not to cancel the io
-                    // it's not always true that you can really remove the timer entry
-                    // it's safe in multi-thread env because it only access its own data
-                    h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
-                }
-                // NOT SAFE for multi-thread!!
+                // tell the timer function not to cancel the io
+                // it's not always true that you can really remove the timer entry
+                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
                 h.remove()
             });
 

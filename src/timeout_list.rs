@@ -7,8 +7,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use may_queue::mpsc::Queue;
-use may_queue::mpsc_list_v1::Entry;
-use may_queue::mpsc_list_v1::Queue as TimeoutQueue;
+use may_queue::mpsc_list_v1::{self, Entry, Receiver, Sender};
 use parking_lot::{Mutex, RwLock};
 
 use crate::sync::AtomicOption;
@@ -43,20 +42,32 @@ pub struct TimeoutData<T> {
 pub type TimeoutHandle<T> = Entry<TimeoutData<T>>;
 
 struct TimeoutQueueWrapper<T> {
-    inner: TimeoutQueue<TimeoutData<T>>,
+    sender: Sender<TimeoutData<T>>,
+    // the receiver is `!Sync`, the wrapper itself is shared between the
+    // producers and the consuming timer thread, so serializing access keeps
+    // the single-consumer invariant
+    receiver: Mutex<Receiver<TimeoutData<T>>>,
     in_use: AtomicUsize,
 }
 
 impl<T> TimeoutQueueWrapper<T> {
     fn new() -> Self {
+        let (sender, receiver) = mpsc_list_v1::channel();
         TimeoutQueueWrapper {
-            inner: TimeoutQueue::new(),
+            sender,
+            receiver: Mutex::new(receiver),
             in_use: AtomicUsize::new(0),
         }
     }
 }
 
 type IntervalList<T> = Arc<TimeoutQueueWrapper<T>>;
+
+// the lists are shared between the producers and the consuming timer thread
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<TimeoutQueueWrapper<()>>();
+};
 
 // this is the data type that used by the binary heap to get the latest timer
 struct IntervalEntry<T> {
@@ -73,10 +84,15 @@ impl<T> IntervalEntry<T> {
         F: Fn(T),
     {
         let p = |v: &TimeoutData<T>| v.time <= now;
-        while let Some(timeout) = self.list.inner.pop_if(&p) {
-            f(timeout.data);
+        // do not hold the receiver lock while running the timeout handler
+        loop {
+            let timeout = self.list.receiver.lock().pop_if(&p);
+            match timeout {
+                Some(timeout) => f(timeout.data),
+                None => break,
+            }
         }
-        unsafe { self.list.inner.peek() }.map(|t| t.time)
+        self.list.receiver.lock().peek_with(|t| t.time)
     }
 }
 
@@ -139,7 +155,7 @@ impl<T> TimeOutList<T> {
         };
 
         if let Some(interval_list) = interval_list {
-            let (handle, is_head) = interval_list.inner.push(timeout);
+            let (handle, is_head) = interval_list.sender.push(timeout);
             if is_head {
                 // install the interval list to the binary heap
                 self.install_timer_bh(IntervalEntry {
@@ -156,7 +172,7 @@ impl<T> TimeOutList<T> {
         let mut interval_map_w = self.interval_map.write();
         // recheck the interval list in case other thread may install it
         if let Some(interval_list) = (*interval_map_w).get(&interval) {
-            let (handle, is_head) = interval_list.inner.push(timeout);
+            let (handle, is_head) = interval_list.sender.push(timeout);
             if is_head {
                 // this rarely happens
                 self.install_timer_bh(IntervalEntry {
@@ -169,7 +185,7 @@ impl<T> TimeOutList<T> {
         }
 
         let interval_list = Arc::new(TimeoutQueueWrapper::<T>::new());
-        let ret = interval_list.inner.push(timeout).0;
+        let ret = interval_list.sender.push(timeout).0;
         (*interval_map_w).insert(interval, interval_list.clone());
         // drop the write lock here
         mem::drop(interval_map_w);
@@ -221,19 +237,26 @@ impl<T> TimeOutList<T> {
                 None => {
                     // if the interval list is empty, need to delete it
                     let mut interval_map_w = self.interval_map.write();
-                    // recheck if the interval list is empty, other thread may append data to it
-                    if entry.list.inner.is_empty() {
-                        // if the len of the hash map is big enough just leave the queue there
-                        if (*interval_map_w).len() > HASH_CAP {
-                            // the list is really empty now, we can safely remove it
-                            (*interval_map_w).remove(&entry.interval);
+                    // recheck the list, other thread may append data to it.
+                    // nodes removed by a handle stay linked until the consumer
+                    // retires them, so skip those tombstones here
+                    let next_time = entry.list.receiver.lock().peek_with(|t| t.time);
+                    match next_time {
+                        Some(time) => {
+                            if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
+                                // release the w lock first, we don't need it any more
+                                mem::drop(interval_map_w);
+                                entry.time = time;
+                                self.timer_bh.lock().push(entry);
+                            }
                         }
-                    } else if entry.list.in_use.fetch_add(1, Ordering::AcqRel) == 0 {
-                        // release the w lock first, we don't need it any more
-                        mem::drop(interval_map_w);
-                        // the list is push some data by other thread
-                        entry.time = unsafe { entry.list.inner.peek() }.unwrap().time;
-                        self.timer_bh.lock().push(entry);
+                        None => {
+                            // if the len of the hash map is big enough just leave the queue there
+                            if (*interval_map_w).len() > HASH_CAP {
+                                // the list is really empty now, we can safely remove it
+                                (*interval_map_w).remove(&entry.interval);
+                            }
+                        }
                     }
                 }
             }
