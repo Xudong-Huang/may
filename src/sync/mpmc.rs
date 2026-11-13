@@ -23,7 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::semphore::WaitStatus;
-use super::Semphore;
+use super::Semaphore;
 use crossbeam::queue::SegQueue;
 
 /// /////////////////////////////////////////////////////////////////////////////
@@ -32,7 +32,7 @@ use crossbeam::queue::SegQueue;
 struct InnerQueue<T> {
     queue: SegQueue<T>,
     // thread/coroutine for wake up
-    sem: Semphore,
+    sem: Semaphore,
     // The number of tx channels which are currently using this queue.
     tx_ports: AtomicUsize,
     // if rx is dropped
@@ -43,7 +43,7 @@ impl<T> InnerQueue<T> {
     pub fn new() -> InnerQueue<T> {
         InnerQueue {
             queue: SegQueue::new(),
-            sem: Semphore::new(0),
+            sem: Semaphore::new(0),
             tx_ports: AtomicUsize::new(1),
             rx_ports: AtomicUsize::new(1),
         }
@@ -66,9 +66,9 @@ impl<T> InnerQueue<T> {
             Err(TryRecvError::Disconnected) => return Err(RecvTimeoutError::Disconnected),
         }
 
-        // The disconnect re-check is done *after* the waiter is registered
+        // The disconnect re-check is done *after* the waiter is published
         // (inside `wait_timeout_until`): a receiver that parks after the last
-        // sender's wakeup posts would otherwise never be woken again.
+        // sender's wakeup would otherwise never be woken again.
         match self
             .sem
             .wait_timeout_until(dur, || self.tx_ports.load(Ordering::Acquire) == 0)
@@ -77,11 +77,9 @@ impl<T> InnerQueue<T> {
             WaitStatus::Stopped => {
                 // The wait ended on the disconnect. A sender may still have
                 // published its last value before dropping its port, and the
-                // value's permit can race with the broadcast wakeup (the
-                // drain pops the blocker, but `leave_wait` wins the hand-off
-                // spin lock first), so `Stopped` does not imply that no value
-                // is buffered. Queued values must be delivered before the
-                // disconnect is reported.
+                // disconnect wake-up is only advisory, so `Stopped` does not
+                // imply that no value is buffered. Queued values must be
+                // delivered before the disconnect is reported.
                 return match self.queue.pop() {
                     Some(data) => Ok(data),
                     None => Err(RecvTimeoutError::Disconnected),
@@ -154,20 +152,13 @@ impl<T> InnerQueue<T> {
         match self.tx_ports.fetch_sub(1, Ordering::SeqCst) {
             1 => {
                 // There is no tx port any more; wake every parked receiver
-                // so it observes the disconnect.
-                //
-                // This must be a broadcast, not a "post while waiters exist"
-                // loop: a receiver pushes its blocker *before* decrementing
-                // the semaphore counter, and while it sits in that window the
-                // counter under-reports the parked receivers. Two receivers
-                // in that window can absorb the posts (and the spare permit)
-                // and make the loop stop while a fully registered receiver is
-                // still parked. Draining the waiter queue wakes everyone
-                // registered at this point regardless of the counter.
+                // so it observes the disconnect. This must be a broadcast,
+                // not a single wake: the stop predicate is permanently true
+                // and every receiver has to re-check it.
                 //
                 // Receivers that register after the drain observe
-                // `tx_ports == 0` through `wait_timeout_until`, so no wakeup
-                // is lost.
+                // `tx_ports == 0` through `wait_timeout_until`'s
+                // post-registration check, so no wakeup is lost.
                 self.sem.wake_all();
             }
             n if n > 1 => {}
@@ -280,10 +271,10 @@ impl<T> Sender<T> {
     /// Return a best-effort count of queued items not yet claimed by a
     /// receiver.
     ///
-    /// This is the semaphore's permit count, clamped at 0. It does not count
-    /// items already handed to a woken receiver, and it can transiently
-    /// include a permit returned by the release protocol after a receiver
-    /// timed out or was canceled.
+    /// This is the semaphore's permit count: one permit is posted per send
+    /// and consumed by `try_wait` when a receiver pops a value, so it can
+    /// transiently over-report a value whose receiver has been woken but has
+    /// not acquired the permit yet.
     pub fn pressure(&self) -> usize {
         self.inner.sem.get_value()
     }

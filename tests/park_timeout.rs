@@ -1,14 +1,14 @@
 //! Timed waits in a coroutine must return for any timeout, including ones
 //! shorter than the timer's resolution.
 
-use may::sync::Semphore;
+use may::sync::Semaphore;
 use std::sync::mpsc;
 use std::time::Duration;
 
 fn returns_within(d: Duration, n: usize) -> bool {
     let (tx, rx) = mpsc::channel();
     may::go!(move || {
-        let s = Semphore::new(0);
+        let s = Semaphore::new(0);
         for _ in 0..n {
             assert!(!s.wait_timeout(d));
         }
