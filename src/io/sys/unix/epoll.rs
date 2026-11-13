@@ -90,7 +90,13 @@ impl Selector {
         // non-blocking reactor poll; anything else keeps blocking forever
         let timeout = _timeout.filter(|to| *to == 0);
         let timeout_ms = timeout
-            .map(|to| EpollTimeout::try_from(to.div_ceil(1_000_000)).unwrap())
+            .map(|to| {
+                let ms = to.div_ceil(1_000_000);
+                // Clamp to i32::MAX milliseconds if the timeout exceeds that.
+                // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
+                let ms_clamped = ms.min(i32::MAX as u64) as i32;
+                EpollTimeout::try_from(ms_clamped).unwrap()
+            })
             .unwrap_or(EpollTimeout::NONE);
         // info!("select; timeout={:?}", timeout_ms);
 
