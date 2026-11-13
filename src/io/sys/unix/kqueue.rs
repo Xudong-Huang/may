@@ -344,6 +344,6 @@ impl Selector {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(id);
         }
-        io.timer.borrow_mut().replace(h);
+        io.timer.store(h);
     }
 }

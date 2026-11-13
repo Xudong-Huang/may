@@ -19,8 +19,6 @@ pub mod co_io;
 pub mod net;
 pub mod wait_io;
 
-#[cfg(feature = "io_timeout")]
-use std::cell::RefCell;
 use std::ops::Deref;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::io::{AsRawFd, RawFd};
@@ -87,7 +85,7 @@ fn timeout_handler(data: TimerData) {
 
     let event_data = unsafe { &mut *data.event_data };
     // remove the event timer
-    event_data.timer.borrow_mut().take();
+    event_data.timer.take();
 
     // get and check the coroutine
     let mut co = match event_data.co.take() {
@@ -108,6 +106,9 @@ pub struct TimerData {
 }
 
 #[cfg(feature = "io_timeout")]
+unsafe impl Send for TimerData {}
+
+#[cfg(feature = "io_timeout")]
 pub type TimerList = TimeOutList<TimerData>;
 #[cfg(feature = "io_timeout")]
 pub type TimerHandle = TimeoutHandle<TimerData>;
@@ -118,7 +119,7 @@ pub struct EventData {
     pub fd: RawFd,
     pub io_flag: AtomicUsize,
     #[cfg(feature = "io_timeout")]
-    pub timer: RefCell<Option<TimerHandle>>,
+    pub timer: AtomicOption<TimerHandle>,
     pub co: AtomicOption<CoroutineImpl>,
 }
 
@@ -131,7 +132,7 @@ impl EventData {
             fd,
             io_flag: AtomicUsize::new(0),
             #[cfg(feature = "io_timeout")]
-            timer: RefCell::new(None),
+            timer: AtomicOption::none(),
             co: AtomicOption::none(),
         }
     }
@@ -155,7 +156,7 @@ impl EventData {
     #[cfg(feature = "io_timeout")]
     #[inline]
     pub fn take_timer(&self) {
-        let h = match self.timer.borrow_mut().take() {
+        let h = match self.timer.take() {
             Some(h) => h,
             None => return,
         };
