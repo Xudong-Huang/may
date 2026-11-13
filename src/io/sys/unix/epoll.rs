@@ -70,6 +70,11 @@ impl Selector {
     }
 
     #[inline]
+    fn shard_id(&self, fd: i32) -> usize {
+        fd as usize % self.vec.len()
+    }
+
+    #[inline]
     pub fn select(
         &self,
         scheduler: &Scheduler,
@@ -171,7 +176,7 @@ impl Selector {
         );
 
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
         info!("add fd to epoll select, fd={fd:?}");
@@ -196,7 +201,7 @@ impl Selector {
         };
 
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
         info!("mod fd to epoll select, fd={fd:?}, is_read={is_read}");
@@ -215,7 +220,7 @@ impl Selector {
         io_data.take_timer();
 
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
         info!("del fd from epoll select, fd={fd:?}");
@@ -241,7 +246,7 @@ impl Selector {
         // timer was still armed (e.g. cancelled). Disarm it before replacing
         // the handle, otherwise the stale entry can fire into this new wait.
         io.take_timer();
-        let id = io.fd as usize % self.vec.len();
+        let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
         let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
         if b_new {

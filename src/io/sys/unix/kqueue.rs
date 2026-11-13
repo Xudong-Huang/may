@@ -107,6 +107,11 @@ impl Selector {
     }
 
     #[inline]
+    fn shard_id(&self, fd: i32) -> usize {
+        fd as usize % self.vec.len()
+    }
+
+    #[inline]
     pub fn select(
         &self,
         scheduler: &Scheduler,
@@ -224,7 +229,7 @@ impl Selector {
     #[inline]
     pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let kqfd = self.vec[id].as_raw_fd();
 
         let flags = libc::EV_ADD | libc::EV_CLEAR | libc::EV_RECEIPT;
@@ -250,7 +255,7 @@ impl Selector {
     #[inline]
     pub fn mod_fd(&self, io_data: &IoData, is_read: bool) -> io::Result<()> {
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let kqfd = self.vec[id].as_raw_fd();
 
         let flags = libc::EV_CLEAR | libc::EV_RECEIPT;
@@ -290,7 +295,7 @@ impl Selector {
         io_data.take_timer();
 
         let fd = io_data.fd;
-        let id = fd as usize % self.vec.len();
+        let id = self.shard_id(fd);
         let single_selector = &self.vec[id];
         let kqfd = single_selector.as_raw_fd();
 
@@ -332,7 +337,7 @@ impl Selector {
         // timer was still armed (e.g. cancelled). Disarm it before replacing
         // the handle, otherwise the stale entry can fire into this new wait.
         io.take_timer();
-        let id = io.fd as usize % self.vec.len();
+        let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
         let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
         if b_new {
