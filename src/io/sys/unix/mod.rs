@@ -83,7 +83,9 @@ fn timeout_handler(data: TimerData) {
         return;
     }
 
-    let event_data = unsafe { &mut *data.event_data };
+    // the event data is shared through `Arc`; the fields are
+    // interior-mutable, so a shared reference is all this needs
+    let event_data = unsafe { &*data.event_data };
     // remove the event timer
     event_data.timer.take();
 

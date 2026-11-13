@@ -161,7 +161,10 @@ impl Selector {
                 scheduler.collect_global(id);
                 continue;
             }
-            let data = unsafe { &mut *(event.udata as *mut EventData) };
+            // the event data is shared through `Arc`, so only a shared
+            // reference may be created here; everything touched on it is
+            // interior-mutable (atomics / `AtomicOption`)
+            let data = unsafe { &*(event.udata as *const EventData) };
             // info!("select got event, data={:p}", data);
             data.io_flag
                 .fetch_or(event.flags as usize, Ordering::Release);
