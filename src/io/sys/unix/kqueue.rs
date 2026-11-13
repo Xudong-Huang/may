@@ -230,7 +230,7 @@ impl Selector {
 
     // register io event to the selector
     #[inline]
-    pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
+    pub fn add_fd(&self, mut io_data: IoData) -> io::Result<IoData> {
         let fd = io_data.fd;
         let id = self.shard_id(fd);
         let kqfd = self.vec[id].as_raw_fd();
@@ -242,6 +242,9 @@ impl Selector {
             kevent!(fd, libc::EVFILT_WRITE, flags, udata),
         ];
 
+        // Only mark the io data as registered after a successful submission.
+        // If this fails, dropping the io data must not issue a DEL: it would
+        // remove any pre-existing filters of the same fd.
         syscall!(kevent(
             kqfd,
             changes.as_ptr(),
@@ -250,6 +253,7 @@ impl Selector {
             changes.len() as libc::c_int,
             ptr::null(),
         ))?;
+        io_data.mark_registered();
 
         debug!("add fd to kqueue select, fd={:?}", fd);
         Ok(io_data)

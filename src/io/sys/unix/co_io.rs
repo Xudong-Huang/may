@@ -368,6 +368,32 @@ mod tests {
         }
     }
 
+    /// Registering an fd that is already in the epoll set fails with
+    /// `EEXIST`. The `IoData` built for the failed attempt must not run its
+    /// `Drop` (which issues `epoll_ctl(DEL)`): that would remove the
+    /// registration belonging to the live `CoIo`, and the socket would
+    /// silently stop receiving io events.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn failed_add_does_not_deregister_existing_fd() {
+        use std::os::fd::AsFd;
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let fd = listener.as_raw_fd();
+        let co = CoIo::new(listener).unwrap();
+        assert!(fd_is_watched(fd), "original socket should be registered");
+
+        // a second CoIo over the same fd makes `epoll_ctl(ADD)` fail
+        let err = CoIo::new(co.inner().as_fd()).unwrap_err();
+        assert_eq!(err.into_data().as_raw_fd(), fd);
+
+        assert!(
+            fd_is_watched(fd),
+            "failed ADD deregistered the fd owned by the live CoIo"
+        );
+        drop(co);
+    }
+
     /// Closing the socket before deregistering it from the selector lets a
     /// concurrent fd reuse install a new registration under the same fd
     /// number, which the stale `epoll_ctl(DEL)` then removes. The reused

@@ -203,19 +203,38 @@ impl EventData {
 }
 
 // each file associated data
-pub struct IoData(Arc<EventData>);
+pub struct IoData {
+    event_data: Arc<EventData>,
+    // whether the fd has been successfully added to the selector
+    registered: bool,
+}
 
 impl IoData {
     pub fn new<T: AsRawFd + ?Sized>(t: &T) -> Self {
         let fd = t.as_raw_fd();
         let event_data = Arc::new(EventData::new(fd));
-        IoData(event_data)
+        IoData {
+            event_data,
+            registered: false,
+        }
+    }
+
+    /// Mark this io data as successfully registered with the selector.
+    ///
+    /// Only a registered `IoData` may run the deregistration in `Drop`: after
+    /// a failed registration attempt there is nothing to remove, and the DEL
+    /// would remove the registration of another owner of the same fd. That is
+    /// exactly what happens on `EEXIST`, returned when a second `CoIo` wraps
+    /// an fd that is already registered.
+    #[inline]
+    fn mark_registered(&mut self) {
+        self.registered = true;
     }
 
     // clear the io flag
     #[inline]
     pub fn reset(&self) -> usize {
-        self.io_flag.swap(0, Ordering::AcqRel)
+        self.event_data.io_flag.swap(0, Ordering::AcqRel)
     }
 }
 
@@ -223,7 +242,7 @@ impl Deref for IoData {
     type Target = Arc<EventData>;
 
     fn deref(&self) -> &Arc<EventData> {
-        &self.0
+        &self.event_data
     }
 }
 
@@ -235,13 +254,18 @@ impl fmt::Debug for IoData {
 
 impl Drop for IoData {
     fn drop(&mut self) {
-        del_socket(self);
+        // an fd that was never registered has nothing to remove; issuing the
+        // DEL anyway could deregister a live registration of the same fd
+        // (e.g. after `EEXIST` from a second `CoIo` over the same fd)
+        if self.registered {
+            del_socket(self);
+        }
     }
 }
 
 impl AsFd for IoData {
     fn as_fd(&self) -> BorrowedFd<'_> {
-        unsafe { BorrowedFd::borrow_raw(self.0.fd) }
+        unsafe { BorrowedFd::borrow_raw(self.event_data.fd) }
     }
 }
 

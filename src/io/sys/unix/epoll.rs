@@ -175,7 +175,7 @@ impl Selector {
 
     // register io event to the selector
     #[inline]
-    pub fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
+    pub fn add_fd(&self, mut io_data: IoData) -> io::Result<IoData> {
         let info = EpollEvent::new(
             EpollFlags::EPOLLIN
                 | EpollFlags::EPOLLOUT
@@ -189,10 +189,16 @@ impl Selector {
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
         info!("add fd to epoll select, fd={fd:?}");
+        // Only mark the io data as registered after a successful ADD. If this
+        // fails with EEXIST (the fd is already registered, e.g. a second CoIo
+        // over the same fd), dropping the io data must not issue a DEL: it
+        // would remove the existing registration and the original owner would
+        // silently stop receiving io events.
         epoll
             .add(unsafe { BorrowedFd::borrow_raw(fd) }, info)
-            .map_err(from_nix_error)
-            .map(|_| io_data)
+            .map_err(from_nix_error)?;
+        io_data.mark_registered();
+        Ok(io_data)
     }
 
     #[inline]
