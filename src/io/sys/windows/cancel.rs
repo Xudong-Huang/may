@@ -56,7 +56,10 @@ impl CancelIo for CancelIoImpl {
         self.0.take();
     }
 
-    fn cancel(&self) -> Option<io::Result<()>> {
-        self.0.take().map(|d| d.cancel())
+    fn cancel(&self) -> bool {
+        // A successful `CancelIoEx` means an IOCP completion will arrive and
+        // the selector will resume the coroutine, so the cancel is handled.
+        // On error fall back to the coroutine-based cancel path.
+        self.0.take().is_some_and(|d| d.cancel().is_ok())
     }
 }
