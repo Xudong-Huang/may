@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 #[cfg(feature = "io_cancel")]
-use crate::coroutine_impl::co_get_handle;
+use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io as io_impl;
 use crate::yield_now::yield_with_io;
@@ -24,7 +24,7 @@ impl<'a> RawIoBlock<'a> {
 impl EventSource for RawIoBlock<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
-        let handle = co_get_handle(&co);
+        let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
         // this wait has no timeout
         let (event_data, wait) = io_data.publish_co(
@@ -40,7 +40,6 @@ impl EventSource for RawIoBlock<'_> {
 
         #[cfg(feature = "io_cancel")]
         {
-            let cancel = handle.get_cancel();
             // register the cancel wait
             cancel.set_io(wait);
             // re-check the cancel status

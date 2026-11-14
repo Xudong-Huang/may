@@ -16,16 +16,21 @@ impl EventSource for Sleep {
     // register the coroutine to the park
     fn subscribe(&mut self, co: CoroutineImpl) {
         let cancel = co_cancel_data(&co);
-        // put the coroutine into the timer list
         let sleep_co = Arc::new(AtomicOption::some(co));
-        get_scheduler().add_timer(self.dur, sleep_co.clone());
 
-        // register the cancel data
-        cancel.set_co(sleep_co);
-        // re-check the cancel status
+        // Register for cancellation before arming the timer. Once the timer is
+        // armed it can fire at once and resume the coroutine, which may start
+        // its next wait; registering after that would leave a stale
+        // registration behind and a later cancel could miss the new wait.
+        cancel.set_co(sleep_co.clone());
         if cancel.is_canceled() {
+            // the cancel machinery took the coroutine, so no timer is needed
             cancel.cancel();
+            return;
         }
+
+        // put the coroutine into the timer list
+        get_scheduler().add_timer(self.dur, sleep_co);
     }
 }
 

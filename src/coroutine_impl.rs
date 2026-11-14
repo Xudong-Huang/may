@@ -155,13 +155,6 @@ impl Coroutine {
     pub fn name(&self) -> Option<&str> {
         self.inner.name.as_deref()
     }
-
-    /// Get the internal cancel
-    #[cfg(unix)]
-    #[cfg(feature = "io_cancel")]
-    pub(crate) fn get_cancel(&self) -> &Cancel {
-        &self.inner.cancel
-    }
 }
 
 impl fmt::Debug for Coroutine {
@@ -540,18 +533,33 @@ pub(crate) fn current_cancel_data() -> &'static Cancel {
     }
 }
 
-#[inline]
-pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> &'static Cancel {
-    let local = unsafe { &*get_co_local(co) };
-    &local.get_co().inner.cancel
+/// Owned access to a coroutine's cancel state.
+///
+/// It holds a `Coroutine` handle, an `Arc<Inner>` clone, so the `Cancel`
+/// stays valid for as long as the guard. A caller may keep using it after
+/// moving `co` into the wait and after the coroutine has been resumed and
+/// completed on another thread; that is when the coroutine's local data
+/// (the last owner of `Inner`) can be dropped.
+pub(crate) struct CoCancel(Coroutine);
+
+impl std::ops::Deref for CoCancel {
+    type Target = Cancel;
+
+    #[inline]
+    fn deref(&self) -> &Cancel {
+        &self.0.inner.cancel
+    }
 }
 
-// windows use delay drop instead
-#[cfg(unix)]
-#[cfg(feature = "io_cancel")]
-pub(crate) fn co_get_handle(co: &CoroutineImpl) -> Coroutine {
+/// Borrow the cancel state of the given coroutine.
+///
+/// The returned guard keeps the coroutine's shared state alive, so it can be
+/// used after `co` has been moved into the wait and the coroutine may have
+/// completed on another thread.
+#[inline]
+pub(crate) fn co_cancel_data(co: &CoroutineImpl) -> CoCancel {
     let local = unsafe { &*get_co_local(co) };
-    local.get_co().clone()
+    CoCancel(local.get_co().clone())
 }
 
 /// timeout block the current coroutine until it's get unparked
