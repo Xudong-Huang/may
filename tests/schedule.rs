@@ -274,25 +274,38 @@ mod io_timeout {
         let (client, peer) = tcp_pair();
         let stream = Arc::new(may::sync::Mutex::new(may_stream(client)));
 
-        // a timed read that blocks on the io event, so its timer stays armed
-        // until the coroutine is cancelled
+        // A timed read that blocks on the io event, so its timer stays armed
+        // until the coroutine is cancelled. The timeout is much longer than
+        // the delay before the cancel below: on a loaded CI runner a stalled
+        // test thread must not let the read time out first, which would end
+        // the wait without a cancel and leave no armed timer to test.
+        let (ended_tx, ended_rx) = mpsc::channel();
         let s = stream.clone();
         let cancelled = may::go!(move || {
             let mut s = s.lock().unwrap();
-            s.set_read_timeout(Some(Duration::from_millis(100)))
+            s.set_read_timeout(Some(Duration::from_millis(500)))
                 .unwrap();
             let mut buf = [0u8; 1];
-            let _ = s.read(&mut buf);
-            unreachable!("read returned after cancel");
+            let r = s.read(&mut buf);
+            // only reached if the read ended before the cancel panic; report
+            // it so the precondition is checked here instead of poisoning the
+            // mutex and failing the later wait on the lock
+            let _ = ended_tx.send(r);
         });
 
         // let the read suspend with its timer armed, then cancel it
         std::thread::sleep(Duration::from_millis(30));
         unsafe { cancelled.coroutine().cancel() };
-        assert!(cancelled.join().is_err());
+        assert!(
+            cancelled.join().is_err(),
+            "the timed read returned instead of being cancelled"
+        );
+        if let Ok(res) = ended_rx.try_recv() {
+            panic!("the timed read returned before it was cancelled: {res:?}");
+        }
 
         // reuse the same io data for a later timed read with a much longer
-        // timeout; the timer of the cancelled read is due in ~70ms
+        // timeout; the timer of the cancelled read is due in ~470ms
         let (done_tx, done_rx) = mpsc::channel();
         let s = stream.clone();
         let later = may::go!(move || {
@@ -302,7 +315,8 @@ mod io_timeout {
             let _ = done_tx.send(s.read(&mut buf));
         });
 
-        match done_rx.recv_timeout(Duration::from_millis(300)) {
+        // the window covers the cancelled read's remaining timer (~470ms)
+        match done_rx.recv_timeout(Duration::from_millis(800)) {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Ok(res) => panic!("stale timer fired into the new wait: {res:?}"),
             Err(e) => panic!("new wait ended before the peer was closed: {e:?}"),
