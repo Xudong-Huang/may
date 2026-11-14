@@ -27,7 +27,13 @@ impl CancelIoData {
         let ret = unsafe { CancelIoEx(handle, overlapped) };
         if ret == 0 {
             let err = io::Error::last_os_error();
-            error!("cancel err={err:?}");
+            // The request may have completed before the cancel, or it may not
+            // have been submitted at all; there is nothing left to cancel and
+            // the caller falls back to the coroutine-based path. That is
+            // expected, so only report other failures.
+            if err.raw_os_error() != Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND as i32) {
+                error!("cancel err={err:?}");
+            }
             // ev.co.take().map(|co| get_scheduler().schedule(co));
             Err(err)
         } else {
