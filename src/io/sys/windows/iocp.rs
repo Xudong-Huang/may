@@ -1,5 +1,8 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
+#[cfg(feature = "io_timeout")]
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{io, ptr};
 
@@ -12,19 +15,18 @@ use crate::timeout_list::TimeoutHandle;
 use crate::timeout_list::{now, TimeOutList};
 use crate::yield_now::set_co_para;
 use smallvec::SmallVec;
-#[cfg(feature = "io_timeout")]
-use std::cell::RefCell;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
 
-// the timeout data
-pub struct TimerData {
-    event_data: *mut EventData,
-}
-
-type TimerList = TimeOutList<TimerData>;
+/// The timer entry holds the io data of the request it was armed for.
+///
+/// The `Arc` keeps that `EventData` (and its `OVERLAPPED`) alive even after the
+/// request completes and the coroutine drops its reference, so the timeout
+/// handler never dereferences freed memory. The io data is created per
+/// request, so an entry can only cancel the request it belongs to.
+type TimerList = TimeOutList<Arc<EventData>>;
 #[cfg(feature = "io_timeout")]
-pub type TimerHandle = TimeoutHandle<TimerData>;
+pub type TimerHandle = TimeoutHandle<Arc<EventData>>;
 
 // event associated io data, must be construct in the coroutine
 // this passed in to the _overlapped version API and will read back
@@ -35,16 +37,27 @@ pub struct EventData {
     overlapped: UnsafeCell<OVERLAPPED>,
     pub handle: HANDLE,
     #[cfg(feature = "io_timeout")]
-    pub timer: RefCell<Option<TimerHandle>>,
+    pub timer: AtomicOption<TimerHandle>,
+    // set by the io timeout handler when its timer fires. `CancelIoEx` can only
+    // cancel a request that is already pending, so a timer that fires before
+    // the request is submitted has nothing to cancel; the subscriber re-checks
+    // this flag right after the submission and cancels then.
+    #[cfg(feature = "io_timeout")]
+    timed_out: AtomicBool,
     pub co: AtomicOption<CoroutineImpl>,
 }
 
+// Both impls are needed: `HANDLE` is a raw pointer (`*mut c_void`), which is
+// neither `Send` nor `Sync` on its own, and `UnsafeCell<OVERLAPPED>` is `!Sync`.
+//
 // SAFETY: `EventData` is shared between the coroutine (which owns it via an
-// `Arc` and only touches it while running/suspended) and the selector thread
+// `Arc` and only touches it while running/suspended), the selector thread
 // (which mutates `co`/`timer` only after the coroutine has suspended, with the
-// IOCP completion providing the happens-before). `handle` is read-only, and
-// `co`/`timer` are interior-mutable (`AtomicOption`/`RefCell`). The `overlapped`
-// field is only written by the kernel during I/O and read after completion.
+// IOCP completion providing the happens-before), and the io timeout handler
+// (which holds its own `Arc` and only touches `timed_out`/`timer`). `handle` is
+// read-only, and `co`/`timer`/`timed_out` are interior-mutable atomics. The
+// `overlapped` field is only written by the kernel during I/O and read after
+// completion.
 unsafe impl Send for EventData {}
 unsafe impl Sync for EventData {}
 
@@ -54,7 +67,9 @@ impl EventData {
             overlapped: UnsafeCell::new(unsafe { ::std::mem::zeroed() }),
             handle,
             #[cfg(feature = "io_timeout")]
-            timer: RefCell::new(None),
+            timer: AtomicOption::none(),
+            #[cfg(feature = "io_timeout")]
+            timed_out: AtomicBool::new(false),
             co: AtomicOption::none(),
         }
     }
@@ -64,10 +79,31 @@ impl EventData {
         self.overlapped.get()
     }
 
+    /// Disarm the timer registered for this request, if any.
+    ///
+    /// The handle is only a best-effort disarm: the timer may already have
+    /// fired and taken its entry, in which case `remove` is a no-op.
     #[cfg(feature = "io_timeout")]
-    pub fn timer_data(&self) -> TimerData {
-        TimerData {
-            event_data: self as *const _ as *mut _,
+    #[inline]
+    pub fn take_timer(&self) {
+        if let Some(h) = self.timer.take() {
+            let _ = h.remove();
+        }
+    }
+
+    /// Finish a cancellation the timeout handler could not perform.
+    ///
+    /// The handler marks [`timed_out`](Self::timed_out) before it attempts
+    /// `CancelIoEx`. If the request was not submitted yet the cancel fails,
+    /// and this call, made right after the successful submission, completes
+    /// it while the request is pending.
+    #[cfg(feature = "io_timeout")]
+    #[inline]
+    pub fn cancel_if_timed_out(&self) {
+        if self.timed_out.load(Ordering::Acquire) {
+            // the handler may have cancelled the request already, in which
+            // case this is a no-op (see `cancel_io_on_timeout`)
+            unsafe { cancel_io_on_timeout(self.handle, self.get_overlapped()) };
         }
     }
 
@@ -153,14 +189,10 @@ impl Selector {
             // coroutine resumes, and the cancel path holds its own Arc.
             let mut co = data.co.take().expect("can't get co in selector");
 
-            // the timer list is driven by this same thread
+            // the timer list is driven by this same thread; the handle is a
+            // best-effort disarm, the timer may have taken its entry already
             #[cfg(feature = "io_timeout")]
-            data.timer.borrow_mut().take().map(|h| {
-                // tell the timer function not to cancel the io
-                // it's not always true that you can really remove the timer entry
-                h.with_mut_data(|value| value.data.event_data = ptr::null_mut());
-                h.remove()
-            });
+            data.take_timer();
 
             let overlapped = unsafe { &*overlapped };
             // info!("select got overlapped, status = {}", overlapped.Internal);
@@ -232,15 +264,16 @@ impl Selector {
     // register the io request to the timeout list
     #[inline]
     #[cfg(feature = "io_timeout")]
-    pub fn add_io_timer(&self, io: &EventData, timeout: Duration) {
+    pub fn add_io_timer(&self, io: &Arc<EventData>, timeout: Duration) {
         let id = (io.handle as usize % self.vec.len()) >> 2;
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
+        // the entry keeps its own Arc, so it can run after the request is gone
+        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.clone());
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(0);
         }
-        io.timer.borrow_mut().replace(h);
+        io.timer.store(h);
     }
 }
 
@@ -253,18 +286,35 @@ unsafe fn cancel_io(handle: HANDLE, overlapped: *mut OVERLAPPED) -> io::Result<(
     }
 }
 
+/// Attempt the cancel of a timed-out request, ignoring a request that is no
+/// longer pending.
+///
+/// The timeout handler and the subscriber can both call this for the same
+/// request: the handler may run before the request is submitted, in which case
+/// the subscriber completes the cancel after the submission. `CancelIoEx`
+/// cancels exactly the operation identified by the `OVERLAPPED` pointer, so a
+/// second attempt against an already canceled or completed request finds
+/// nothing and fails with `ERROR_NOT_FOUND`; that is expected, not an error.
+unsafe fn cancel_io_on_timeout(handle: HANDLE, overlapped: *mut OVERLAPPED) {
+    if let Err(e) = unsafe { cancel_io(handle, overlapped) } {
+        if e.raw_os_error() != Some(ERROR_NOT_FOUND as i32) {
+            error!("CancelIoEx failed! e = {e}");
+        }
+    }
+}
+
 // when timeout happened we need to cancel the io operation
 // this will trigger an event on the IOCP and processed in the selector
-pub fn timeout_handler(data: TimerData) {
-    if data.event_data.is_null() {
-        return;
-    }
-
-    let event_data = unsafe { &*data.event_data };
+pub fn timeout_handler(event_data: Arc<EventData>) {
+    // Mark the request as timed out before attempting the cancel. If it is not
+    // submitted yet `CancelIoEx` finds nothing; the subscriber completes the
+    // cancellation right after submitting, see `cancel_if_timed_out`.
+    #[cfg(feature = "io_timeout")]
+    event_data.timed_out.store(true, Ordering::Release);
     // remove the event timer
     #[cfg(feature = "io_timeout")]
-    event_data.timer.borrow_mut().take();
-    // ignore the error, the select may grab the data first!
-    let result = unsafe { cancel_io(event_data.handle, event_data.get_overlapped()) };
-    result.unwrap_or_else(|e| error!("CancelIoEx failed! e = {e}"));
+    event_data.take_timer();
+    // the request may not be submitted yet (the subscriber retries after the
+    // submission) or may have completed already: a missing request is fine
+    unsafe { cancel_io_on_timeout(event_data.handle, event_data.get_overlapped()) };
 }

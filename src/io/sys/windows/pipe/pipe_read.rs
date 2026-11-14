@@ -58,9 +58,8 @@ impl EventSource for PipeRead<'_> {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
         let _g = self.can_drop.delay_drop();
-        // if the event happened before this there would be something wrong
-        // that the timer handle can't be removed in time
-        // we must prepare the timer before call the API
+        // prepare the timer before the API: if it fires while the request is
+        // still being submitted it is completed by `cancel_if_timed_out`
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&self.io_data, dur);
@@ -72,6 +71,12 @@ impl EventSource for PipeRead<'_> {
         co_try!(s, self.io_data.co.take().expect("can't get co"), unsafe {
             pipe_read_overlapped(self.pipe, self.buf, self.io_data.get_overlapped())
         });
+
+        // a timer that fired while the request was being submitted could not
+        // cancel it yet, finish the cancellation now that it is pending; the
+        // `can_drop` guard keeps this frame alive until `subscribe` returns
+        #[cfg(feature = "io_timeout")]
+        self.io_data.cancel_if_timed_out();
 
         #[cfg(feature = "io_cancel")]
         {

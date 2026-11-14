@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::os::windows::io::AsRawSocket;
+use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
@@ -12,7 +13,7 @@ use crate::scheduler::get_scheduler;
 use windows_sys::Win32::Foundation::*;
 
 pub struct UdpSendTo<'a> {
-    io_data: EventData,
+    io_data: Arc<EventData>,
     buf: &'a [u8],
     socket: &'a ::std::net::UdpSocket,
     addr: SocketAddr,
@@ -31,7 +32,7 @@ impl<'a> UdpSendTo<'a> {
             .next()
             .ok_or_else(|| io::Error::other("no socket addresses resolved"))
             .map(|addr| UdpSendTo {
-                io_data: EventData::new(socket.as_raw_socket() as HANDLE),
+                io_data: Arc::new(EventData::new(socket.as_raw_socket() as HANDLE)),
                 buf,
                 socket: socket.inner(),
                 addr,
@@ -53,6 +54,12 @@ impl EventSource for UdpSendTo<'_> {
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&self.io_data, dur);
         }
+        // this adapter has no `DelayDrop` guard, so once the request is
+        // submitted the coroutine can resume on another thread and drop this
+        // frame before the check below; keep the io data reachable locally
+        #[cfg(feature = "io_timeout")]
+        let io_data = self.io_data.clone();
+
         // prepare the co first
         self.io_data.co.store(co);
         // call the overlapped read API
@@ -64,5 +71,10 @@ impl EventSource for UdpSendTo<'_> {
                 self.io_data.get_overlapped(),
             )
         });
+
+        // a timer that fired while the request was being submitted could not
+        // cancel it yet, finish the cancellation now that it is pending
+        #[cfg(feature = "io_timeout")]
+        io_data.cancel_if_timed_out();
     }
 }

@@ -111,6 +111,12 @@ impl EventSource for TcpStreamConnect {
             )
         });
 
+        // a timer that fired while the request was being submitted could not
+        // cancel it yet, finish the cancellation now that it is pending; the
+        // `can_drop` guard keeps this frame alive until `subscribe` returns
+        #[cfg(feature = "io_timeout")]
+        self.io_data.cancel_if_timed_out();
+
         #[cfg(feature = "io_cancel")]
         {
             // register the cancel io data
