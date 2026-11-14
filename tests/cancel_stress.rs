@@ -195,13 +195,21 @@ fn cancel_accept() {
 
 /// Cancel a coroutine blocked in `read()` while the peer sends data at the
 /// same time, racing a normal IO completion against the cancel.
+///
+/// The cancellation is delivered by unwinding with a `Cancel` panic. On
+/// macOS arm64 in release builds the unwinder can need roughly 40KB of stack
+/// to walk the io-read frames (libunwind parses the DWARF CFI with large
+/// frames). Pin the size here rather than relying on the default, so the
+/// stress test keeps working if the default is ever tuned down: a guard-page
+/// fault would abandon the panic unwind without unwinding it and leave the
+/// worker thread marked as panicking, hanging later cancel tests.
 #[cfg(feature = "io_cancel")]
 #[test]
 fn cancel_read_racing_completion() {
     for i in 0..300 {
         let (tx, rx) = channel();
         let (accepted_tx, accepted_rx) = channel();
-        let j = go!(move || {
+        let j = go!(coroutine::Builder::new().stack_size(0x2000), move || {
             let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
             tx.send(listener.local_addr().unwrap()).unwrap();
             let (mut s, _) = listener.accept().unwrap();
@@ -211,7 +219,8 @@ fn cancel_read_racing_completion() {
                 let _ = s.read(&mut buf);
                 coroutine::yield_now();
             }
-        });
+        })
+        .unwrap();
 
         let addr = rx.recv().unwrap();
         let mut client = std::net::TcpStream::connect(addr).unwrap();

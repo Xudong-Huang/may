@@ -716,9 +716,9 @@ mod tests {
         let m_holder = m.clone();
         let (tx_held, rx_held) = channel();
         let (tx_go, rx_go) = channel();
-        // the holder is a coroutine so the release-chain walk runs on a
-        // 32KB coroutine stack; it holds the lock until the test tells it
-        // to release, so the waiters can never acquire the lock
+        // the holder is a coroutine so the release-chain walk runs on the
+        // (small) default coroutine stack; it holds the lock until the test
+        // tells it to release, so the waiters can never acquire the lock
         let holder = go!(move || {
             let _g = m_holder.lock().unwrap();
             tx_held.send(()).unwrap(); // the lock is definitely held now

@@ -84,7 +84,7 @@ impl Semaphore {
     ///
     /// Iterative on purpose: a cancel storm can leave many released blockers
     /// back to back in the queue, and recursing through `post` would overflow
-    /// the (small, 32KB default) coroutine stack and abort.
+    /// the (small) default coroutine stack and abort.
     #[inline]
     fn wakeup_one(&self) {
         while let Some(w) = self.to_wake.pop() {
@@ -455,8 +455,8 @@ mod tests {
 
     /// Regression test for the wake-up chain: canceled waiters leave released
     /// blockers queued, and a single `post` must walk past all of them. The
-    /// old recursive implementation overflowed the 32KB coroutine stack on a
-    /// chain this long.
+    /// old recursive implementation overflowed the coroutine stack (then
+    /// 32KB by default) on a chain this long.
     #[test]
     fn released_waiters_are_skipped_iteratively() {
         use crate::sleep::sleep;

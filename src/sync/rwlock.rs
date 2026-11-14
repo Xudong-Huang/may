@@ -1122,7 +1122,8 @@ mod tests {
     /// Regression test for the hand-off chain: a cancel storm leaves many
     /// released blockers queued, and unlocking must walk past all of them
     /// iteratively. The old implementation recursed once per released
-    /// waiter and overflowed the 32KB coroutine stack on a chain this long.
+    /// waiter and overflowed the coroutine stack (then 32KB by default) on a
+    /// chain this long.
     #[test]
     fn test_rwlock_unlock_skips_canceled_waiters() {
         const N: usize = 500;
@@ -1161,7 +1162,8 @@ mod tests {
             assert!(w.join().is_err());
         }
 
-        // dropping the guard now walks the released chain on a 32KB stack
+        // dropping the guard now walks the released chain on the default
+        // coroutine stack
         release_tx.send(()).unwrap();
         holder.join().unwrap();
 

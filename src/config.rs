@@ -7,7 +7,13 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 // default stack size, in usize
 // windows has a minimal size as 0x4a8!!!!
-const DEFAULT_STACK_SIZE: usize = 0x1000;
+// 0x2000 words = 64KB on 64-bit systems. Cancellation is delivered by
+// unwinding with a `Cancel` panic, and on macOS arm64 a release build can
+// spend roughly 43KB of the coroutine stack in the unwinder alone (libunwind
+// falls back to parsing DWARF CFI with large frames for some io-wait frames).
+// The previous 32KB default left no headroom there: the guard-page fault
+// abandoned the unwind and left the worker thread marked as panicking.
+const DEFAULT_STACK_SIZE: usize = 0x2000;
 const DEFAULT_POOL_CAPACITY: usize = 1000;
 
 static WORKERS: AtomicUsize = AtomicUsize::new(0);

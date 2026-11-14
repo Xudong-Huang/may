@@ -70,7 +70,7 @@ impl SyncFlag {
     // there is no permit to forward past released blockers: just drain the
     // queue. Iterative because a cancel storm can leave many released
     // blockers queued, and re-entering `fire` recursively would overflow the
-    // (small, 32KB default) coroutine stack.
+    // (small) default coroutine stack.
     #[inline]
     fn wakeup_all(&self) {
         while let Some(w) = self.to_wake.pop() {
@@ -279,7 +279,8 @@ mod tests {
     /// Regression test for the release-forwarding chain: canceled waiters
     /// leave released blockers queued, and a single `fire` must walk past all
     /// of them. The old implementation re-entered `fire` recursively and
-    /// overflowed the 32KB coroutine stack on a chain this long.
+    /// overflowed the coroutine stack (then 32KB by default) on a chain this
+    /// long.
     #[test]
     fn released_waiters_are_woken_iteratively() {
         use crate::sleep::sleep;

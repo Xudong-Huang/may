@@ -251,7 +251,7 @@ impl Condvar {
         // canceled and won't take the lock), in which case the signal must
         // be passed on to the next waiter. A cancel storm can queue many
         // released blockers back to back, and a recursive call would
-        // overflow the (small, 32KB default) coroutine stack and abort
+        // overflow the (small) default coroutine stack and abort
         while let Some(w) = self.to_wake.pop() {
             // `false` means the waiter had already left: pass the signal on
             if w.try_hand_off() {
