@@ -131,8 +131,8 @@ impl EventSource for TcpStreamConnect {
 
         #[cfg(feature = "io_cancel")]
         {
-            // register the cancel io data
-            cancel.set_io(event_data);
+            // register the cancel wait
+            cancel.set_io(wait);
             // re-check the cancel status
             if cancel.is_canceled() {
                 cancel.cancel();
