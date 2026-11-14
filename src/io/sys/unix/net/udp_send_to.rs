@@ -67,17 +67,18 @@ impl<A: ToSocketAddrs> EventSource for UdpSendTo<'_, A> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let io_data = self.io_data;
 
-        #[cfg(feature = "io_timeout")]
-        if let Some(dur) = self.timeout {
-            crate::scheduler::get_scheduler()
-                .get_selector()
-                .add_io_timer(self.io_data, dur);
-        }
-        io_data.co.store(co);
+        // the timer holds its own clone of the wait slot, so an immediate
+        // expiry still reaches the coroutine; after publishing, only use the
+        // shared event data, the resumed coroutine may drop the io data
+        let (event_data, wait) = io_data.publish_co(
+            co,
+            #[cfg(feature = "io_timeout")]
+            self.timeout,
+        );
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) != 0 {
-            io_data.fast_schedule();
+        if event_data.io_flag.load(Ordering::Acquire) != 0 {
+            event_data.fast_schedule(&wait);
         }
     }
 }

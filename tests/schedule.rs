@@ -261,10 +261,11 @@ mod io_timeout {
         );
     }
 
-    /// A cancelled timed read leaves its io timer armed. If the same io data is
-    /// reused for a later timed read, the stale timer fires and resumes the new
-    /// wait with a spurious `TimedOut`; once the io data is dropped it fires
-    /// into freed memory. The cancel path must disarm the timer.
+    /// A cancelled timed read leaves its io timer armed. The timer entry holds
+    /// its own clone of the cancelled wait's slot, which the cancel emptied, so
+    /// when the stale timer fires it finds nothing to resume. If the same io
+    /// data is reused for a later timed read, the stale timer must not time it
+    /// out, and it must not outlive the io data it belonged to.
     #[cfg(feature = "io_cancel")]
     #[test]
     fn cancelled_read_does_not_time_out_a_later_wait() {

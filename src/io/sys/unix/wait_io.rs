@@ -26,18 +26,23 @@ impl EventSource for RawIoBlock<'_> {
         #[cfg(feature = "io_cancel")]
         let handle = co_get_handle(&co);
         let io_data = self.io_data;
-        io_data.co.store(co);
+        // this wait has no timeout
+        let (event_data, wait) = io_data.publish_co(
+            co,
+            #[cfg(feature = "io_timeout")]
+            None,
+        );
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) != 0 {
+        if event_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
-            return io_data.fast_schedule();
+            return event_data.fast_schedule(&wait);
         }
 
         #[cfg(feature = "io_cancel")]
         {
             let cancel = handle.get_cancel();
             // register the cancel io data
-            cancel.set_io((*io_data).clone());
+            cancel.set_io(event_data);
             // re-check the cancel status
             if cancel.is_canceled() {
                 cancel.cancel();

@@ -92,24 +92,26 @@ impl EventSource for UnixStreamConnect {
     fn subscribe(&mut self, co: CoroutineImpl) {
         #[cfg(feature = "io_cancel")]
         let cancel = co_cancel_data(&co);
-        let io_data = &self.io_data;
 
-        #[cfg(feature = "io_timeout")]
-        crate::scheduler::get_scheduler()
-            .get_selector()
-            .add_io_timer(&self.io_data, Duration::from_secs(2));
-        io_data.co.store(co);
+        // the timer holds its own clone of the wait slot, so an immediate
+        // expiry still reaches the coroutine; after publishing, only use the
+        // shared event data, the resumed coroutine may take the io data
+        let (event_data, wait) = self.io_data.publish_co(
+            co,
+            #[cfg(feature = "io_timeout")]
+            Some(Duration::from_secs(2)),
+        );
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) != 0 {
+        if event_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
-            return io_data.fast_schedule();
+            return event_data.fast_schedule(&wait);
         }
 
         #[cfg(feature = "io_cancel")]
         {
             // register the cancel io data
-            cancel.set_io((*io_data).clone());
+            cancel.set_io(event_data);
             // re-check the cancel status
             if cancel.is_canceled() {
                 cancel.cancel();

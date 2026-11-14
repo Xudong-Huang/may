@@ -11,6 +11,8 @@ use super::{timeout_handler, TimerList};
 use super::{EventData, IoData};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
+use crate::sync::WaitCo;
+#[cfg(feature = "io_timeout")]
 use crate::timeout_list::now;
 
 use may_queue::mpsc::Queue;
@@ -169,9 +171,13 @@ impl Selector {
             data.io_flag
                 .fetch_or(event.flags as usize, Ordering::Release);
 
-            // first check the atomic co, this may be grab by the worker first
-            let co = match data.co.take() {
+            // first check the atomic wait, this may be grabbed by the worker first
+            let wait = match data.wait.take() {
                 None => continue,
+                Some(wait) => wait,
+            };
+            let co = match wait.take() {
+                None => continue, // a timer or a cancellation took it
                 Some(co) => co,
             };
 
@@ -339,18 +345,20 @@ impl Selector {
     // register the io request to the timeout list
     #[inline]
     #[cfg(feature = "io_timeout")]
-    pub fn add_io_timer(&self, io: &IoData, timeout: Duration) {
-        // a previous wait on this io data may have been aborted while its
-        // timer was still armed (e.g. cancelled). Disarm it before replacing
-        // the handle, otherwise the stale entry can fire into this new wait.
-        io.take_timer();
+    pub fn add_io_timer(&self, io: &EventData, timeout: Duration, wait: WaitCo) {
         let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.timer_data());
+        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, wait);
         if b_new {
             // wakeup the event loop thread to recall the next wait timeout
             self.wakeup(id);
         }
+        // The wait is already published, so it may be resumed while it is
+        // being armed (a zero-duration timer or an io event). The handle is
+        // kept only as a best-effort disarm for this wait: a concurrent
+        // publish may replace it, in which case the disarmed entry belongs to
+        // a different wait. That is harmless because every entry owns the
+        // (emptied) slot of the wait it was armed for.
         io.timer.store(h);
     }
 }

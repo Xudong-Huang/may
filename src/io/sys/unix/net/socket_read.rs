@@ -71,29 +71,26 @@ impl EventSource for SocketRead<'_> {
         let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
 
-        #[cfg(feature = "io_timeout")]
-        if let Some(dur) = self.timeout {
-            crate::scheduler::get_scheduler()
-                .get_selector()
-                .add_io_timer(self.io_data, dur);
-        }
-
-        // after register the coroutine, it's possible that other thread run it immediately
-        // and cause the process after it invalid, this is kind of user and kernel competition
-        // so we need to delay the drop of the EventSource, that's why _g is here
-        io_data.co.store(co);
+        // the wait owns its own shared slot, so a timer that fires immediately
+        // still finds the coroutine; after publishing, only use the shared
+        // event data, the resumed coroutine may drop the io data
+        let (event_data, wait) = io_data.publish_co(
+            co,
+            #[cfg(feature = "io_timeout")]
+            self.timeout,
+        );
         // till here the io may be done in other thread
 
         // there is event, re-run the coroutine
-        if io_data.io_flag.load(Ordering::Acquire) != 0 {
+        if event_data.io_flag.load(Ordering::Acquire) != 0 {
             #[allow(clippy::needless_return)]
-            return io_data.fast_schedule();
+            return event_data.fast_schedule(&wait);
         }
 
         #[cfg(feature = "io_cancel")]
         {
             // register the cancel io data
-            cancel.set_io((*io_data).clone());
+            cancel.set_io(event_data);
             // re-check the cancel status
             if cancel.is_canceled() {
                 cancel.cancel();
