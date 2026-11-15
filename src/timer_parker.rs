@@ -13,8 +13,9 @@
 //! which the timer thread joins while the scheduler and the timeout clock
 //! initialize. A wakeup token lost in that interaction left the timer thread
 //! sleeping on a long timeout while a short timer was already due. The private
-//! condvar parker below shares nothing with std and provides the same
-//! notify/park semantics.
+//! parkers below share nothing with std: the default uses a libdispatch
+//! counting semaphore with nanosecond `dispatch_time` deadlines, and a
+//! `parking_lot` condvar variant is kept as an alternative backend.
 //!
 //! On Windows the standard parker is `WaitOnAddress`. Its timeout is a whole
 //! number of milliseconds, rounded up, and the wait is quantized to the
@@ -77,39 +78,118 @@ impl StdParker {
 
 #[cfg(target_os = "macos")]
 mod macos {
+    #![allow(non_camel_case_types)]
+
+    use std::ffi::c_void;
     use std::sync::Arc;
     use std::thread;
     use std::time::{Duration, Instant};
 
     use parking_lot::{Condvar, Mutex};
 
-    /// A parker built on a `parking_lot` mutex and condition variable.
+    type dispatch_semaphore_t = *mut c_void;
+    type dispatch_time_t = u64;
+
+    const DISPATCH_TIME_NOW: dispatch_time_t = 0;
+    const DISPATCH_TIME_FOREVER: dispatch_time_t = !0;
+
+    // Contained in libSystem.dylib, which is linked by default.
+    unsafe extern "C" {
+        fn dispatch_time(when: dispatch_time_t, delta: i64) -> dispatch_time_t;
+        fn dispatch_semaphore_create(val: isize) -> dispatch_semaphore_t;
+        fn dispatch_semaphore_wait(sema: dispatch_semaphore_t, timeout: dispatch_time_t) -> isize;
+        fn dispatch_semaphore_signal(sema: dispatch_semaphore_t) -> isize;
+        fn dispatch_release(object: *mut c_void);
+    }
+
+    /// A parker built on a libdispatch counting semaphore.
+    ///
+    /// This is the macOS analogue of the Windows notification-event +
+    /// waitable-timer backend: [`notify`](Self::notify) signals a counting
+    /// semaphore and [`park`](Self::park) waits on it with a nanosecond
+    /// `dispatch_time` deadline. A notification that arrives before the wait,
+    /// or while the timer thread is between waits, is remembered by the
+    /// semaphore and consumed by the next wait instead of being lost. Like the
+    /// condvar parker below it shares nothing with std's per-thread `Parker`,
+    /// which std's `Once`/`OnceLock` machinery also parks on during thread and
+    /// scheduler startup.
+    pub(crate) struct DispatchParker {
+        sem: dispatch_semaphore_t,
+    }
+
+    // SAFETY: libdispatch semaphores are thread-safe; the pointer is owned by
+    // this parker and only passed to thread-safe dispatch calls.
+    unsafe impl Send for DispatchParker {}
+    unsafe impl Sync for DispatchParker {}
+
+    impl DispatchParker {
+        pub(crate) fn new() -> Self {
+            let sem = unsafe { dispatch_semaphore_create(0) };
+            assert!(!sem.is_null(), "failed to create dispatch semaphore");
+            DispatchParker { sem }
+        }
+
+        /// Kept for API parity with the std and Windows parkers. A counting
+        /// semaphore needs no registration step: a notification is never
+        /// missed.
+        pub(crate) fn arm(&self, _thread: &Arc<thread::Thread>) {}
+
+        pub(crate) fn notify(&self) {
+            unsafe {
+                dispatch_semaphore_signal(self.sem);
+            }
+        }
+
+        pub(crate) fn park(&self, timeout: Option<Duration>) {
+            match timeout {
+                None => {
+                    // DISPATCH_TIME_FOREVER cannot expire, but retry in case
+                    // the wait returns for another reason.
+                    while unsafe { dispatch_semaphore_wait(self.sem, DISPATCH_TIME_FOREVER) } != 0 {
+                    }
+                }
+                Some(t) => {
+                    let nanos = t.as_nanos().try_into().unwrap_or(i64::MAX);
+                    let deadline = unsafe { dispatch_time(DISPATCH_TIME_NOW, nanos) };
+                    unsafe {
+                        dispatch_semaphore_wait(self.sem, deadline);
+                    }
+                }
+            }
+        }
+    }
+
+    impl Drop for DispatchParker {
+        fn drop(&mut self) {
+            unsafe {
+                dispatch_release(self.sem);
+            }
+        }
+    }
+
+    /// Alternative macOS backend: a `parking_lot` mutex and condition
+    /// variable.
     ///
     /// `notify` sets a `notified` flag under the mutex before waking the
     /// condition variable; `park` checks that flag under the same mutex and
-    /// only waits when it is clear. A producer that notifies between the check
-    /// and the wait therefore cannot be lost: it needs the mutex to set the
-    /// flag, so it either runs before the check (and the waiter returns at
-    /// once) or after the waiter is queued (and wakes it). Unlike the std
-    /// parker this shares nothing with std's per-thread `Parker`, which std's
-    /// `Once`/`OnceLock` machinery also parks on during thread and scheduler
-    /// startup.
-    pub(crate) struct Parker {
+    /// only waits when it is clear, so a notification cannot be lost between
+    /// the check and the wait. Kept so the two macOS parkers can be compared;
+    /// switch the `Parker` alias below to use it instead of `DispatchParker`.
+    #[allow(dead_code)]
+    pub(crate) struct CondvarParker {
         notified: Mutex<bool>,
         cond: Condvar,
     }
 
-    impl Parker {
+    #[allow(dead_code)]
+    impl CondvarParker {
         pub(crate) fn new() -> Self {
-            Parker {
+            CondvarParker {
                 notified: Mutex::new(false),
                 cond: Condvar::new(),
             }
         }
 
-        /// Kept for API parity with the std and Windows parkers. The
-        /// flag-based protocol needs no registration step: a notification is
-        /// never missed.
         pub(crate) fn arm(&self, _thread: &Arc<thread::Thread>) {}
 
         pub(crate) fn notify(&self) {
@@ -145,7 +225,7 @@ mod macos {
 pub(crate) use StdParker as Parker;
 
 #[cfg(target_os = "macos")]
-pub(crate) use self::macos::Parker;
+pub(crate) use self::macos::DispatchParker as Parker;
 
 #[cfg(windows)]
 pub(crate) use self::windows::Parker;
