@@ -319,16 +319,19 @@ impl WsaExtension {
     }
 }
 
+/// Convert a timeout to the millisecond count the completion port APIs take.
+///
+/// Windows timeouts have millisecond granularity, so round up. Truncating a
+/// sub-millisecond remainder to zero would turn a short timeout into a
+/// non-blocking poll that the selector repeats until the deadline, burning
+/// CPU. An exactly zero duration stays zero, meaning "poll without blocking".
 fn dur2ms(dur: Option<Duration>) -> u32 {
     let dur = match dur {
         Some(dur) => dur,
         None => return INFINITE,
     };
-    let ms = dur.as_secs().checked_mul(1_000);
-    let ms_extra = dur.subsec_millis();
-    ms.and_then(|ms| ms.checked_add(ms_extra as u64))
-        .map(|ms| std::cmp::min(u32::MAX as u64, ms) as u32)
-        .unwrap_or(INFINITE - 1)
+    let ms = dur.as_nanos().div_ceil(1_000_000);
+    std::cmp::min(ms, u32::MAX as u128) as u32
 }
 
 unsafe fn slice2buf(slice: &[u8]) -> WSABUF {
@@ -914,5 +917,25 @@ pub unsafe fn pipe_write_overlapped(
             Ok(None)
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dur2ms_rounds_sub_millisecond_timeouts_up() {
+        // exactly zero means "poll without blocking", not "one millisecond"
+        assert_eq!(dur2ms(Some(Duration::ZERO)), 0);
+        // anything above zero waits at least one millisecond
+        assert_eq!(dur2ms(Some(Duration::from_nanos(1))), 1);
+        assert_eq!(dur2ms(Some(Duration::from_nanos(999_999))), 1);
+        assert_eq!(dur2ms(Some(Duration::from_millis(1))), 1);
+        assert_eq!(dur2ms(Some(Duration::from_micros(1_500))), 2);
+        assert_eq!(dur2ms(Some(Duration::from_secs(30))), 30_000);
+        assert_eq!(dur2ms(None), INFINITE);
+        // beyond the representable range is treated as "never time out"
+        assert_eq!(dur2ms(Some(Duration::MAX)), INFINITE);
     }
 }
