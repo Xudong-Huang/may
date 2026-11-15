@@ -39,6 +39,7 @@ mod coroutine_impl;
 mod scheduler;
 mod scoped;
 mod timeout_list;
+mod timer_parker;
 mod yield_now;
 
 #[cfg(feature = "crossbeam_queue_steal")]

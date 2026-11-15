@@ -10,7 +10,7 @@ use may_queue::mpsc::Queue;
 use may_queue::mpsc_list_v1::{self, Entry, Receiver, Sender};
 use parking_lot::{Mutex, RwLock};
 
-use crate::sync::AtomicOption;
+use crate::timer_parker::Parker;
 
 const HASH_CAP: usize = 1024;
 
@@ -269,7 +269,7 @@ pub struct TimerThread<T> {
     // collect the remove request
     remove_list: Queue<TimeoutHandle<T>>,
     // the timer thread wakeup handler
-    wakeup: AtomicOption<Arc<thread::Thread>>,
+    parker: Parker,
 }
 
 impl<T> TimerThread<T> {
@@ -277,7 +277,7 @@ impl<T> TimerThread<T> {
         TimerThread {
             timer_list: TimeOutList::new(),
             remove_list: Queue::new(),
-            wakeup: AtomicOption::none(),
+            parker: Parker::new(),
         }
     }
 
@@ -285,18 +285,14 @@ impl<T> TimerThread<T> {
         let (h, is_recal) = self.timer_list.add_timer(dur, data);
         // wake up the timer thread if it's a new queue
         if is_recal {
-            if let Some(t) = self.wakeup.take() {
-                t.unpark();
-            }
+            self.parker.notify();
         }
         h
     }
 
     pub fn del_timer(&self, handle: TimeoutHandle<T>) {
         self.remove_list.push(handle);
-        if let Some(t) = self.wakeup.take() {
-            t.unpark();
-        }
+        self.parker.notify();
     }
 
     // the timer thread function
@@ -306,19 +302,18 @@ impl<T> TimerThread<T> {
             while let Some(h) = self.remove_list.pop() {
                 h.remove();
             }
-            // we must register the thread handle first
-            // or there will be no signal to wakeup the timer thread
-            self.wakeup.store(current_thread.clone());
-
+            // We must register the thread handle first or there will be no
+            // signal to wake up the timer thread. A producer that queued work
+            // before the registration found the slot empty and could not
+            // wake us, so re-check for queued removals and wake ourselves.
+            self.parker.arm(&current_thread);
             if !self.remove_list.is_empty() {
-                if let Some(t) = self.wakeup.take() {
-                    t.unpark();
-                }
+                self.parker.notify();
             }
 
             match self.timer_list.schedule_timer(now(), f) {
-                Some(time) => thread::park_timeout(Duration::from_nanos(time)),
-                None => thread::park(),
+                Some(time) => self.parker.park(Some(Duration::from_nanos(time))),
+                None => self.parker.park(None),
             }
         }
     }
