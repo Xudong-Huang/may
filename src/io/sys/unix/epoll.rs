@@ -172,21 +172,40 @@ impl Selector {
 
         // Deal with the timer list before draining the local queue: the
         // timeout handler resumes its coroutine inline on this worker, and
-        // that coroutine can schedule more work locally (e.g. by yielding).
-        // `run_queued_tasks` must stay the last step before `select` returns,
-        // because a local enqueue does not wake the selector. The drain is
-        // budgeted; if it stops with work left, `has_local_tasks` makes the
-        // event loop poll again with a zero timeout instead of blocking, so
-        // the remaining tasks run after one non-blocking reactor round.
+        // that coroutine can schedule more work locally (e.g. by yielding),
+        // which the drain below then picks up. The expiry returned here is
+        // discarded; it is recomputed after the drain, see below.
         #[cfg(feature = "io_timeout")]
-        let next_expire = single_selector
+        let _ = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);
-        #[cfg(not(feature = "io_timeout"))]
-        let next_expire = None;
 
         // run all the local tasks
         scheduler.run_queued_tasks(id);
+
+        // Recompute after the drain: the drain is budgeted by task count, not
+        // by time, so a relative expiry sampled before it can be arbitrarily
+        // stale and would make the next wait outlast the timer deadline by the
+        // whole drain duration. Sampling now also fires any timer that became
+        // due while the local tasks were running. A coroutine resumed by one
+        // of those timers runs inline and may enqueue local work after the
+        // drain; `has_local_tasks` then makes the event loop poll with a zero
+        // timeout, so that work still runs on the next round instead of
+        // blocking.
+        #[cfg(feature = "io_timeout")]
+        let next_expire = {
+            let start = now();
+            let next = single_selector
+                .timer_list
+                .schedule_timer(start, &timeout_handler);
+            // The timeout handler runs coroutine code inline, so rebase the
+            // remaining wait to the current time, not to the start of this
+            // call, or it would outlast the deadline by the handler's run
+            // time too.
+            next.map(|wait| wait.saturating_sub(now().saturating_sub(start)))
+        };
+        #[cfg(not(feature = "io_timeout"))]
+        let next_expire = None;
 
         // free the unused event_data
         self.free_unused_event_data(id);
