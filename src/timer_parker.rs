@@ -4,9 +4,17 @@
 //! ([`crate::timeout_list::TimerThread::add_timer`]/`del_timer`) wake it when
 //! they queue work.
 //!
-//! On Unix the standard thread parker is used directly: it is a futex wait
-//! with a nanosecond `CLOCK_MONOTONIC` deadline, which is precise enough for
-//! coroutine timeouts.
+//! On Linux and the other Unix targets the standard thread parker is used
+//! directly: on Linux it is a futex wait with a nanosecond `CLOCK_MONOTONIC`
+//! deadline, which is precise enough for coroutine timeouts.
+//!
+//! On macOS the standard parker is not used for the timer thread. Its
+//! per-thread `Parker` is also used by the std `Once`/`OnceLock` waiter queue,
+//! which the timer thread joins while the scheduler and the timeout clock
+//! initialize. A wakeup token lost in that interaction left the timer thread
+//! sleeping on a long timeout while a short timer was already due. The private
+//! condvar parker below shares nothing with std and provides the same
+//! notify/park semantics.
 //!
 //! On Windows the standard parker is `WaitOnAddress`. Its timeout is a whole
 //! number of milliseconds, rounded up, and the wait is quantized to the
@@ -22,8 +30,14 @@
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+#[cfg(target_os = "macos")]
+use std::time::Instant;
 
+#[cfg(not(target_os = "macos"))]
 use crate::sync::AtomicOption;
+
+#[cfg(target_os = "macos")]
+use parking_lot::{Condvar, Mutex};
 
 /// A parker built on the standard library's thread parking.
 ///
@@ -32,10 +46,12 @@ use crate::sync::AtomicOption;
 /// that handle and unparks the thread; a producer that raced with `arm` finds
 /// the slot empty and does not wake it, so the timer thread re-checks its work
 /// queues after arming and wakes itself if there is pending work.
+#[cfg(not(target_os = "macos"))]
 pub(crate) struct StdParker {
     wakeup: AtomicOption<Arc<thread::Thread>>,
 }
 
+#[cfg(not(target_os = "macos"))]
 impl StdParker {
     pub(crate) fn new() -> Self {
         StdParker {
@@ -61,8 +77,68 @@ impl StdParker {
     }
 }
 
-#[cfg(not(windows))]
+/// A parker built on a `parking_lot` mutex and condition variable.
+///
+/// `notify` sets a `notified` flag under the mutex before waking the
+/// condition variable; `park` checks that flag under the same mutex and only
+/// waits when it is clear. A producer that notifies between the check and the
+/// wait therefore cannot be lost: it needs the mutex to set the flag, so it
+/// either runs before the check (and the waiter returns at once) or after the
+/// waiter is queued (and wakes it). Unlike the std parker this shares nothing
+/// with std's per-thread `Parker`, which std's `Once`/`OnceLock` machinery
+/// also parks on during thread and scheduler startup.
+#[cfg(target_os = "macos")]
+pub(crate) struct CondvarParker {
+    notified: Mutex<bool>,
+    cond: Condvar,
+}
+
+#[cfg(target_os = "macos")]
+impl CondvarParker {
+    pub(crate) fn new() -> Self {
+        CondvarParker {
+            notified: Mutex::new(false),
+            cond: Condvar::new(),
+        }
+    }
+
+    /// Kept for API parity with the std and Windows parkers. The flag-based
+    /// protocol needs no registration step: a notification is never missed.
+    pub(crate) fn arm(&self, _thread: &Arc<thread::Thread>) {}
+
+    pub(crate) fn notify(&self) {
+        let mut notified = self.notified.lock();
+        *notified = true;
+        self.cond.notify_one();
+    }
+
+    pub(crate) fn park(&self, timeout: Option<Duration>) {
+        let start = Instant::now();
+        let mut notified = self.notified.lock();
+        while !*notified {
+            match timeout {
+                None => self.cond.wait(&mut notified),
+                Some(t) => {
+                    let elapsed = start.elapsed();
+                    if elapsed >= t {
+                        break;
+                    }
+                    // Recompute the remaining time on every iteration so
+                    // spurious wakeups cannot extend the total wait.
+                    self.cond.wait_for(&mut notified, t - elapsed);
+                }
+            }
+        }
+        // the notification (or the timeout) ends this wait
+        *notified = false;
+    }
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub(crate) use StdParker as Parker;
+
+#[cfg(target_os = "macos")]
+pub(crate) use CondvarParker as Parker;
 
 #[cfg(windows)]
 pub(crate) use self::windows::Parker;
