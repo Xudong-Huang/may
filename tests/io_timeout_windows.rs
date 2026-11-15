@@ -233,9 +233,7 @@ fn timed_read_returns_data_before_the_timeout() {
     let _guard = serial();
     may::config().set_workers(WORKERS);
 
-    let Pair {
-        stream, peer, ..
-    } = Pair::new();
+    let Pair { stream, peer, .. } = Pair::new();
     let writer = std::thread::spawn(move || {
         let mut peer = peer;
         std::thread::sleep(Duration::from_millis(20));
@@ -247,7 +245,9 @@ fn timed_read_returns_data_before_the_timeout() {
     let (tx, rx) = mpsc::channel();
     spawn_on(0, move || {
         let mut stream = stream;
-        stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
         let mut buf = [0u8; 1];
         let _ = tx.send(stream.read(&mut buf).map(|n| (n, buf[0])));
     });
