@@ -252,12 +252,24 @@ impl Selector {
             .unwrap();
     }
 
+    /// The shard that owns the socket/handle `raw`.
+    ///
+    /// Socket registration and io timer registration must agree on this
+    /// mapping: the socket's completions are dequeued by this shard's worker,
+    /// and its io timers are driven by the same worker's `select`. Socket
+    /// handles are 4-byte aligned, so drop the tag bits before spreading them.
+    #[inline]
+    fn shard_id(&self, raw: usize) -> usize {
+        (raw >> 2) % self.vec.len()
+    }
+
     // register file handle to the iocp
     #[inline]
     pub fn add_socket<T: AsRawSocket + ?Sized>(&self, t: &T) -> io::Result<()> {
         // the token para is not used, just pass the handle
-        let fd = (t.as_raw_socket() as usize) >> 2;
-        let id = fd % self.vec.len();
+        let raw = t.as_raw_socket() as usize;
+        let fd = raw >> 2;
+        let id = self.shard_id(raw);
         self.vec[id].port.add_socket(fd, t)
     }
 
@@ -265,13 +277,15 @@ impl Selector {
     #[inline]
     #[cfg(feature = "io_timeout")]
     pub fn add_io_timer(&self, io: &Arc<EventData>, timeout: Duration) {
-        let id = (io.handle as usize % self.vec.len()) >> 2;
+        let id = self.shard_id(io.handle as usize);
         // info!("io timeout = {:?}", dur);
         // the entry keeps its own Arc, so it can run after the request is gone
         let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.clone());
         if b_new {
-            // wakeup the event loop thread to recall the next wait timeout
-            self.wakeup(0);
+            // wake up the event loop thread of this shard so that it recalls
+            // the next wait timeout; another shard's worker cannot make this
+            // one recompute its timeout
+            self.wakeup(id);
         }
         io.timer.store(h);
     }
@@ -317,4 +331,88 @@ pub fn timeout_handler(event_data: Arc<EventData>) {
     // the request may not be submitted yet (the subscriber retries after the
     // submission) or may have completed already: a missing request is fine
     unsafe { cancel_io_on_timeout(event_data.handle, event_data.get_overlapped()) };
+}
+
+#[cfg(all(test, feature = "io_timeout"))]
+mod tests {
+    use super::*;
+    use crate::timeout_list::now;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+    use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+
+    const SHARDS: usize = 8;
+
+    /// Arm a zero-duration timer for `raw` and return the selector, the io
+    /// data, and the shard `add_socket` maps the handle to.
+    fn arm(raw: usize) -> (Selector, Arc<EventData>, usize) {
+        let selector = Selector::new(SHARDS).unwrap();
+        let data = Arc::new(EventData::new(raw as HANDLE));
+        selector.add_io_timer(&data, Duration::ZERO);
+        (selector, data, (raw >> 2) % SHARDS)
+    }
+
+    /// The shards whose timer list fired the armed timer.
+    fn fired_shards(selector: &Selector) -> Vec<usize> {
+        let mut fired = Vec::new();
+        for id in 0..SHARDS {
+            let hit = AtomicBool::new(false);
+            let _ = selector.vec[id]
+                .timer_list
+                .schedule_timer(now(), &|_data: Arc<EventData>| {
+                    hit.store(true, Ordering::SeqCst);
+                });
+            if hit.load(Ordering::SeqCst) {
+                fired.push(id);
+            }
+        }
+        fired
+    }
+
+    /// The shards that received the `add_io_timer` wakeup packet.
+    fn woken_shards(selector: &Selector) -> Vec<usize> {
+        let mut woken = Vec::new();
+        for id in 0..SHARDS {
+            let mut events = [CompletionStatus::zero(); 1];
+            match selector.vec[id]
+                .port
+                .get_many(&mut events, Some(Duration::ZERO))
+            {
+                Ok(list) => {
+                    if list.iter().any(|s| s.overlapped().is_null()) {
+                        woken.push(id);
+                    }
+                }
+                Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => {}
+                Err(e) => panic!("get_many failed: {e}"),
+            }
+        }
+        woken
+    }
+
+    /// `add_socket` and `add_io_timer` must file the socket and its timers on
+    /// the same shard, and a newly armed timer must wake that shard. The old
+    /// code used `(handle % shards) >> 2` for the timer and always woke shard
+    /// 0, so a timeout could wait behind a far-away timer of another shard's
+    /// worker.
+    ///
+    /// The handles below cover both ways the old formula disagreed with the
+    /// socket mapping: the same shard as expected (420, 428) and a different
+    /// one (336, 424, 432).
+    #[test]
+    fn io_timer_is_armed_on_the_socket_shard_and_wakes_it() {
+        for raw in [336usize, 420, 424, 428, 432] {
+            let (selector, _data, expected) = arm(raw);
+            assert_eq!(
+                fired_shards(&selector),
+                vec![expected],
+                "raw {raw} armed its timer on the wrong shard"
+            );
+            assert_eq!(
+                woken_shards(&selector),
+                vec![expected],
+                "raw {raw} woke the wrong shard"
+            );
+        }
+    }
 }
