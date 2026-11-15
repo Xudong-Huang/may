@@ -55,6 +55,14 @@ impl TcpStream {
         &mut self.sys
     }
 
+    /// Connect to a remote address.
+    ///
+    /// Address resolution happens before the connect is submitted, in the
+    /// calling context. A hostname therefore blocks the current worker (or OS
+    /// thread) in the resolver, and on a worker that stalls its event loop
+    /// until the lookup finishes. Pre-resolve and pass a `SocketAddr`, or use
+    /// `connect_timeout`, which takes a resolved `&SocketAddr`, when that
+    /// matters.
     pub fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
         let mut c = net_impl::TcpStreamConnect::new(
             addr,

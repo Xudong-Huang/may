@@ -229,13 +229,24 @@ impl Selector {
             crate::coroutine_impl::run_coroutine(co);
         }
 
+        // Deal with the timer list before draining the local queue, matching
+        // the unix selectors. The timeout handler only issues `CancelIoEx`
+        // (the completion resumes the coroutine later), so it cannot enqueue
+        // local work, but overdue timers should still not wait behind the
+        // drain.
+        let _ = single_selector
+            .timer_list
+            .schedule_timer(now(), &timeout_handler);
+
         // Run the local tasks. The drain is budgeted; if it stops with work
         // left, `has_local_tasks` makes the event loop poll again with a zero
         // timeout instead of blocking, so it must stay the last step before
         // returning to `select`.
         scheduler.run_queued_tasks(id);
 
-        // deal with the timer list
+        // Recompute after the drain: this fires a timer that became due while
+        // the local tasks were running, and reports the wait relative to the
+        // current time instead of the start of the drain.
         let next_expire = single_selector
             .timer_list
             .schedule_timer(now(), &timeout_handler);

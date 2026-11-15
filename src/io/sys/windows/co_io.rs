@@ -17,6 +17,10 @@ use crate::yield_now::yield_with_io;
 
 /// Generic wrapper for any type that can be converted to raw `fd/HANDLE`
 /// this type can be used in coroutine context without blocking the thread
+///
+/// On Windows `Read`/`Write` go through `ReadFile`/`WriteFile`, which do not
+/// work on socket handles. Use the [`crate::net`] types for sockets; this
+/// wrapper is for files and pipes.
 #[derive(Debug)]
 pub struct CoIo<T: AsRawHandle> {
     inner: T,

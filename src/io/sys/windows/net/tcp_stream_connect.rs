@@ -35,9 +35,10 @@ impl TcpStreamConnect {
     ) -> io::Result<Self> {
         use socket2::{Domain, Socket, Type};
 
-        // TODO:
-        // resolve addr is a blocking operation!
-        // here we should use a thread to finish the resolve?
+        // Address resolution is blocking. A hostname lookup runs here, in the
+        // calling worker (or thread), before the connect is submitted, so it
+        // can stall that worker's event loop. Pre-resolved `SocketAddr`s (and
+        // `connect_timeout`, which takes one) do not invoke the resolver.
         addr.to_socket_addrs()?
             .next()
             .ok_or_else(|| io::Error::other("no socket addresses resolved"))
