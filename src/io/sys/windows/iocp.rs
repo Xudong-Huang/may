@@ -245,8 +245,8 @@ impl Selector {
     // this will post an os event so that we can wakeup the event loop
     #[inline]
     pub fn wakeup(&self, id: usize) {
-        // this is not correct for multi thread io, which thread will it wakeup?
-        self.vec[id]
+        let selector = unsafe { self.vec.get_unchecked(id) };
+        selector
             .port
             .post(CompletionStatus::new(0, 0, ptr::null_mut()))
             .unwrap();
@@ -464,8 +464,7 @@ mod tests {
             Err(e) => panic!("get_many failed: {e}"),
         };
         assert!(
-            list.iter()
-                .any(|s| s.overlapped() == data.get_overlapped()),
+            list.iter().any(|s| s.overlapped() == data.get_overlapped()),
             "the cancellation completion was not delivered to its shard"
         );
 
