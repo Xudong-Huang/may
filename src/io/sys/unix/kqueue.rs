@@ -2,7 +2,6 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::io::OwnedFd;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-#[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::{io, ptr};
 
@@ -12,7 +11,6 @@ use super::{EventData, IoData};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::sync::WaitCo;
-#[cfg(feature = "io_timeout")]
 use crate::timeout_list::now;
 
 use may_queue::mpsc::Queue;
@@ -123,40 +121,53 @@ impl Selector {
     ) -> io::Result<Option<u64>> {
         assert!(id < self.vec.len());
         #[cfg(feature = "io_timeout")]
-        let timeout_spec = _timeout.map(|to| {
-            let dur = Duration::from_nanos(to);
-            libc::timespec {
-                tv_sec: dur.as_secs() as libc::time_t,
-                tv_nsec: dur.subsec_nanos() as libc::c_long,
-            }
-        });
+        let mut remaining = _timeout;
         #[cfg(not(feature = "io_timeout"))]
         // `next_expire == Some(0)` from the event loop asks for a
         // non-blocking reactor poll; anything else keeps blocking forever
-        let timeout_spec = (_timeout == Some(0)).then_some(libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        });
-        let timeout = timeout_spec
-            .as_ref()
-            .map(|s| s as *const _)
-            .unwrap_or(ptr::null());
-        // debug!("select; timeout={:?}", timeout_spec);
+        let mut remaining = _timeout.filter(|to| *to == 0);
 
         let single_selector = &self.vec[id];
-
-        // Wait for kqueue events for at most timeout_ms milliseconds
         let kqfd = single_selector.as_raw_fd();
-        let n = syscall!(kevent(
-            kqfd,
-            ptr::null(),
-            0,
-            events.as_mut_ptr(),
-            events.len() as libc::c_int,
-            timeout,
-        ))?;
 
-        let n = n as usize;
+        // `kevent` with a timeout can be interrupted by a signal and fail
+        // with `EINTR`. Returning that error would skip the timer scheduling,
+        // the local-queue drain and the `free_ev` cleanup below, delaying io
+        // timeouts and letting the free list grow without bound under
+        // frequent signals. Retry, but only with what is left of the timeout:
+        // the interrupted call already consumed part of it, and restarting
+        // the full wait on every signal could postpone it forever.
+        let start = now();
+        let n = loop {
+            let timeout_spec = remaining.map(|to| {
+                let dur = Duration::from_nanos(to);
+                libc::timespec {
+                    tv_sec: dur.as_secs() as libc::time_t,
+                    tv_nsec: dur.subsec_nanos() as libc::c_long,
+                }
+            });
+            let timeout = timeout_spec
+                .as_ref()
+                .map(|s| s as *const _)
+                .unwrap_or(ptr::null());
+            // debug!("select; timeout={:?}", timeout_spec);
+
+            // Wait for kqueue events for at most timeout_spec
+            match syscall!(kevent(
+                kqfd,
+                ptr::null(),
+                0,
+                events.as_mut_ptr(),
+                events.len() as libc::c_int,
+                timeout,
+            )) {
+                Ok(n) => break n as usize,
+                Err(e) if e.raw_os_error() == Some(libc::EINTR) => {
+                    remaining = remaining.map(|to| to.saturating_sub(now().saturating_sub(start)));
+                }
+                Err(e) => return Err(e),
+            }
+        };
 
         for event in unsafe { events.get_unchecked(..n) } {
             if event.ident == NOTIFY_IDENT && event.filter == libc::EVFILT_USER {

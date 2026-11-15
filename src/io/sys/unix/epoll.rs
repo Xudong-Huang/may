@@ -12,10 +12,10 @@ use super::{timeout_handler, TimerList};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::sync::WaitCo;
-#[cfg(feature = "io_timeout")]
 use crate::timeout_list::now;
 
 use may_queue::mpsc::Queue;
+use nix::errno::Errno;
 use nix::sys::epoll::*;
 use nix::sys::eventfd::*;
 use nix::unistd::{read, write};
@@ -91,22 +91,40 @@ impl Selector {
         // `next_expire == Some(0)` from the event loop asks for a
         // non-blocking reactor poll; anything else keeps blocking forever
         let timeout = _timeout.filter(|to| *to == 0);
-        let timeout_ms = timeout
-            .map(|to| {
-                let ms = to.div_ceil(1_000_000);
-                // Clamp to i32::MAX milliseconds if the timeout exceeds that.
-                // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
-                let ms_clamped = ms.min(i32::MAX as u64) as i32;
-                EpollTimeout::try_from(ms_clamped).unwrap()
-            })
-            .unwrap_or(EpollTimeout::NONE);
-        // info!("select; timeout={:?}", timeout_ms);
-
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
 
-        // Wait for epoll events for at most timeout_ms milliseconds
-        let n = epoll.wait(events, timeout_ms)?;
+        // `epoll_wait` is never restarted after a signal, regardless of
+        // `SA_RESTART`, so it can fail with `EINTR`. Returning that error
+        // would skip the timer scheduling, the local-queue drain and the
+        // `free_ev` cleanup below, delaying io timeouts and letting the free
+        // list grow without bound under frequent signals. Retry instead, but
+        // only with what is left of the timeout: the interrupted call already
+        // consumed part of it, and restarting the full wait on every signal
+        // could postpone it forever.
+        let start = now();
+        let mut remaining = timeout;
+        let n = loop {
+            let timeout_ms = remaining
+                .map(|to| {
+                    let ms = to.div_ceil(1_000_000);
+                    // Clamp to i32::MAX milliseconds if the timeout exceeds that.
+                    // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
+                    let ms_clamped = ms.min(i32::MAX as u64) as i32;
+                    EpollTimeout::try_from(ms_clamped).unwrap()
+                })
+                .unwrap_or(EpollTimeout::NONE);
+            // info!("select; timeout={:?}", timeout_ms);
+
+            // Wait for epoll events for at most timeout_ms milliseconds
+            match epoll.wait(events, timeout_ms) {
+                Ok(n) => break n,
+                Err(Errno::EINTR) => {
+                    remaining = remaining.map(|to| to.saturating_sub(now().saturating_sub(start)));
+                }
+                Err(e) => return Err(from_nix_error(e)),
+            }
+        };
         // println!("epoll_wait = {}", n);
 
         // collect coroutines
