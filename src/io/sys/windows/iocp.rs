@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 use std::os::windows::io::AsRawSocket;
 #[cfg(feature = "io_timeout")]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, ptr};
@@ -120,6 +120,17 @@ struct SingleSelector {
     /// The actual completion port that's used to manage all I/O
     port: CompletionPort,
     timer_list: TimerList,
+    /// Absolute deadline (ns) of the wait the owning event loop is about to
+    /// enter, or `u64::MAX` while it is awake. A timer producer compares its
+    /// own deadline against this to skip the wakeup when the current wait
+    /// already ends no later than the timer: the selector's own wakeup then
+    /// recomputes the timer list and finds the new head anyway.
+    ///
+    /// Only the owning event loop writes it, and only immediately around its
+    /// wait (published before the wait, reset to `u64::MAX` right after it),
+    /// so a producer can never observe the deadline of some earlier wait.
+    #[cfg(feature = "io_timeout")]
+    sleep_until: AtomicU64,
 }
 
 impl SingleSelector {
@@ -128,7 +139,20 @@ impl SingleSelector {
         CompletionPort::new(1).map(|cp| SingleSelector {
             port: cp,
             timer_list: TimerList::new(),
+            #[cfg(feature = "io_timeout")]
+            sleep_until: AtomicU64::new(u64::MAX),
         })
+    }
+
+    /// Wake the owning selector for a timer that became the head of its
+    /// interval list at `deadline` (absolute ns), unless its current wait
+    /// already ends at that deadline or earlier.
+    #[cfg(feature = "io_timeout")]
+    #[inline]
+    fn wake_timer(&self, deadline: u64, wake: impl FnOnce()) {
+        if deadline < self.sleep_until.load(Ordering::Acquire) {
+            wake();
+        }
     }
 }
 
@@ -164,6 +188,16 @@ impl Selector {
         // Without I/O timers, only a zero timeout is needed to poll the
         // reactor between budgeted local-task drains.
         let timeout = timeout.filter(|to| *to == 0);
+        // Publish the absolute deadline of the wait we are about to enter,
+        // just before the syscall, so that a concurrent timer producer never
+        // compares against the deadline of an earlier wait.
+        #[cfg(feature = "io_timeout")]
+        {
+            let deadline = timeout.map(|to| now().saturating_add(to));
+            self.vec[id]
+                .sleep_until
+                .store(deadline.unwrap_or(u64::MAX), Ordering::Release);
+        }
         let timeout = timeout.map(Duration::from_nanos);
         // info!("select; timeout={:?}", timeout);
         let single_selector = &self.vec[id];
@@ -171,8 +205,24 @@ impl Selector {
         let n = match single_selector.port.get_many(events, timeout) {
             Ok(statuses) => statuses.len(),
             Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => 0,
-            Err(e) => return Err(e),
+            Err(e) => {
+                // the selector is awake again; do not leave the stale
+                // deadline of this aborted wait behind
+                #[cfg(feature = "io_timeout")]
+                single_selector
+                    .sleep_until
+                    .store(u64::MAX, Ordering::Release);
+                return Err(e);
+            }
         };
+
+        // The wait is over: the selector is awake and the published deadline
+        // is stale, so new head timers must wake it instead of comparing
+        // against it.
+        #[cfg(feature = "io_timeout")]
+        single_selector
+            .sleep_until
+            .store(u64::MAX, Ordering::Release);
 
         for status in unsafe { events.get_unchecked(..n) } {
             // need to check the status for each io
@@ -291,12 +341,14 @@ impl Selector {
         let id = self.shard_id(io.handle as usize);
         // info!("io timeout = {:?}", dur);
         // the entry keeps its own Arc, so it can run after the request is gone
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, io.clone());
+        let selector = &self.vec[id];
+        let (h, b_new, deadline) = selector.timer_list.add_timer(timeout, io.clone());
         if b_new {
             // wake up the event loop thread of this shard so that it recalls
             // the next wait timeout; another shard's worker cannot make this
-            // one recompute its timeout
-            self.wakeup(id);
+            // one recompute its timeout. Skip it when that wait already ends
+            // before the timer is due.
+            selector.wake_timer(deadline, || self.wakeup(id));
         }
         io.timer.store(h);
     }

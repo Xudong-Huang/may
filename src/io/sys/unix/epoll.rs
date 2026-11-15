@@ -203,10 +203,12 @@ impl Selector {
     pub fn add_io_timer(&self, io: &EventData, timeout: Duration, wait: WaitCo) {
         let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].state.timer_list.add_timer(timeout, wait);
+        let state = &self.vec[id].state;
+        let (h, b_new, deadline) = state.timer_list.add_timer(timeout, wait);
         if b_new {
-            // wake up the event loop thread to recall the next wait timeout
-            self.wakeup(id);
+            // wake up the event loop thread to recall the next wait timeout,
+            // unless its current wait already ends before this timer is due
+            state.wake_timer(deadline, || self.wakeup(id));
         }
         // The wait is already published, so it may be resumed while it is
         // being armed (a zero-duration timer or an io event). The handle is
@@ -254,5 +256,59 @@ mod tests {
         selector.vec[0].state.drain_free_ev();
         assert!(selector.vec[0].state.free_ev.is_empty());
         assert!(!selector.vec[0].state.free_ev_armed.load(Ordering::Acquire));
+    }
+
+    /// A timer that becomes the head of its interval list only needs to wake
+    /// the selector when it is due before the selector's current wait ends;
+    /// otherwise that wait ends first and the selector recomputes the timer
+    /// list then. While the selector is awake every head timer still wakes
+    /// it, because there is no deadline the timer list has been compared to.
+    #[cfg(feature = "io_timeout")]
+    #[test]
+    fn head_timer_wakes_only_when_earlier_than_the_wait() {
+        use crate::sync::AtomicOption;
+        use crate::timeout_list::now;
+
+        let selector = Selector::new(1).unwrap();
+        let socket = std::net::UdpSocket::bind(("127.0.0.1", 0)).unwrap();
+        let io_data = IoData::new(&socket);
+        let state = &selector.vec[0].state;
+        let mut events = [EpollEvent::new(EpollFlags::EPOLLIN, 0); 4];
+        let wait = || std::sync::Arc::new(AtomicOption::none());
+
+        // pretend the event loop is waiting until 50ms from now
+        state
+            .sleep_until
+            .store(now() + 50_000_000, Ordering::Release);
+
+        // due after the wait ends: the wakeup syscall would be redundant
+        selector.add_io_timer(&io_data, Duration::from_millis(100), wait());
+        let n = selector.vec[0]
+            .epoll
+            .wait(&mut events, EpollTimeout::ZERO)
+            .unwrap();
+        assert_eq!(n, 0, "a timer due after the selector's wait woke it");
+
+        // due before the wait ends: the selector has to be woken
+        selector.add_io_timer(&io_data, Duration::from_millis(10), wait());
+        let n = selector.vec[0]
+            .epoll
+            .wait(&mut events, EpollTimeout::ZERO)
+            .unwrap();
+        assert_eq!(
+            n, 1,
+            "a timer due before the selector's wait did not wake it"
+        );
+        // clear the eventfd, its counter would wake the selector again below
+        selector.vec[0].evfd.read().unwrap();
+
+        // awake: there is no published deadline, every new head timer wakes it
+        state.sleep_until.store(u64::MAX, Ordering::Release);
+        selector.add_io_timer(&io_data, Duration::from_millis(200), wait());
+        let n = selector.vec[0]
+            .epoll
+            .wait(&mut events, EpollTimeout::ZERO)
+            .unwrap();
+        assert_eq!(n, 1, "an awake selector was not woken for a new head timer");
     }
 }

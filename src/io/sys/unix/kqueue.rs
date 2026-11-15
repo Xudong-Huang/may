@@ -286,10 +286,12 @@ impl Selector {
     pub fn add_io_timer(&self, io: &EventData, timeout: Duration, wait: WaitCo) {
         let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].state.timer_list.add_timer(timeout, wait);
+        let state = &self.vec[id].state;
+        let (h, b_new, deadline) = state.timer_list.add_timer(timeout, wait);
         if b_new {
-            // wakeup the event loop thread to recall the next wait timeout
-            self.wakeup(id);
+            // wakeup the event loop thread to recall the next wait timeout,
+            // unless its current wait already ends before this timer is due
+            state.wake_timer(deadline, || self.wakeup(id));
         }
         // The wait is already published, so it may be resumed while it is
         // being armed (a zero-duration timer or an io event). The handle is

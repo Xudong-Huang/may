@@ -7,6 +7,8 @@
 //! here, so the two selectors cannot drift apart.
 
 use std::io;
+#[cfg(feature = "io_timeout")]
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{fence, AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -40,6 +42,17 @@ pub(super) struct ShardState {
     /// deregistrations costs at most one syscall; the owner clears it right
     /// before draining the queue.
     pub(super) free_ev_armed: AtomicBool,
+    /// Absolute deadline (ns) of the wait the owning event loop is about to
+    /// enter, or `u64::MAX` while it is awake. A timer producer compares its
+    /// own deadline against this to skip the wakeup syscall: if the current
+    /// wait already ends no later than the timer, the selector's own wakeup
+    /// recomputes the timer list then and finds the new head anyway.
+    ///
+    /// Only the owning event loop writes it, and only immediately around its
+    /// wait (published before the wait, reset to `u64::MAX` right after it),
+    /// so a producer can never observe the deadline of some earlier wait.
+    #[cfg(feature = "io_timeout")]
+    pub(super) sleep_until: AtomicU64,
 }
 
 impl ShardState {
@@ -49,6 +62,21 @@ impl ShardState {
             timer_list: TimerList::new(),
             free_ev: Queue::new(),
             free_ev_armed: AtomicBool::new(false),
+            #[cfg(feature = "io_timeout")]
+            sleep_until: AtomicU64::new(u64::MAX),
+        }
+    }
+
+    /// Wake the owning selector for a timer that became the head of its
+    /// interval list at `deadline` (absolute ns), unless its current wait
+    /// already ends at that deadline or earlier. In the latter case the
+    /// selector wakes up on its own no later than the timer and recomputes
+    /// the timer list then, so the extra wakeup would be redundant.
+    #[cfg(feature = "io_timeout")]
+    #[inline]
+    pub(super) fn wake_timer(&self, deadline: u64, wake: impl FnOnce()) {
+        if deadline < self.sleep_until.load(Ordering::Acquire) {
+            wake();
         }
     }
 
@@ -99,6 +127,17 @@ impl ShardState {
         // non-blocking reactor poll; anything else keeps blocking forever
         let mut remaining = requested_timeout.filter(|to| *to == 0);
 
+        #[cfg(feature = "io_timeout")]
+        {
+            // Publish the absolute deadline of the wait we are about to enter,
+            // just before the syscall, so that a concurrent timer producer
+            // never compares against the deadline of an earlier wait.
+            // `u64::MAX` means no finite deadline, which makes every timer
+            // producer wake us.
+            let deadline = remaining.map(|to| now().saturating_add(to));
+            self.sleep_until
+                .store(deadline.unwrap_or(u64::MAX), Ordering::Release);
+        }
         // The wait syscalls are never restarted after a signal, regardless of
         // `SA_RESTART`, so they can fail with `EINTR`. Returning that error
         // would skip the timer scheduling, the local-queue drain and the
@@ -114,9 +153,21 @@ impl ShardState {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => {
                     remaining = remaining.map(|to| to.saturating_sub(now().saturating_sub(start)));
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    // the selector is awake again; do not leave the stale
+                    // deadline of this aborted wait behind
+                    #[cfg(feature = "io_timeout")]
+                    self.sleep_until.store(u64::MAX, Ordering::Release);
+                    return Err(e);
+                }
             }
         };
+
+        // The wait is over: the selector is awake and the published deadline
+        // is stale, so new head timers must wake it instead of comparing
+        // against it.
+        #[cfg(feature = "io_timeout")]
+        self.sleep_until.store(u64::MAX, Ordering::Release);
 
         // collect coroutines
         for event in &events[..n] {

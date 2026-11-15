@@ -140,8 +140,10 @@ impl<T> TimeOutList<T> {
 
     // add a timeout event to the list
     // this can be called in any thread
-    // return true if we need to recall next expire
-    pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool) {
+    // return the handle, whether the new node became the head of its interval
+    // list (only then may the selector's next wake need updating), and the
+    // absolute expiration time of the node
+    pub fn add_timer(&self, dur: Duration, data: T) -> (TimeoutHandle<T>, bool, u64) {
         let (interval, time) = timeout_deadline(now(), dur);
         //println!("add timer = {:?}", time);
 
@@ -164,7 +166,7 @@ impl<T> TimeOutList<T> {
                     list: interval_list,
                 });
             }
-            return (handle, is_head);
+            return (handle, is_head, time);
         }
 
         // if the interval list is not there, get the write locker to install the list
@@ -181,7 +183,7 @@ impl<T> TimeOutList<T> {
                     list: interval_list.clone(),
                 });
             }
-            return (handle, is_head);
+            return (handle, is_head, time);
         }
 
         let interval_list = Arc::new(TimeoutQueueWrapper::<T>::new());
@@ -197,7 +199,7 @@ impl<T> TimeOutList<T> {
             list: interval_list,
         });
 
-        (ret, true)
+        (ret, true, time)
     }
 
     // schedule in the timer thread
@@ -282,7 +284,7 @@ impl<T> TimerThread<T> {
     }
 
     pub fn add_timer(&self, dur: Duration, data: T) -> TimeoutHandle<T> {
-        let (h, is_recal) = self.timer_list.add_timer(dur, data);
+        let (h, is_recal, _) = self.timer_list.add_timer(dur, data);
         // wake up the timer thread if it's a new queue
         if is_recal {
             self.parker.notify();
