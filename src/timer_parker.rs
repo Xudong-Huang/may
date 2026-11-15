@@ -425,7 +425,7 @@ mod windows {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::time::{Instant, Duration};
+    use std::time::{Duration, Instant};
 
     /// A notification from another thread must wake an indefinite park.
     #[test]
