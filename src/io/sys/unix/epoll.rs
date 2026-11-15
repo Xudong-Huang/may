@@ -12,7 +12,6 @@ use crate::sync::WaitCo;
 
 use nix::sys::epoll::*;
 use nix::sys::eventfd::*;
-use nix::unistd::{read, write};
 use smallvec::SmallVec;
 
 pub type SysEvent = EpollEvent;
@@ -77,7 +76,7 @@ impl Selector {
         assert!(id < self.vec.len());
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
-        let evfd = single_selector.evfd.as_fd();
+        let evfd = &single_selector.evfd;
 
         single_selector.state.select(
             scheduler,
@@ -102,9 +101,8 @@ impl Selector {
             |event| {
                 if event.data() == 0 {
                     // this is just a wakeup event, ignore it
-                    let mut buf = [0u8; 8];
                     // clear the eventfd, ignore the result
-                    read(evfd, &mut buf).ok();
+                    evfd.read().ok();
                     // info!("got wakeup event in select, id={}", id);
                     Ready::Wakeup
                 } else {
@@ -122,8 +120,7 @@ impl Selector {
     // this will post an os event so that we can wake up the event loop
     #[inline]
     pub fn wakeup(&self, id: usize) {
-        let buf = 1u64.to_le_bytes();
-        let ret = write(&self.vec[id].evfd, &buf);
+        let ret = self.vec[id].evfd.write(1);
         trace!("wakeup id={id:?}, ret={ret:?}");
     }
 
