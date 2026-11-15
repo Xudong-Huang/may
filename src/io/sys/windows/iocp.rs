@@ -331,14 +331,22 @@ unsafe fn cancel_io_on_timeout(handle: HANDLE, overlapped: *mut OVERLAPPED) {
 // when timeout happened we need to cancel the io operation
 // this will trigger an event on the IOCP and processed in the selector
 pub fn timeout_handler(event_data: Arc<EventData>) {
-    // Mark the request as timed out before attempting the cancel. If it is not
-    // submitted yet `CancelIoEx` finds nothing; the subscriber completes the
-    // cancellation right after submitting, see `cancel_if_timed_out`.
     #[cfg(feature = "io_timeout")]
-    event_data.timed_out.store(true, Ordering::Release);
-    // remove the event timer
-    #[cfg(feature = "io_timeout")]
-    event_data.take_timer();
+    {
+        // Mark the request as timed out before attempting the cancel. If it is
+        // not submitted yet `CancelIoEx` finds nothing; the subscriber
+        // completes the cancellation right after submitting, see
+        // `cancel_if_timed_out`.
+        event_data.timed_out.store(true, Ordering::Release);
+        // The subscriber re-reads this flag after its submission syscall. In
+        // the harmful interleaving the cancel below finds no pending request,
+        // so it must have run before the submission; fence the store out of
+        // the store buffer first, otherwise the subscriber's later load could
+        // miss it and leave the request pending forever.
+        std::sync::atomic::fence(Ordering::SeqCst);
+        // remove the event timer
+        event_data.take_timer();
+    }
     // the request may not be submitted yet (the subscriber retries after the
     // submission) or may have completed already: a missing request is fine
     unsafe { cancel_io_on_timeout(event_data.handle, event_data.get_overlapped()) };
