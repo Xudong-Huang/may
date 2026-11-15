@@ -13,6 +13,9 @@ mod select;
 #[path = "kqueue.rs"]
 mod select;
 
+// backend-neutral dispatch loop shared by the selectors above
+mod select_loop;
+
 #[cfg(feature = "io_cancel")]
 pub mod cancel;
 pub mod co_io;

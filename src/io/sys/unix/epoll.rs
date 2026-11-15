@@ -1,21 +1,15 @@
 use std::io;
 use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 
+use super::select_loop::{Ready, ShardState};
 use super::{from_nix_error, EventData, IoData};
-#[cfg(feature = "io_timeout")]
-use super::{timeout_handler, TimerList};
 use crate::scheduler::Scheduler;
 #[cfg(feature = "io_timeout")]
 use crate::sync::WaitCo;
-use crate::timeout_list::now;
 
-use may_queue::mpsc::Queue;
-use nix::errno::Errno;
 use nix::sys::epoll::*;
 use nix::sys::eventfd::*;
 use nix::unistd::{read, write};
@@ -26,14 +20,7 @@ pub type SysEvent = EpollEvent;
 struct SingleSelector {
     epoll: Epoll,
     evfd: EventFd,
-    #[cfg(feature = "io_timeout")]
-    timer_list: TimerList,
-    free_ev: Queue<Arc<EventData>>,
-    /// Set while a `free_ev` wakeup is in flight. Producers wake the owning
-    /// selector only off the `false -> true` transition, so a burst of
-    /// deregistrations costs at most one syscall; the owner clears it right
-    /// before draining the queue.
-    free_ev_armed: AtomicBool,
+    state: ShardState,
 }
 
 impl SingleSelector {
@@ -50,10 +37,7 @@ impl SingleSelector {
         Ok(SingleSelector {
             epoll,
             evfd,
-            free_ev: Queue::new(),
-            free_ev_armed: AtomicBool::new(false),
-            #[cfg(feature = "io_timeout")]
-            timer_list: TimerList::new(),
+            state: ShardState::new(),
         })
     }
 }
@@ -88,134 +72,51 @@ impl Selector {
         scheduler: &Scheduler,
         id: usize,
         events: &mut [SysEvent],
-        _timeout: Option<u64>,
+        timeout: Option<u64>,
     ) -> io::Result<Option<u64>> {
         assert!(id < self.vec.len());
-        #[cfg(feature = "io_timeout")]
-        let timeout = _timeout;
-        #[cfg(not(feature = "io_timeout"))]
-        // `next_expire == Some(0)` from the event loop asks for a
-        // non-blocking reactor poll; anything else keeps blocking forever
-        let timeout = _timeout.filter(|to| *to == 0);
         let single_selector = &self.vec[id];
         let epoll = &single_selector.epoll;
+        let evfd = single_selector.evfd.as_fd();
 
-        // `epoll_wait` is never restarted after a signal, regardless of
-        // `SA_RESTART`, so it can fail with `EINTR`. Returning that error
-        // would skip the timer scheduling, the local-queue drain and the
-        // `free_ev` cleanup below, delaying io timeouts and letting the free
-        // list grow without bound under frequent signals. Retry instead, but
-        // only with what is left of the timeout: the interrupted call already
-        // consumed part of it, and restarting the full wait on every signal
-        // could postpone it forever.
-        let start = now();
-        let mut remaining = timeout;
-        let n = loop {
-            let timeout_ms = remaining
-                .map(|to| {
-                    let ms = to.div_ceil(1_000_000);
-                    // Clamp to i32::MAX milliseconds if the timeout exceeds that.
-                    // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
-                    let ms_clamped = ms.min(i32::MAX as u64) as i32;
-                    EpollTimeout::try_from(ms_clamped).unwrap()
-                })
-                .unwrap_or(EpollTimeout::NONE);
-            // info!("select; timeout={:?}", timeout_ms);
+        single_selector.state.select(
+            scheduler,
+            id,
+            events,
+            timeout,
+            |remaining, events| {
+                let timeout = remaining
+                    .map(|to| {
+                        let ms = to.div_ceil(1_000_000);
+                        // Clamp to i32::MAX milliseconds if the timeout exceeds that.
+                        // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
+                        let ms_clamped = ms.min(i32::MAX as u64) as i32;
+                        EpollTimeout::try_from(ms_clamped).unwrap()
+                    })
+                    .unwrap_or(EpollTimeout::NONE);
+                // info!("select; timeout={:?}", timeout_ms);
 
-            // Wait for epoll events for at most timeout_ms milliseconds
-            match epoll.wait(events, timeout_ms) {
-                Ok(n) => break n,
-                Err(Errno::EINTR) => {
-                    remaining = remaining.map(|to| to.saturating_sub(now().saturating_sub(start)));
+                // Wait for epoll events for at most timeout_ms milliseconds
+                epoll.wait(events, timeout).map_err(from_nix_error)
+            },
+            |event| {
+                if event.data() == 0 {
+                    // this is just a wakeup event, ignore it
+                    let mut buf = [0u8; 8];
+                    // clear the eventfd, ignore the result
+                    read(evfd, &mut buf).ok();
+                    // info!("got wakeup event in select, id={}", id);
+                    Ready::Wakeup
+                } else {
+                    // the event data is shared through `Arc`, so only a shared
+                    // reference may be created here; everything touched on it is
+                    // interior-mutable (atomics / `AtomicOption`)
+                    let data = unsafe { &*(event.data() as *const EventData) };
+                    // info!("select got event, data={:p}", data);
+                    Ready::Io(data, event.events().bits() as usize)
                 }
-                Err(e) => return Err(from_nix_error(e)),
-            }
-        };
-        // println!("epoll_wait = {}", n);
-
-        // collect coroutines
-        for event in &events[..n] {
-            if event.data() == 0 {
-                // this is just a wakeup event, ignore it
-                let mut buf = [0u8; 8];
-                // clear the eventfd, ignore the result
-                read(single_selector.evfd.as_fd(), &mut buf).ok();
-                // info!("got wakeup event in select, id={}", id);
-                scheduler.collect_global(id);
-                continue;
-            }
-            // the event data is shared through `Arc`, so only a shared
-            // reference may be created here; everything touched on it is
-            // interior-mutable (atomics / `AtomicOption`)
-            let data = unsafe { &*(event.data() as *const EventData) };
-            let events = event.events().bits() as usize;
-            // info!("select got event, data={:p}, events={}", data, events);
-            data.io_flag.fetch_or(events, Ordering::Release);
-            // the reactor half of the handshake whose other half is the fence
-            // in `IoData::publish_co`; without it the waiter's flag load and
-            // this take can both miss, and the edge event is already consumed
-            std::sync::atomic::fence(Ordering::SeqCst);
-
-            // first check the atomic wait, this may be grabbed by the worker first
-            let wait = match data.wait.take() {
-                Some(wait) => wait,
-                None => continue,
-            };
-            let co = match wait.take() {
-                Some(co) => co,
-                None => continue, // a timer or a cancellation took it
-            };
-
-            // it's safe to remove the timer since we are running the timer_list in the same thread
-            #[cfg(feature = "io_timeout")]
-            data.take_timer();
-
-            #[cfg(feature = "work_steal")]
-            scheduler.schedule_with_id(co, id);
-            #[cfg(not(feature = "work_steal"))]
-            crate::coroutine_impl::run_coroutine(co);
-        }
-
-        // Deal with the timer list before draining the local queue: the
-        // timeout handler resumes its coroutine inline on this worker, and
-        // that coroutine can schedule more work locally (e.g. by yielding),
-        // which the drain below then picks up. The expiry returned here is
-        // discarded; it is recomputed after the drain, see below.
-        #[cfg(feature = "io_timeout")]
-        let _ = single_selector
-            .timer_list
-            .schedule_timer(now(), &timeout_handler);
-
-        // run all the local tasks
-        scheduler.run_queued_tasks(id);
-
-        // Recompute after the drain: the drain is budgeted by task count, not
-        // by time, so a relative expiry sampled before it can be arbitrarily
-        // stale and would make the next wait outlast the timer deadline by the
-        // whole drain duration. Sampling now also fires any timer that became
-        // due while the local tasks were running. A coroutine resumed by one
-        // of those timers runs inline and may enqueue local work after the
-        // drain; `has_local_tasks` then makes the event loop poll with a zero
-        // timeout, so that work still runs on the next round instead of
-        // blocking.
-        #[cfg(feature = "io_timeout")]
-        let next_expire = {
-            let start = now();
-            let next = single_selector
-                .timer_list
-                .schedule_timer(start, &timeout_handler);
-            // The timeout handler runs coroutine code inline, so rebase the
-            // remaining wait to the current time, not to the start of this
-            // call, or it would outlast the deadline by the handler's run
-            // time too.
-            next.map(|wait| wait.saturating_sub(now().saturating_sub(start)))
-        };
-        #[cfg(not(feature = "io_timeout"))]
-        let next_expire = None;
-
-        // free the unused event_data
-        self.free_unused_event_data(id);
-        Ok(next_expire)
+            },
+        )
     }
 
     // this will post an os event so that we can wake up the event loop
@@ -294,35 +195,9 @@ impl Selector {
         info!("del fd from epoll select, fd={fd:?}");
         epoll.delete(unsafe { BorrowedFd::borrow_raw(fd) }).ok();
 
-        // after EpollCtlDel push the unused event data
-        single_selector.free_ev.push((*io_data).clone());
-        // The queue is drained only by the owning event loop, at the end of
-        // its `select`, and a deregistration raises no epoll event. An idle
-        // selector is blocked in `epoll_wait` (forever when the `io_timeout`
-        // poll is off), so without this wakeup every closed fd's
-        // `Arc<EventData>` would be retained until some unrelated event
-        // happened to arrive. Wake the owner, coalescing per shard: only the
-        // first push of a batch pays for the syscall.
-        if !single_selector.free_ev_armed.swap(true, Ordering::AcqRel) {
-            self.wakeup(id);
-        }
-    }
-
-    // we can't free the event data directly in the worker thread
-    // must free them before the next epoll_wait
-    #[inline]
-    fn free_unused_event_data(&self, id: usize) {
-        let single_selector = &self.vec[id];
-        let free_ev = &single_selector.free_ev;
-        // Disarm with an RMW before draining, not a store. An arm ordered
-        // before this swap is read by it (the arm is a release operation),
-        // which makes the push preceding the arm visible to the drain below.
-        // An arm ordered after it observes `false` and wakes the selector,
-        // covering any push this drain misses. Clearing after the drain could
-        // instead swallow the wakeup for a push that races with it and leave
-        // the entry stranded.
-        single_selector.free_ev_armed.swap(false, Ordering::AcqRel);
-        while !free_ev.bulk_pop().is_empty() {}
+        // hand the event data to the owning event loop for release, waking it
+        // off the batch's first push, see `ShardState::discard`
+        single_selector.state.discard(io_data, || self.wakeup(id));
     }
 
     // register the io request to the timeout list
@@ -331,7 +206,7 @@ impl Selector {
     pub fn add_io_timer(&self, io: &EventData, timeout: Duration, wait: WaitCo) {
         let id = self.shard_id(io.fd);
         // info!("io timeout = {:?}", dur);
-        let (h, b_new) = self.vec[id].timer_list.add_timer(timeout, wait);
+        let (h, b_new) = self.vec[id].state.timer_list.add_timer(timeout, wait);
         if b_new {
             // wake up the event loop thread to recall the next wait timeout
             self.wakeup(id);
@@ -349,6 +224,7 @@ impl Selector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     /// A deregistration from another thread must wake the selector that owns
     /// the fd's shard. `free_ev` is drained only by that thread, at the end of
@@ -377,9 +253,9 @@ mod tests {
         assert_eq!(n, 1, "del_fd did not wake the owning selector");
         assert_eq!(events[0].data(), 0, "unexpected non-wakeup event");
 
-        assert_eq!(selector.vec[0].free_ev.len(), 1);
-        selector.free_unused_event_data(0);
-        assert!(selector.vec[0].free_ev.is_empty());
-        assert!(!selector.vec[0].free_ev_armed.load(Ordering::Acquire));
+        assert_eq!(selector.vec[0].state.free_ev.len(), 1);
+        selector.vec[0].state.drain_free_ev();
+        assert!(selector.vec[0].state.free_ev.is_empty());
+        assert!(!selector.vec[0].state.free_ev_armed.load(Ordering::Acquire));
     }
 }
