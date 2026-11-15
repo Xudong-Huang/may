@@ -242,6 +242,68 @@ fn cancel_read_racing_completion() {
     }
 }
 
+/// Cancel a coroutine blocked in `write()` after the peer stops draining.
+///
+/// The send buffer fills up and the write suspends. Without a cancel
+/// registration for the write wait, nothing can wake the coroutine until the
+/// peer reads again, so the bounded join below fails.
+#[cfg(feature = "io_cancel")]
+#[test]
+fn cancel_write() {
+    use std::time::Instant;
+
+    for _ in 0..3 {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        // This peer never reads, so the may side's send buffer fills up.
+        let peer = std::net::TcpStream::connect(addr).unwrap();
+        let (mut stream, _) = listener.accept().unwrap();
+
+        let progress = Arc::new(AtomicUsize::new(0));
+        let writer_progress = progress.clone();
+        let j = go!(move || {
+            let buf = [0u8; 4096];
+            loop {
+                if stream.write(&buf).is_err() {
+                    return;
+                }
+                writer_progress.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        // Wait for the writer to start, then for the loop to stop advancing:
+        // once the send buffer is full the coroutine is suspended in write().
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while progress.load(Ordering::Relaxed) == 0 {
+            assert!(Instant::now() < deadline, "the writer did not start");
+            thread::sleep(Duration::from_millis(1));
+        }
+        let mut last = progress.load(Ordering::Relaxed);
+        let mut stalled = Instant::now();
+        while stalled.elapsed() < Duration::from_millis(100) {
+            thread::sleep(Duration::from_millis(2));
+            let current = progress.load(Ordering::Relaxed);
+            if current != last {
+                last = current;
+                stalled = Instant::now();
+            }
+        }
+
+        let co = j.coroutine().clone();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let joiner = thread::spawn(move || {
+            let _ = done_tx.send(j.join().is_err_and(|e| is_cancel(&*e)));
+        });
+        unsafe { co.cancel() };
+        let cancelled = done_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the blocked write was not woken by the cancel");
+        assert!(cancelled, "join returned without a cancel panic");
+        joiner.join().unwrap();
+        drop(peer);
+    }
+}
+
 /// Repeated cancel after the coroutine already finished must be a no-op.
 #[test]
 fn cancel_after_finish() {

@@ -7,7 +7,11 @@ use std::time::Duration;
 
 use super::super::miow::send_to_overlapped;
 use super::super::{co_io_result, EventData};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
+#[cfg(feature = "io_cancel")]
+use crate::io::cancel::CancelIoData;
 use crate::net::UdpSocket;
 use crate::scheduler::get_scheduler;
 use windows_sys::Win32::Foundation::*;
@@ -50,14 +54,16 @@ impl<'a> UdpSendTo<'a> {
 impl EventSource for UdpSendTo<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
         let s = get_scheduler();
+        #[cfg(feature = "io_cancel")]
+        let cancel = co_cancel_data(&co);
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = self.timeout {
             s.get_selector().add_io_timer(&self.io_data, dur);
         }
         // this adapter has no `DelayDrop` guard, so once the request is
         // submitted the coroutine can resume on another thread and drop this
-        // frame before the check below; keep the io data reachable locally
-        #[cfg(feature = "io_timeout")]
+        // frame before the checks below; keep the io data reachable locally
+        #[cfg(any(feature = "io_timeout", feature = "io_cancel"))]
         let io_data = self.io_data.clone();
 
         // prepare the co first
@@ -76,5 +82,16 @@ impl EventSource for UdpSendTo<'_> {
         // cancel it yet, finish the cancellation now that it is pending
         #[cfg(feature = "io_timeout")]
         io_data.cancel_if_timed_out();
+
+        #[cfg(feature = "io_cancel")]
+        {
+            // register the cancel io data; the frame may already be gone, so
+            // use the local Arc instead of `self`
+            cancel.set_io(CancelIoData::new(&io_data));
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                cancel.cancel();
+            }
+        }
     }
 }

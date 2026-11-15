@@ -5,6 +5,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::super::{co_io_result, IoData};
+#[cfg(feature = "io_cancel")]
+use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{is_coroutine, CoroutineImpl, EventSource};
 use crate::io::AsIoData;
 use crate::os::unix::net::UnixDatagram;
@@ -65,6 +67,8 @@ impl<'a> UnixSendTo<'a> {
 
 impl EventSource for UnixSendTo<'_> {
     fn subscribe(&mut self, co: CoroutineImpl) {
+        #[cfg(feature = "io_cancel")]
+        let cancel = co_cancel_data(&co);
         let io_data = self.io_data;
 
         // the timer holds its own clone of the wait slot, so an immediate
@@ -78,7 +82,18 @@ impl EventSource for UnixSendTo<'_> {
 
         // there is event, re-run the coroutine
         if event_data.io_flag.load(Ordering::Acquire) != 0 {
-            event_data.fast_schedule(&wait);
+            #[allow(clippy::needless_return)]
+            return event_data.fast_schedule(&wait);
+        }
+
+        #[cfg(feature = "io_cancel")]
+        {
+            // register the cancel wait
+            cancel.set_io(wait);
+            // re-check the cancel status
+            if cancel.is_canceled() {
+                cancel.cancel();
+            }
         }
     }
 }
