@@ -1,7 +1,7 @@
 use std::io;
 use std::os::fd::AsFd;
 use std::os::fd::BorrowedFd;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
@@ -29,6 +29,11 @@ struct SingleSelector {
     #[cfg(feature = "io_timeout")]
     timer_list: TimerList,
     free_ev: Queue<Arc<EventData>>,
+    /// Set while a `free_ev` wakeup is in flight. Producers wake the owning
+    /// selector only off the `false -> true` transition, so a burst of
+    /// deregistrations costs at most one syscall; the owner clears it right
+    /// before draining the queue.
+    free_ev_armed: AtomicBool,
 }
 
 impl SingleSelector {
@@ -46,6 +51,7 @@ impl SingleSelector {
             epoll,
             evfd,
             free_ev: Queue::new(),
+            free_ev_armed: AtomicBool::new(false),
             #[cfg(feature = "io_timeout")]
             timer_list: TimerList::new(),
         })
@@ -290,13 +296,32 @@ impl Selector {
 
         // after EpollCtlDel push the unused event data
         single_selector.free_ev.push((*io_data).clone());
+        // The queue is drained only by the owning event loop, at the end of
+        // its `select`, and a deregistration raises no epoll event. An idle
+        // selector is blocked in `epoll_wait` (forever when the `io_timeout`
+        // poll is off), so without this wakeup every closed fd's
+        // `Arc<EventData>` would be retained until some unrelated event
+        // happened to arrive. Wake the owner, coalescing per shard: only the
+        // first push of a batch pays for the syscall.
+        if !single_selector.free_ev_armed.swap(true, Ordering::AcqRel) {
+            self.wakeup(id);
+        }
     }
 
     // we can't free the event data directly in the worker thread
     // must free them before the next epoll_wait
     #[inline]
     fn free_unused_event_data(&self, id: usize) {
-        let free_ev = &self.vec[id].free_ev;
+        let single_selector = &self.vec[id];
+        let free_ev = &single_selector.free_ev;
+        // Disarm with an RMW before draining, not a store. An arm ordered
+        // before this swap is read by it (the arm is a release operation),
+        // which makes the push preceding the arm visible to the drain below.
+        // An arm ordered after it observes `false` and wakes the selector,
+        // covering any push this drain misses. Clearing after the drain could
+        // instead swallow the wakeup for a push that races with it and leave
+        // the entry stranded.
+        single_selector.free_ev_armed.swap(false, Ordering::AcqRel);
         while !free_ev.bulk_pop().is_empty() {}
     }
 
@@ -318,5 +343,43 @@ impl Selector {
         // a different wait. That is harmless because every entry owns the
         // (emptied) slot of the wait it was armed for.
         io.timer.store(h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A deregistration from another thread must wake the selector that owns
+    /// the fd's shard. `free_ev` is drained only by that thread, at the end of
+    /// its `select`; `epoll_ctl(DEL)` raises no event, and an idle selector
+    /// blocks in `epoll_wait` with no timeout when the `io_timeout` poll is
+    /// off. Without the wakeup every closed fd's `Arc<EventData>` would be
+    /// retained until some unrelated event arrived.
+    #[test]
+    fn del_fd_wakes_the_owning_selector() {
+        let selector = Selector::new(1).unwrap();
+        let socket = std::net::UdpSocket::bind(("127.0.0.1", 0)).unwrap();
+        // never registered, so its `Drop` does not touch the global scheduler
+        let io_data = IoData::new(&socket);
+
+        std::thread::scope(|s| {
+            s.spawn(|| selector.del_fd(&io_data));
+        });
+
+        // the eventfd is the only registration in this selector, so a
+        // delivered event can only be the free-queue wakeup (data 0)
+        let mut events = [EpollEvent::new(EpollFlags::EPOLLIN, 0); 4];
+        let n = selector.vec[0]
+            .epoll
+            .wait(&mut events, EpollTimeout::ZERO)
+            .unwrap();
+        assert_eq!(n, 1, "del_fd did not wake the owning selector");
+        assert_eq!(events[0].data(), 0, "unexpected non-wakeup event");
+
+        assert_eq!(selector.vec[0].free_ev.len(), 1);
+        selector.free_unused_event_data(0);
+        assert!(selector.vec[0].free_ev.is_empty());
+        assert!(!selector.vec[0].free_ev_armed.load(Ordering::Acquire));
     }
 }
