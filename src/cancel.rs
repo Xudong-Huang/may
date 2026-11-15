@@ -69,7 +69,8 @@ pub fn trigger_cancel_panic() -> ! {
 pub trait CancelIo {
     type Data;
     fn new() -> Self;
-    // set the io data
+    // set the io data; only the `io_cancel` io adapters publish it
+    #[cfg(feature = "io_cancel")]
     fn set(&self, io_data: Self::Data);
     // clear the io data
     fn clear(&self);
@@ -86,7 +87,6 @@ impl CancelIo for CancelIoImpl {
     fn new() -> Self {
         CancelIoImpl
     }
-    fn set(&self, _: Self::Data) {}
     fn clear(&self) {}
     fn cancel(&self) -> bool {
         false
