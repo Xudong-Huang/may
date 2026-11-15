@@ -10,14 +10,14 @@
 //! long timeout.
 //!
 //! The exact arm/wakeup shard arithmetic is asserted deterministically by the
-//! unit test in `src/io/sys/windows/iocp.rs`; this test checks the end-to-end
-//! consequence through the event loop: a shard parked on a 30s timer must
-//! still serve a newly armed 1s timer.
+//! unit test in `src/io/sys/windows/iocp.rs`; this file checks the end-to-end
+//! behavior through the event loop and the public adapters.
 
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream as StdTcpStream};
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket};
 use std::sync::mpsc;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use may::net::TcpStream;
@@ -25,6 +25,14 @@ use may::net::TcpStream;
 const WORKERS: usize = 8;
 const LONG_TIMEOUT: Duration = Duration::from_secs(30);
 const SHORT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// All tests share the one leaked scheduler, so run them one at a time; every
+/// test initializes it with the same worker count.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|poison| poison.into_inner())
+}
 
 struct Pair {
     stream: TcpStream,
@@ -68,8 +76,8 @@ fn old_timer_shard(raw: usize) -> usize {
 /// selector shard parked on a much later deadline.
 #[test]
 fn short_io_timeout_is_not_starved_by_a_later_one_on_its_shard() {
-    // This integration binary has a single test, so the scheduler starts with
-    // the worker count the test needs.
+    let _guard = serial();
+    // The scheduler is initialized once with the worker count the tests need.
     may::config().set_workers(WORKERS);
 
     // Create the sockets up front, then pick two that share a non-zero
@@ -155,4 +163,99 @@ fn short_io_timeout_is_not_starved_by_a_later_one_on_its_shard() {
     // and the long one must not have to wait for its 30s timeout.
     drop(short_peer);
     drop(long_peer);
+}
+
+/// Fill a listener's accept queue so that further connects stay pending.
+///
+/// Windows drops the SYN of a connection that finds the queue full, so a
+/// local connect then hangs until it is canceled instead of failing fast.
+fn fill_accept_queue(listener: &TcpListener) -> Vec<StdTcpStream> {
+    let addr = listener.local_addr().unwrap();
+    let mut held = Vec::new();
+    let mut consecutive_timeouts = 0;
+    for _ in 0..1024 {
+        match StdTcpStream::connect_timeout(&addr, Duration::from_millis(50)) {
+            Ok(s) => {
+                held.push(s);
+                consecutive_timeouts = 0;
+            }
+            Err(e) if e.kind() == ErrorKind::TimedOut => {
+                consecutive_timeouts += 1;
+                // A single timeout can be a transient stall; three in a row
+                // mean the accept queue is really full.
+                if consecutive_timeouts >= 3 {
+                    break;
+                }
+            }
+            Err(e) => panic!("filling the accept queue failed: {e:?}"),
+        }
+    }
+    assert!(
+        consecutive_timeouts >= 3 && held.len() >= 64,
+        "could not fill the accept queue ({} connections)",
+        held.len()
+    );
+    held
+}
+
+/// `connect_timeout` must cancel a ConnectEx that stays pending.
+#[test]
+fn connect_timeout_returns_timed_out() {
+    let _guard = serial();
+    may::config().set_workers(WORKERS);
+
+    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let held = fill_accept_queue(&listener);
+
+    let (tx, rx) = mpsc::channel();
+    spawn_on(0, move || {
+        let _ = tx.send(may::net::TcpStream::connect_timeout(
+            &addr,
+            Duration::from_millis(100),
+        ));
+    });
+
+    let result = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("connect_timeout did not complete");
+    let err = result.expect_err("connecting to a full accept queue should time out");
+    assert_eq!(err.kind(), ErrorKind::TimedOut);
+
+    drop(held);
+    drop(listener);
+}
+
+/// A timed read that receives data before the deadline must return the data,
+/// with the timeout disarmed rather than aborting the read.
+#[test]
+fn timed_read_returns_data_before_the_timeout() {
+    let _guard = serial();
+    may::config().set_workers(WORKERS);
+
+    let Pair {
+        stream, peer, ..
+    } = Pair::new();
+    let writer = std::thread::spawn(move || {
+        let mut peer = peer;
+        std::thread::sleep(Duration::from_millis(20));
+        peer.write_all(&[42u8]).unwrap();
+        // Keep the connection open until the reader has consumed the byte.
+        std::thread::sleep(Duration::from_millis(100));
+    });
+
+    let (tx, rx) = mpsc::channel();
+    spawn_on(0, move || {
+        let mut stream = stream;
+        stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+        let mut buf = [0u8; 1];
+        let _ = tx.send(stream.read(&mut buf).map(|n| (n, buf[0])));
+    });
+
+    let (n, byte) = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the timed read did not complete")
+        .expect("the read should return the data");
+    assert_eq!((n, byte), (1, 42));
+    writer.join().unwrap();
 }

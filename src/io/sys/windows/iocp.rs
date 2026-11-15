@@ -415,4 +415,60 @@ mod tests {
             );
         }
     }
+
+    /// A timeout that fires before the request is submitted cannot cancel it:
+    /// `CancelIoEx` finds nothing pending. The subscriber must finish the
+    /// cancellation after submitting (`cancel_if_timed_out`), otherwise the
+    /// request would stay pending forever.
+    #[test]
+    fn timed_out_before_submission_is_cancelled_after_submission() {
+        use super::super::miow::socket_read;
+        use std::net::{TcpListener, TcpStream};
+        use std::os::windows::io::AsRawSocket;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let peer = TcpStream::connect(addr).unwrap();
+        let (socket, _) = listener.accept().unwrap();
+        socket.set_nonblocking(true).unwrap();
+
+        let selector = Selector::new(SHARDS).unwrap();
+        selector.add_socket(&socket).unwrap();
+
+        let data = Arc::new(EventData::new(socket.as_raw_socket() as HANDLE));
+        let mut buf = [0u8; 1];
+
+        // The handler runs before the request is submitted: its CancelIoEx
+        // finds nothing, so only the flag is recorded.
+        timeout_handler(data.clone());
+
+        // Finish the submission, then the cancellation.
+        let pending =
+            unsafe { socket_read(socket.as_raw_socket(), &mut buf, 0, data.get_overlapped()) }
+                .unwrap();
+        assert!(pending.is_none(), "the read should be pending");
+        data.cancel_if_timed_out();
+
+        // With no data and a live peer, the only possible completion is the
+        // cancellation. Without the post-submission check none would arrive.
+        let shard = selector.shard_id(socket.as_raw_socket() as usize);
+        let mut events = [CompletionStatus::zero(); 4];
+        let list = match selector.vec[shard]
+            .port
+            .get_many(&mut events, Some(Duration::from_secs(5)))
+        {
+            Ok(list) => list.to_vec(),
+            Err(ref e) if e.raw_os_error() == Some(WAIT_TIMEOUT as i32) => {
+                panic!("no completion arrived after the post-submission cancel")
+            }
+            Err(e) => panic!("get_many failed: {e}"),
+        };
+        assert!(
+            list.iter()
+                .any(|s| s.overlapped() == data.get_overlapped()),
+            "the cancellation completion was not delivered to its shard"
+        );
+
+        drop(peer);
+    }
 }
