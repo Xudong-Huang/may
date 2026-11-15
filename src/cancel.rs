@@ -160,6 +160,14 @@ impl<T: CancelIo> CancelImpl<T> {
     #[cold]
     pub fn cancel(&self) {
         self.state.fetch_or(1, Ordering::Release);
+        // The canceller half of the register-then-check handshake whose
+        // waiter half is the fence in `set_io`/`set_co`. The waiter stores
+        // its registration and then reads the cancel bit; with only a
+        // release store and an acquire load on each side, store buffering
+        // lets the waiter miss the bit while this take misses the
+        // registration, dropping the cancellation and leaving the coroutine
+        // parked.
+        std::sync::atomic::fence(Ordering::SeqCst);
 
         if self.io.cancel() {
             // successfully canceled
@@ -180,13 +188,18 @@ impl<T: CancelIo> CancelImpl<T> {
     // should be called after register io request
     #[cfg(feature = "io_cancel")]
     pub fn set_io(&self, io: T::Data) {
-        self.io.set(io)
+        self.io.set(io);
+        // pair with the fence in `cancel`: the registration must be ordered
+        // before the `is_canceled` load that the caller does next
+        std::sync::atomic::fence(Ordering::SeqCst);
     }
 
     // set the cancel co data
     // can't both set_io and set_co
     pub fn set_co(&self, co: WaitCo) {
         self.co.store(co);
+        // pair with the fence in `cancel`, as in `set_io`
+        std::sync::atomic::fence(Ordering::SeqCst);
     }
 
     // clear the cancel io data

@@ -170,6 +170,10 @@ impl Selector {
             // info!("select got event, data={:p}", data);
             data.io_flag
                 .fetch_or(event.flags as usize, Ordering::Release);
+            // the reactor half of the handshake whose other half is the fence
+            // in `IoData::publish_co`; without it the waiter's flag load and
+            // this take can both miss, and the edge event is already consumed
+            std::sync::atomic::fence(Ordering::SeqCst);
 
             // first check the atomic wait, this may be grabbed by the worker first
             let wait = match data.wait.take() {

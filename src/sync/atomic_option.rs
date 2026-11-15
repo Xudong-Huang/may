@@ -24,8 +24,12 @@ const _: () = assert!(AtomicCell::<Option<TimeoutHandle<WaitCo>>>::is_lock_free(
 ///
 /// Used by the synchronization primitives as a single-slot hand-off. It is
 /// lock-free when `T` fits `AtomicCell`'s atomic path (asserted for the
-/// crate's uses) and falls back to `AtomicCell`'s lock otherwise. All
-/// operations are sequentially consistent.
+/// crate's uses) and falls back to `AtomicCell`'s lock otherwise. The
+/// operations carry the backing `AtomicCell`'s orderings: `store` is a
+/// release store and `swap`/`take` are acq-rel read-modify-writes. They are
+/// not sequentially consistent, so a two-sided handshake that must not let
+/// each side miss the other (the io `wait`/`io_flag` handshake, for example)
+/// pairs its operations with a `fence(SeqCst)` on both sides.
 pub struct AtomicOption<T> {
     inner: AtomicCell<Option<T>>,
 }

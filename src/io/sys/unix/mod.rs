@@ -145,6 +145,11 @@ impl EventData {
 
     #[inline]
     pub fn schedule(&self) {
+        // This is the reactor half of the handshake in `IoData::publish_co`:
+        // the waker sets `io_flag` before calling this. The fence keeps this
+        // take from being reordered before the waker's flag store, which is
+        // what would let the waker and the waiter both miss each other.
+        std::sync::atomic::fence(Ordering::SeqCst);
         let wait = match self.wait.take() {
             Some(wait) => wait,
             None => return, // it's already taken by the selector
@@ -239,6 +244,16 @@ impl IoData {
         event_data.take_timer();
 
         event_data.wait.store(wait.clone());
+        // The publish and the `io_flag` load that follows it in every
+        // `subscribe` form a register-then-check handshake with the selector
+        // (and with `WaitIoWaker::wakeup`), which sets the flag and then
+        // takes the wait. A release store followed by an acquire load does
+        // not order the two against the other side's store and load: with
+        // store buffering, the waiter can miss the flag while the selector
+        // misses the wait, leaving the coroutine parked forever after the
+        // only edge event has been consumed. The seq_cst fence here and the
+        // one next to each reactor-side `fetch_or` forbid that outcome.
+        std::sync::atomic::fence(Ordering::SeqCst);
 
         #[cfg(feature = "io_timeout")]
         if let Some(dur) = timeout {

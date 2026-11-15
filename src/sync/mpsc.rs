@@ -38,12 +38,15 @@ struct InnerQueue<T> {
     queue: Queue<T>,
     // The waiting receiver, if any.
     //
-    // The register-then-recheck protocol relies on `AtomicOption::store`
-    // being a SeqCst RMW (crossbeam `AtomicCell`): the receiver's `store`
-    // reads the last sender's `take`, which orders its subsequent `channels`
-    // load after the sender's decrement. Replacing `store` with a plain
-    // release store would lose that happens-before edge and reintroduce a
-    // disconnect wakeup race.
+    // The receiver publishes its blocker and then re-checks the queue and
+    // `channels`; a sender publishes a value (or the last-channel decrement)
+    // and then takes the blocker. That is a store-buffering handshake: the
+    // receiver can miss the wakeup while the sender misses the registration
+    // unless both sides fence between their write and their read. `send` and
+    // `drop_chan` fence after publishing, `recv` fences after storing the
+    // blocker. `AtomicOption::store` is only a release store (the backing
+    // `AtomicCell` has no SeqCst RMW), so the fences are required for the
+    // protocol to be correct, not an optimization.
     to_wake: AtomicOption<Arc<Blocker>>,
     // The number of tx channels which are currently using this queue.
     channels: AtomicUsize,
@@ -70,6 +73,9 @@ impl<T> InnerQueue<T> {
         // the last sender drops. This is the same inherent send/disconnect
         // race as std's mpsc.
         self.queue.push(t);
+        // pair with the fence in `recv`: if this take misses the
+        // registration, the push must be visible to the receiver's re-check
+        std::sync::atomic::fence(Ordering::SeqCst);
         if let Some(w) = self.to_wake.take() {
             w.unpark();
         }
@@ -87,6 +93,10 @@ impl<T> InnerQueue<T> {
         let cur = Blocker::current();
         // register the waiter
         self.to_wake.store(cur.clone());
+        // pair with the fences in `send`/`drop_chan`: the store must be
+        // ordered before the re-check, or both sides can miss each other and
+        // the receiver parks forever
+        std::sync::atomic::fence(Ordering::SeqCst);
         // re-check the queue
         match self.try_recv() {
             Err(TryRecvError::Empty) => {
@@ -127,7 +137,12 @@ impl<T> InnerQueue<T> {
     }
 
     pub fn drop_chan(&self) {
-        match self.channels.fetch_sub(1, Ordering::AcqRel) {
+        let n = self.channels.fetch_sub(1, Ordering::AcqRel);
+        // pair with the fence in `recv`: the decrement to zero must be
+        // visible to the receiver's `channels` load when this take misses the
+        // registration, or a disconnect wakeup is lost
+        std::sync::atomic::fence(Ordering::SeqCst);
+        match n {
             1 => self.to_wake.take().map(|w| w.unpark()).unwrap_or(()),
             n if n > 1 => {}
             // underflow: a `Sender` was dropped more times than it was
