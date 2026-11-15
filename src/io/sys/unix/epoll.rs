@@ -84,13 +84,11 @@ impl Selector {
             events,
             timeout,
             |remaining, events| {
+                // Epoll takes an i32 millisecond timeout. Round up so a
+                // short wait doesn't turn into a busy poll
                 let timeout = remaining
                     .map(|to| {
-                        let ms = to.div_ceil(1_000_000);
-                        // Clamp to i32::MAX milliseconds if the timeout exceeds that.
-                        // EpollTimeout::try_from rejects values > i32::MAX, so we cap it.
-                        let ms_clamped = ms.min(i32::MAX as u64) as i32;
-                        EpollTimeout::try_from(ms_clamped).unwrap()
+                        EpollTimeout::try_from(to.div_ceil(1_000_000)).unwrap_or(EpollTimeout::MAX)
                     })
                     .unwrap_or(EpollTimeout::NONE);
                 // info!("select; timeout={:?}", timeout_ms);
