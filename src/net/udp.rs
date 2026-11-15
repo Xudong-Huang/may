@@ -104,6 +104,11 @@ impl UdpSocket {
         writer.done()
     }
 
+    /// Receive a datagram and its source address, blocking the current
+    /// coroutine until one arrives.
+    ///
+    /// Only one coroutine may wait on this socket at a time: do not share it
+    /// across threads or coroutines.
     pub fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         #[cfg(unix)]
         {

@@ -9,7 +9,11 @@ use std::sync::Arc;
 use crate::coroutine_impl::co_cancel_data;
 use crate::coroutine_impl::{CoroutineImpl, EventSource};
 use crate::io as io_impl;
-use crate::yield_now::yield_with_io;
+use crate::yield_now::{get_co_para, yield_with_io};
+
+/// Bit set in `io_flag` for a forced wakeup and in the flags `wait_io`
+/// returns for it. Selector readiness bits only use the lower bits.
+const WAKE_FLAG: usize = 0x8000_0000;
 
 pub struct RawIoBlock<'a> {
     io_data: &'a io_impl::IoData,
@@ -58,14 +62,21 @@ pub struct WaitIoWaker {
 impl WaitIoWaker {
     /// wakeup the coroutine that is blocked by `WaitIo::wait_io`
     pub fn wakeup(&self) {
-        self.io_data
-            .io_flag
-            .fetch_or(0x8000_0000, Ordering::Release);
+        self.io_data.io_flag.fetch_or(WAKE_FLAG, Ordering::Release);
         self.io_data.schedule();
     }
 }
 
 /// This is trait that can block on io events but doing nothing about io
+///
+/// The io object belongs to one coroutine: do not share it across threads or
+/// coroutines, and never call the blocking methods (`wait_io` here,
+/// `TcpListener::accept`, `UdpSocket::recv_from`, ...) from more than one
+/// coroutine at the same time. A concurrent wait is detected and the earlier
+/// waiter is resumed with a `concurrent io wait` error, because the later wait
+/// would otherwise replace it and strand its coroutine. `wait_io` has no error
+/// channel, so for it the error is dropped and the call returns as if woken by
+/// `WaitIoWaker`, carrying the wake bit instead of a readiness event.
 pub trait WaitIo {
     /// reset the io before io operation
     #[deprecated(since = "0.3.46", note = "don't need to call this method")]
@@ -89,7 +100,17 @@ impl<T: io_impl::AsIoData> WaitIo for T {
         }
         let blocker = RawIoBlock::new(self.as_io_data());
         yield_with_io(&blocker, true);
-        io_data.reset()
+        // A displaced concurrent wait is resumed with a `concurrent io wait`
+        // error, which `wait_io` has no error channel to report. Discard it so
+        // it cannot surface on a later operation of this coroutine, and report
+        // a wake without readiness: a normal wait never returns 0, so use the
+        // same forced-wake bit as `WaitIoWaker`.
+        let flags = io_data.reset();
+        if get_co_para().is_some() {
+            flags | WAKE_FLAG
+        } else {
+            flags
+        }
     }
 
     fn waker(&self) -> WaitIoWaker {

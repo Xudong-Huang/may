@@ -397,6 +397,10 @@ impl TcpListener {
         TcpListener::new(s)
     }
 
+    /// Accept a connection, blocking the current coroutine until one arrives.
+    ///
+    /// Only one coroutine may wait on this listener at a time: do not share
+    /// it across threads or coroutines.
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         #[cfg(unix)]
         {

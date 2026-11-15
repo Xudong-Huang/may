@@ -38,9 +38,7 @@ use crate::scheduler::get_scheduler;
 use crate::sync::{AtomicOption, WaitCo};
 #[cfg(feature = "io_timeout")]
 use crate::timeout_list::{TimeOutList, TimeoutHandle};
-use crate::yield_now::get_co_para;
-#[cfg(feature = "io_timeout")]
-use crate::yield_now::set_co_para;
+use crate::yield_now::{get_co_para, set_co_para};
 
 pub(crate) use self::select::{Selector, SysEvent};
 
@@ -119,6 +117,12 @@ pub struct EventData {
     // from this same slot, so exactly one of them can win, and a stale timer
     // entry keeps a claim on its own (already emptied) slot instead of
     // reaching a later wait.
+    //
+    // Only one coroutine may wait on this io data at a time. The slot of a
+    // wait that ended is always emptied before the next wait is published, so
+    // a still occupied slot in `publish_co` can only mean a concurrent waiter.
+    // `publish_co` fails that waiter with a `concurrent io wait` error and
+    // then replaces it.
     pub wait: AtomicOption<WaitCo>,
 }
 
@@ -231,6 +235,12 @@ impl IoData {
     /// visible already. From that point on only the returned shared event data
     /// may be used, never `self`: the resumed coroutine may have moved or
     /// dropped the `IoData` this was called on.
+    ///
+    /// Two coroutines waiting on the same io data at the same time are not
+    /// supported: without the check below, the later publish would replace the
+    /// earlier wait and its coroutine would never be resumed. The check
+    /// resumes the displaced waiter with a `concurrent io wait` error instead,
+    /// so its operation returns and the coroutine can handle the error.
     #[inline]
     pub(crate) fn publish_co(
         &self,
@@ -246,7 +256,26 @@ impl IoData {
         #[cfg(feature = "io_timeout")]
         event_data.take_timer();
 
-        event_data.wait.store(wait.clone());
+        if let Some(prev) = event_data.wait.swap(wait.clone()) {
+            // every path that resumes a wait either removes it from this slot
+            // (selector / waker) or empties it (timer / cancellation / fast
+            // path), so a coroutine still inside means nobody has resumed the
+            // previous wait: another coroutine is waiting concurrently, which
+            // is not supported. Fail the displaced waiter with an io error and
+            // let its operation return instead of stranding it.
+            if let Some(mut co) = prev.take() {
+                warn!(
+                    "two coroutines are waiting on the same io data (fd {}); \
+                     failing the earlier waiter with a concurrent io wait error",
+                    event_data.fd
+                );
+                // the io adapters return the yield error to the caller, so the
+                // displaced coroutine can handle it and continue; a
+                // thread-context wait gets the same error through the io proxy
+                set_co_para(&mut co, io::Error::other("concurrent io wait"));
+                get_scheduler().schedule(co);
+            }
+        }
         // The publish and the `io_flag` load that follows it in every
         // `subscribe` form a register-then-check handshake with the selector
         // (and with `WaitIoWaker::wakeup`), which sets the flag and then
@@ -389,5 +418,51 @@ mod tests {
         );
         // the timer must have taken the coroutine out of the shared slot
         assert!(wait.take().is_none());
+    }
+
+    /// A second coroutine waiting on the same io data must not strand the
+    /// first: the displaced waiter is resumed with a `concurrent io wait`
+    /// error and can continue, while the second wait stays registered.
+    #[test]
+    fn concurrent_wait_fails_the_earlier_waiter_with_an_io_error() {
+        let socket = std::net::UdpSocket::bind(("127.0.0.1", 0)).unwrap();
+        let io = IoData::new(&socket);
+
+        // the first waiter reports what it was resumed with
+        let (tx_co_a, rx_co_a) = channel();
+        let (tx_err, rx_err) = channel();
+        let capture_a = Capture(tx_co_a);
+        let join_a = crate::go!(move || {
+            yield_with_io(&capture_a, true);
+            let err = crate::yield_now::get_co_para().map(|e| e.to_string());
+            tx_err.send(err).unwrap();
+        });
+        let co_a = rx_co_a
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the first coroutine did not suspend");
+
+        let (tx_co_b, rx_co_b) = channel();
+        let capture_b = Capture(tx_co_b);
+        let join_b = crate::go!(move || {
+            yield_with_io(&capture_b, true);
+        });
+        let co_b = rx_co_b
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the second coroutine did not suspend");
+
+        let (event_data, _wait_a) = io.publish_co(co_a, None);
+        // publishing the second wait displaces and fails the first one
+        let (_, _wait_b) = io.publish_co(co_b, None);
+
+        let err = rx_err
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the displaced waiter was not resumed");
+        assert_eq!(err.as_deref(), Some("concurrent io wait"));
+        join_a.join().unwrap();
+
+        // release the second waiter so nothing stays parked
+        event_data.io_flag.fetch_or(1, Ordering::Release);
+        event_data.schedule();
+        join_b.join().unwrap();
     }
 }
