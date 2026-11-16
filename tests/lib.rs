@@ -136,6 +136,17 @@ fn coroutine_result() {
     assert_eq!(j.join().unwrap(), 100);
 }
 
+// the result is too large to fit an atomic word and is not `Sync`, so the
+// result packet takes the RCU fallback
+#[test]
+fn coroutine_result_non_sync_and_large() {
+    use std::cell::Cell;
+
+    let j = go!(move || Cell::new([1u64, 2u64]));
+    let result = j.join().unwrap();
+    assert_eq!(result.get(), [1, 2]);
+}
+
 #[test]
 fn multi_coroutine() {
     for i in 0..10 {
