@@ -1,7 +1,7 @@
 # Linux `io_uring` backend — implementation plan
 
-Status: **M1 implemented, pending review** — `sys` naming and default-on feature
-are in place (branch `feat/io-uring`, nothing committed yet)
+Status: **M2 implemented, pending review** — M0/M1 committed as `104d17c`;
+latest changes are uncommitted (branch `feat/io-uring`)
 
 ## 1. Goal and scope
 
@@ -58,10 +58,15 @@ compile time, not a conditional inside the epoll selector.
 ```toml
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.7.16", optional = true }
+rcu_cell = { version = "1.2.4", optional = true }
 
 [features]
-io_uring = ["dep:io-uring"]
+io_uring = ["dep:io-uring", "dep:rcu_cell"]
 ```
+
+`rcu_cell` provides the lock-free active-request slot (see section 4.2). It
+requires Rust 1.84 and 64-bit targets; both apply to the io_uring backend's
+supported Linux targets.
 
 - Feature is additive. On this branch it is part of `default`, so `cargo
   check`/`cargo test` compile the ring layer; Linux runtime still uses epoll
@@ -186,9 +191,16 @@ pub struct EventData {
   it never touches `EventData` again. This is the same lifetime discipline as
   the IOCP backend.
 - `IoData` becomes thin: fd, shard, and `Arc<IoState>`. `IoState` holds the
-  active-request slot used for concurrent-wait detection and the `WaitIo`
-  waker state. `reset()` returns 0, `Drop` is a no-op. There is no kernel
-  registration, no `io_flag`, no `publish_co`.
+  active-request slot (`rcu_cell::RcuWeak<EventData>`) used for concurrent-wait
+  detection and the `WaitIo` waker state. `reset()` returns 0, `Drop` is a
+  no-op. There is no kernel registration, no `io_flag`, no `publish_co`.
+  `RcuWeak` gives wait-free reads and lockless writes, so submission and
+  completion never block each other on this slot; the slot holds only a `Weak`
+  (no cycle), and clearing a request checks the weak pointer before taking it.
+  The check-then-take is not one atomic operation; a concurrent replacement can
+  only degrade the misuse diagnostic, never memory safety.
+  TODO(rcu_cell): replace it with `RcuWeak::compare_exchange` once that method
+  exists, making the clear atomic.
 - Each `EventData` keeps a clone of `IoData`'s `Arc<IoState>`, so a completion
   can clear the active slot when it still points at the completing request.
   A second slow-path wait swaps in its own request, marks the previous one
@@ -375,12 +387,15 @@ point is M4.
 
 ### M2 — request state and selector core
 
-- `linux_uring/mod.rs`: `EventData`, `IoData`, `co_io_result`, shard selection,
-  timer aliases, `co_try!`.
-- `linux_uring/selector.rs`: sharded selector, `select`, completion dispatch, timer
-  list, `sleep_until`, free/no-op paths.
-- `linux_uring/co_io.rs` for the generic wrapper (initially compiling but not selected).
+- `linux_uring/event.rs`: `EventData`, `IoData`, `IoState`, cancellation
+  reasons, per-request timer handle, `co_io_result`, shard selection.
+- `linux_uring/selector.rs`: sharded selector, `select`, completion dispatch,
+  timer list, `sleep_until`, wakeup, `begin_request` concurrent-wait detection,
+  `cancel_request`.
+- `co_io.rs` is deferred to M4: it implements the crate's active `AsIoData` and
+  therefore cannot compile while the epoll bridge is still selected.
 - **Review:** `select` ordering, completion lifetime, timer integration.
+- **Status:** implemented and unit-tested; pending review.
 - Compile state: `linux_uring` is already selected as `sys`, but its `mod.rs`
   still re-exports the `epoll_bridge`. The new request/selector modules are
   nested under `sys` during bring-up (avoiding name clashes with the bridge),
@@ -560,12 +575,13 @@ the no-default combination; all gates must compile cleanly.)
    zero with an `InvalidInput` error. Like the other `Config` setters, it must
    be called before the scheduler starts.
 3. **Concurrent-wait detection**: resolved — add a per-`IoData` active-request
-   slot (an `Arc<IoState>` with a mutex, shared with the request `EventData` so
-   the completion can clear it). The second slow-path wait on the same object
-   marks the earlier request `ConcurrentWait` and submits `AsyncCancel`; its
-   completion resumes the earlier waiter with a `concurrent io wait` I/O error.
-   The coroutine is never resumed before its own CQE, so this preserves buffer
-   safety. Fast-path operations that never wait are not registered.
+   slot (`Arc<IoState>` holding an `rcu_cell::RcuWeak<EventData>`, shared with
+   the request `EventData` so the completion can clear it). The second slow-path
+   wait on the same object marks the earlier request `ConcurrentWait` and
+   submits `AsyncCancel`; its completion resumes the earlier waiter with a
+   `concurrent io wait` I/O error. The coroutine is never resumed before its
+   own CQE, so this preserves buffer safety. Fast-path operations that never
+   wait are not registered.
 4. **Address reconstruction**: resolved — keep the `peer_addr()`/peek-based
    approaches described in section 4.4.
 5. **Scope**: resolved — full parity in v1.

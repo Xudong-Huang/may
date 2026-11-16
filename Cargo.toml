@@ -42,6 +42,7 @@ libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.7.16", optional = true }
+rcu_cell = { version = "1.2.4", optional = true }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
@@ -71,7 +72,7 @@ serde_derive = "1.0"
 default = ["io_cancel", "io_timeout", "work_steal", "io_uring"]
 io_cancel = []
 io_timeout = []
-io_uring = ["dep:io-uring"]
+io_uring = ["dep:io-uring", "dep:rcu_cell"]
 work_steal = ["dep:fastrand"]
 crossbeam_queue_steal = ["work_steal"]
 

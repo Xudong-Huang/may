@@ -14,6 +14,13 @@
 #[allow(dead_code)] // consumed by the selector in M2
 pub(crate) mod ring;
 
+// Request state and selector cores. They are nested while the epoll bridge is
+// still the active `sys`; M4 removes the bridge and promotes these types.
+#[allow(dead_code)]
+pub(crate) mod event;
+#[allow(dead_code)]
+pub(crate) mod selector;
+
 // Temporary bridge: compile and re-export the existing epoll backend until the
 // io_uring selector and adapters are ready. The nested path keeps the unix
 // module's internal relative imports intact.
