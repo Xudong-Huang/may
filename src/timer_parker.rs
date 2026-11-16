@@ -166,59 +166,6 @@ mod macos {
             }
         }
     }
-
-    /// Alternative macOS backend: a `parking_lot` mutex and condition
-    /// variable.
-    ///
-    /// `notify` sets a `notified` flag under the mutex before waking the
-    /// condition variable; `park` checks that flag under the same mutex and
-    /// only waits when it is clear, so a notification cannot be lost between
-    /// the check and the wait. Kept so the two macOS parkers can be compared;
-    /// switch the `Parker` alias below to use it instead of `DispatchParker`.
-    #[allow(dead_code)]
-    pub(crate) struct CondvarParker {
-        notified: Mutex<bool>,
-        cond: Condvar,
-    }
-
-    #[allow(dead_code)]
-    impl CondvarParker {
-        pub(crate) fn new() -> Self {
-            CondvarParker {
-                notified: Mutex::new(false),
-                cond: Condvar::new(),
-            }
-        }
-
-        pub(crate) fn arm(&self, _thread: &Arc<thread::Thread>) {}
-
-        pub(crate) fn notify(&self) {
-            let mut notified = self.notified.lock();
-            *notified = true;
-            self.cond.notify_one();
-        }
-
-        pub(crate) fn park(&self, timeout: Option<Duration>) {
-            let start = Instant::now();
-            let mut notified = self.notified.lock();
-            while !*notified {
-                match timeout {
-                    None => self.cond.wait(&mut notified),
-                    Some(t) => {
-                        let elapsed = start.elapsed();
-                        if elapsed >= t {
-                            break;
-                        }
-                        // Recompute the remaining time on every iteration so
-                        // spurious wakeups cannot extend the total wait.
-                        self.cond.wait_for(&mut notified, t - elapsed);
-                    }
-                }
-            }
-            // the notification (or the timeout) ends this wait
-            *notified = false;
-        }
-    }
 }
 
 #[cfg(all(not(windows), not(target_os = "macos")))]
