@@ -10,7 +10,7 @@
 
 use parking_lot::{Condvar, Mutex};
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -227,6 +227,9 @@ impl FastBlocker {
     }
 }
 
+const UNPARKED: usize = 1;
+const CANCELLED: usize = 2;
+
 /// A one-shot blocker with an asynchronous release hand-off.
 ///
 /// The parker ignores cancellation; the caller checks it. When the wait ends
@@ -234,31 +237,34 @@ impl FastBlocker {
 /// producer that wants to hand the resource over must agree on which of them
 /// forwards it, and exactly one of them must.
 ///
-/// Both halves of that handshake run under `spin_lock`, so the decision is
-/// made with mutual exclusion:
+/// The decision is a single compare-exchange on `status`, so exactly one side
+/// wins without a lock:
 ///
-/// 1. `park` returns `Err`, so the waiter calls [`leave_wait`];
-/// 2. `leave_wait` returns `true` if the resource arrived anyway and the
-///    caller must forward it;
-/// 3. a producer calls [`try_hand_off`], which returns `false` if the waiter
-///    had already left and the caller must forward to the next waiter.
+/// * `0`: no decision yet — the wait is in progress;
+/// * `UNPARKED`: a producer claimed the hand-off; the waiter is (or is about
+///   to be) woken and must take the resource as its own;
+/// * `CANCELLED`: the waiter left without the resource, so a producer that
+///   pops this blocker must forward the resource to the next waiter.
 ///
-/// A lock-free version of this handshake cannot work here: it would require
-/// both sides to publish their own flag before reading the other's, but the
-/// producer has to read `release` before deciding whether to set `unparked`,
-/// so both sides can miss each other and lose the resource.
+/// 1. A producer calls [`try_hand_off`], which CASes `0` -> `UNPARKED`. It
+///    returns `true` if the waiter took the resource (and has been unparked)
+///    and `false` if the waiter had already left — then the caller must
+///    forward the resource to the next waiter.
+/// 2. A waiter whose `park` returned an error calls [`leave_wait`], which
+///    CASes `0` -> `CANCELLED`. It returns `false` if the waiter left first
+///    and `true` if a producer had already claimed the hand-off — then the
+///    caller must forward the resource, because the waiter is unwinding and
+///    can no longer use it.
 ///
-/// A `SyncBlocker` is used for a single wait only; the flags are never reset.
+/// A `SyncBlocker` is used for a single wait only. The claim word starts at
+/// `0` and is set at most once; it must never be reset (in particular, `park`
+/// must not clear it), because a producer's CAS can land before the waiter
+/// parks.
 #[derive(Debug)]
 pub(crate) struct SyncBlocker {
-    // set once by `unpark` and never reset: a SyncBlocker is used for a
-    // single wait only, so the flag only ever needs to be checked once
-    unparked: AtomicBool,
-    // used to register the release action
-    release: AtomicBool,
+    status: AtomicUsize,
+    // coroutine/thread blocker
     blocker: Blocker,
-    // a spin lock to protect cancellation handling and release flag updates
-    spin_lock: AtomicBool,
 }
 
 impl SyncBlocker {
@@ -268,43 +274,35 @@ impl SyncBlocker {
         let blocker = Blocker::new(true);
 
         Arc::new(SyncBlocker {
-            unparked: AtomicBool::new(false),
-            release: AtomicBool::new(false),
+            status: AtomicUsize::new(0),
             blocker,
-            spin_lock: AtomicBool::new(false),
         })
     }
 
-    /// Whether [`unpark`](Self::unpark) has already been called.
+    /// Whether a producer has already claimed the hand-off and will wake this
+    /// waiter (see the type-level docs).
+    ///
+    /// Returns `false` once the waiter itself has left via [`leave_wait`].
     #[inline]
     pub fn is_unparked(&self) -> bool {
-        self.unparked.load(Ordering::SeqCst)
-    }
-
-    /// Record that the waiter is leaving without consuming the resource.
-    #[inline]
-    fn set_release(&self) {
-        self.release.store(true, Ordering::SeqCst);
-    }
-
-    /// Take the release flag. Returns true exactly once if it was set.
-    #[inline]
-    fn take_release(&self) -> bool {
-        self.release.swap(false, Ordering::SeqCst)
+        self.status.load(Ordering::Acquire) == UNPARKED
     }
 
     #[inline]
     pub fn park(&self, timeout: Option<Duration>) -> Result<(), ParkError> {
+        // the claim word must not be reset here: a producer's `try_hand_off`
+        // can land after the waiter queued itself but before it parks (see
+        // the type-level docs)
         self.blocker.park(timeout)
     }
 
-    /// Wake the waiter.
+    /// Wake the waiter after the hand-off claim has been published.
     ///
-    /// `unparked` is stored *before* waking so that the woken waiter observes
-    /// it; the wake itself also provides the happens-before edge.
+    /// [`try_hand_off`](Self::try_hand_off) stores `UNPARKED` before waking so
+    /// that a waiter which leaves concurrently observes the claim and forwards
+    /// the resource; the wake itself also provides the happens-before edge.
     #[inline]
     fn unpark(&self) {
-        self.unparked.store(true, Ordering::SeqCst);
         self.blocker.unpark();
     }
 
@@ -315,13 +313,16 @@ impl SyncBlocker {
     /// the next waiter.
     #[inline]
     pub fn try_hand_off(&self) -> bool {
-        self.acquire_spin_lock();
-        let taken = !self.take_release();
-        if taken {
-            self.unpark();
+        match self
+            .status
+            .compare_exchange(0, UNPARKED, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => {
+                self.unpark();
+                true
+            }
+            Err(_) => false,
         }
-        self.release_spin_lock();
-        taken
     }
 
     /// Waiter half of the hand-off, called when the wait ended without the
@@ -331,29 +332,9 @@ impl SyncBlocker {
     /// with the cancellation — then the caller must forward it.
     #[inline]
     pub fn leave_wait(&self) -> bool {
-        self.acquire_spin_lock();
-        let handed = self.is_unparked();
-        if !handed {
-            self.set_release();
-        }
-        self.release_spin_lock();
-        handed
-    }
-
-    #[inline]
-    fn acquire_spin_lock(&self) {
-        while self
-            .spin_lock
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        self.status
+            .compare_exchange(0, CANCELLED, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
-        {
-            std::hint::spin_loop();
-        }
-    }
-
-    #[inline]
-    fn release_spin_lock(&self) {
-        self.spin_lock.store(false, Ordering::SeqCst);
     }
 }
 
@@ -404,6 +385,45 @@ mod tests {
         park.unpark();
         assert_eq!(handle.join().unwrap(), Ok(()));
         assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    // regression: the hand-off claim is one-shot and must survive the
+    // waiter's park. A producer can claim the resource after the waiter
+    // queued itself but before it parks; the waiter may still have to
+    // forward it (e.g. a cancel arrives after the wake).
+    #[test]
+    fn hand_off_before_park_is_not_lost() {
+        let b = SyncBlocker::current();
+        assert!(b.try_hand_off());
+        assert!(b.is_unparked());
+        // the wake token is already set, so the park returns immediately
+        assert_eq!(b.park(Some(Duration::from_secs(1))), Ok(()));
+        // the claim is still visible: the waiter must forward the resource
+        // even though it leaves without taking it
+        assert!(b.leave_wait());
+    }
+
+    // a waiter that leaves first owns the decision: the producer must
+    // forward the resource instead of handing it to this blocker
+    #[test]
+    fn leave_wait_before_hand_off_forwards_resource() {
+        let b = SyncBlocker::current();
+        assert!(!b.leave_wait());
+        assert!(!b.is_unparked());
+        assert!(!b.try_hand_off());
+    }
+
+    // a timed-out wait is a waiter that left, so a later hand-off must be
+    // forwarded by the producer
+    #[test]
+    fn timed_out_park_leaves_the_claim_to_the_producer() {
+        let b = SyncBlocker::current();
+        assert_eq!(
+            b.park(Some(Duration::from_millis(10))),
+            Err(ParkError::Timeout)
+        );
+        assert!(!b.leave_wait());
+        assert!(!b.try_hand_off());
     }
 
     #[test]

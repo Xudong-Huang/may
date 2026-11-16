@@ -38,10 +38,10 @@ impl WaitTimeoutResult {
 pub struct Condvar {
     // the waiting blocker list
     // NOTE: a blocker that exits the wait via timeout/cancel without being
-    // notified stays in the queue (with the release flag set) until a
-    // notify pops it, so the signal can be forwarded to the next live
-    // waiter. If a condvar is never notified again, those blockers are
-    // retained for the lifetime of the condvar.
+    // notified stays in the queue (leave_wait has marked its status
+    // `CANCELLED`) until a notify pops it, so the signal can be forwarded to
+    // the next live waiter. If a condvar is never notified again, those
+    // blockers are retained for the lifetime of the condvar.
     to_wake: SegQueue<Arc<SyncBlocker>>,
     // used to verify the same mutex instance
     mutex: AtomicUsize,
