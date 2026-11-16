@@ -60,7 +60,7 @@ fn del_socket(io: &IoData) {
 
 // deal with the io result
 #[inline]
-fn co_io_result(is_coroutine: bool) -> io::Result<()> {
+pub(crate) fn co_io_result(is_coroutine: bool) -> io::Result<()> {
     if likely(is_coroutine) {
         match get_co_para() {
             None => Ok(()),

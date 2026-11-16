@@ -16,9 +16,15 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 const DEFAULT_STACK_SIZE: usize = 0x2000;
 const DEFAULT_POOL_CAPACITY: usize = 1000;
 
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
+const DEFAULT_IO_URING_RING_ENTRIES: usize = 1024;
+
 static WORKERS: AtomicUsize = AtomicUsize::new(0);
 static STACK_SIZE: AtomicUsize = AtomicUsize::new(DEFAULT_STACK_SIZE);
 static POOL_CAPACITY: AtomicUsize = AtomicUsize::new(DEFAULT_POOL_CAPACITY);
+
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
+static IO_URING_RING_ENTRIES: AtomicUsize = AtomicUsize::new(DEFAULT_IO_URING_RING_ENTRIES);
 
 // How long does the epoll wait before continuing with other tasks
 // By default, 10ms
@@ -59,6 +65,31 @@ impl Config {
             let num = num_cpus::get();
             WORKERS.store(num, Ordering::Relaxed);
             num
+        }
+    }
+
+    /// Set the `io_uring` submission queue size used by each io worker.
+    ///
+    /// This only affects builds with the `io_uring` feature on Linux. The value
+    /// is rounded up to a power of two when the ring is created, and the
+    /// completion queue is built with twice as many entries. Passing 0 restores
+    /// the default of 1024. Like the other settings, this must be called before
+    /// the scheduler starts.
+    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    pub fn set_io_uring_ring_entries(&self, entries: usize) -> &Self {
+        info!("set io_uring ring entries={entries:?}");
+        IO_URING_RING_ENTRIES.store(entries, Ordering::Release);
+        self
+    }
+
+    /// Get the configured `io_uring` submission queue size.
+    #[cfg(all(target_os = "linux", feature = "io_uring"))]
+    pub fn get_io_uring_ring_entries(&self) -> usize {
+        let entries = IO_URING_RING_ENTRIES.load(Ordering::Acquire);
+        if entries != 0 {
+            entries
+        } else {
+            DEFAULT_IO_URING_RING_ENTRIES
         }
     }
 
@@ -121,5 +152,29 @@ impl Config {
     /// Check if worker pinning is on
     pub fn get_worker_pin(&self) -> bool {
         PIN_WORKERS.load(Ordering::Acquire)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "io_uring"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_uring_ring_entries_config() {
+        let config = config();
+        assert_eq!(
+            config.get_io_uring_ring_entries(),
+            DEFAULT_IO_URING_RING_ENTRIES
+        );
+
+        config.set_io_uring_ring_entries(2048);
+        assert_eq!(config.get_io_uring_ring_entries(), 2048);
+
+        // zero restores the default, like the other config setters
+        config.set_io_uring_ring_entries(0);
+        assert_eq!(
+            config.get_io_uring_ring_entries(),
+            DEFAULT_IO_URING_RING_ENTRIES
+        );
     }
 }

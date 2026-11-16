@@ -40,6 +40,9 @@ may_queue = { version = "0.1", path = "may_queue" }
 nix = { version = "0.31", features = ["event", "socket"] }
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { version = "0.7.16", optional = true }
+
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
 features = [
@@ -65,9 +68,10 @@ tungstenite = "0.30"
 serde_derive = "1.0"
 
 [features]
-default = ["io_cancel", "io_timeout", "work_steal"]
+default = ["io_cancel", "io_timeout", "work_steal", "io_uring"]
 io_cancel = []
 io_timeout = []
+io_uring = ["dep:io-uring"]
 work_steal = ["dep:fastrand"]
 crossbeam_queue_steal = ["work_steal"]
 

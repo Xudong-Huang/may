@@ -120,12 +120,14 @@ platforms is not worth the abstraction.
   - `IoUring::builder().dontfork().build(entries)` where `entries` is
     `Config::get_io_uring_ring_entries()` (default 1024, power-of-two
     normalised) and the CQ is built with `setup_cqsize(2 × entries)`.
-- A `nix::sys::eventfd::EventFd` for cross-thread wakeups, watched with a
-  one-shot `IORING_OP_POLL_ADD`. Every `wakeup` writes the eventfd (the
-  scheduler already coalesces scheduler wakeups); the owner clears the counter,
-  marks the poll complete, and `wait` re-arms a fresh poll before blocking.
-  A write that races with the re-arm leaves the eventfd readable, so the new
-  poll completes immediately rather than losing the wakeup.
+- A `nix::sys::eventfd::EventFd` for cross-thread wakeups, watched by a
+  **multishot** `IORING_OP_POLL_ADD` (Linux 5.13+), so the poll stays registered
+  across wakeups instead of being re-armed every round. If the kernel rejects
+  the multishot arm (`-EINVAL` CQE, Linux 5.11–5.12), the ring permanently falls
+  back to one-shot `PollAdd` re-arming. Every `wakeup` writes the eventfd (the
+  scheduler already coalesces scheduler wakeups); the owner clears the counter
+  after a wake CQE. A multishot CQE with `IORING_CQE_F_MORE` keeps the poll
+  armed; a CQE without it means the poll ended and the next wait re-arms.
 - `user_data` encoding:
   - `Arc<EventData>` pointer for real requests (aligned, never 0/1/2),
   - tag `1` for the wakeup poll,
@@ -213,7 +215,8 @@ Ordered like the Windows selector:
 2. Drain up to `IO_POLLS_MAX` CQEs into `events` (copy into the backend-neutral
    `SysEvent` struct), advancing CQ head.
 3. Dispatch each CQE:
-   - wakeup tag: read the eventfd, clear the outstanding-poll bit, mark re-arm;
+   - wakeup tag: read the eventfd, clear the outstanding-poll bit when the poll
+     ended, mark re-arm;
    - cancel tag: debug-log unexpected results, ignore;
    - request: read `result`; map negative results; handle `-ECANCELED` using
      `cancel_reason`; take `co`; clear timer; store result; schedule/resume
@@ -340,8 +343,9 @@ Notes:
 - Unsupported kernel: ring creation fails with a clear error from
   `EventLoop::new`. Tests skip when ring creation is not permitted.
 - Minimum kernel: **5.11**, required by `IORING_FEAT_EXT_ARG` for the timed
-  `io_uring_enter` wait. The opcodes themselves are older; ring creation
-  returns `Unsupported` when the feature is missing. Test target: 5.15.
+  `io_uring_enter` wait; the wake poll uses the 5.13 multishot form when
+  available and falls back to one-shot re-arming otherwise. Ring creation
+  returns `Unsupported` when EXT_ARG is missing. Test target: 5.15.
 
 ## 5. Milestones (review checkpoints)
 

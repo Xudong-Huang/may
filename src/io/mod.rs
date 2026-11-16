@@ -7,8 +7,12 @@
 //! and fails the earlier wait with an io error, so its coroutine can handle it
 //! and continue.
 
-#[cfg(unix)]
+#[cfg(all(unix, not(all(target_os = "linux", feature = "io_uring"))))]
 #[path = "sys/unix/mod.rs"]
+pub(crate) mod sys;
+
+#[cfg(all(target_os = "linux", feature = "io_uring"))]
+#[path = "sys/linux_uring/mod.rs"]
 pub(crate) mod sys;
 
 #[cfg(windows)]
