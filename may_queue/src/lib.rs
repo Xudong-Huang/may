@@ -2,6 +2,7 @@
 
 mod atomic;
 
+pub mod atomic_option;
 pub mod mpsc;
 pub mod mpsc_list;
 pub mod mpsc_list_v1;

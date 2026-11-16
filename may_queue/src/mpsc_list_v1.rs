@@ -4,17 +4,17 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crossbeam_utils::atomic::AtomicCell;
 use crossbeam_utils::{Backoff, CachePadded};
+
+use crate::atomic_option::AtomicOption;
 
 struct Node<T> {
     next: AtomicPtr<Node<T>>,
-    // The cell itself is the ownership token between the single consumer
-    // (`pop`/`pop_if`) and the `Entry` handles (`with_mut_data`/`remove`),
+    // The slot itself is the ownership token between the single consumer
+    // (`pop`/`pop_if`/`peek_with`) and the `Entry` handles (`remove`),
     // which may run on different threads: a value is taken out with an atomic
-    // swap, so only one of them can own it at a time. Taking the value out
-    // temporarily is also how `with_mut_data` gets exclusive access to it.
-    value: AtomicCell<Option<T>>,
+    // swap, so only one of them can own it at a time.
+    value: AtomicOption<T>,
     refs: AtomicUsize,
 }
 // linked bit is MSB, ref count is 2 for handle and list
@@ -23,9 +23,13 @@ const REF_COUNT_MASK: usize = 0x0FFF_FFFF;
 
 impl<T> Node<T> {
     fn new(v: Option<T>) -> *mut Node<T> {
+        let value = match v {
+            Some(v) => AtomicOption::some(v),
+            None => AtomicOption::none(),
+        };
         Box::into_raw(Box::new(Node {
             next: AtomicPtr::new(ptr::null_mut()),
-            value: AtomicCell::new(v),
+            value,
             refs: AtomicUsize::new(REF_INIT),
         }))
     }
@@ -40,8 +44,8 @@ impl<T> Node<T> {
     ///
     /// Returns `None` if the value is permanently gone (the node was popped or
     /// removed). A value that another thread holds transiently (a concurrent
-    /// `pop`, `with_mut_data` or `remove`) is waited for and taken once it is
-    /// put back.
+    /// `pop`, `peek_with` or `remove`) is waited for and taken once it is put
+    /// back.
     fn take_value(&self) -> Option<ValueGuard<'_, T>> {
         let backoff = Backoff::new();
         loop {
@@ -82,65 +86,25 @@ impl<T> Drop for ValueGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
-            self.node.value.store(Some(value));
+            self.node.value.store(value);
         }
     }
 }
 
 pub struct Entry<T>(ptr::NonNull<Node<T>>);
 
-// like `Mutex<T>`, the handle grants exclusive access to the value through
-// `with_mut_data`, so the value only needs to be `Send` to share the handle
+// the handle is a reference-counted token: the value is reached by consuming
+// it in `remove`, which may run on any thread, so `T: Send` is enough to share
+// the handle
 unsafe impl<T: Send> Sync for Entry<T> {}
+unsafe impl<T: Send> Send for Entry<T> {}
 
 impl<T> Entry<T> {
-    /// get the internal data mut ref
-    ///
-    /// Returns `false` without calling `f` if the value has already been taken
-    /// by the consumer (the node was popped) or by `remove`. This is safe to
-    /// call while the consumer is popping the node: the value is moved out for
-    /// the duration of `f`, so a handle can disarm an entry that the consumer
-    /// may be taking at the same time.
-    ///
-    /// The value is put back when `f` returns or panics. `f` must not call back
-    /// into the queue, it would wait for the value that is currently taken out.
-    #[inline]
-    pub fn with_mut_data<F>(&self, f: F) -> bool
-    where
-        F: FnOnce(&mut T),
-    {
-        // SAFETY: `self` keeps the node alive, and `take_value` hands the value
-        // out to at most one caller at a time
-        match unsafe { self.0.as_ref() }.take_value() {
-            Some(mut guard) => {
-                f(guard.as_mut());
-                // the guard puts the value back
-                true
-            }
-            None => false,
-        }
-    }
-
     /// judge if the node is still linked in the list
     #[inline]
     pub fn is_link(&self) -> bool {
         // SAFETY: `self` keeps the node alive
         unsafe { self.0.as_ref() }.is_linked()
-    }
-
-    #[inline]
-    pub fn into_ptr(self) -> *mut Self {
-        let ret = self.0.as_ptr() as *mut Self;
-        ::std::mem::forget(self);
-        ret
-    }
-
-    #[inline]
-    /// # Safety
-    ///
-    /// Must use the ptr that from `Entry::into_ptr`
-    pub unsafe fn from_ptr(ptr: *mut Self) -> Self {
-        Entry(ptr::NonNull::new_unchecked(ptr as *mut Node<T>))
     }
 
     // remove the entry from it's list and return the contained value
@@ -191,8 +155,6 @@ impl<T> Drop for Entry<T> {
         }
     }
 }
-
-unsafe impl<T: Send> Send for Entry<T> {}
 
 /// Create a multi-producer single-consumer queue.
 ///
@@ -561,52 +523,8 @@ mod tests {
         drop(rx);
 
         // draining the queue took the values away
-        assert!(!a.with_mut_data(|_| unreachable!()));
         assert_eq!(a.remove(), None);
         assert_eq!(b.remove(), None);
-    }
-
-    /// touching an entry the consumer already popped must report that the
-    /// value is gone instead of panicking on the taken `Option`
-    #[test]
-    fn with_mut_data_after_pop_returns_false() {
-        let (tx, rx) = channel::<usize>();
-        let (h, _) = tx.push(1);
-        assert_eq!(rx.pop(), Some(1));
-
-        let called = h.with_mut_data(|v| *v = 2);
-        assert!(!called);
-    }
-
-    /// the handle mutating the value and the consumer popping the node race
-    /// for the same `value`; each of them must see a consistent value.
-    /// `NonZeroUsize` keeps `Option<T>` pointer-sized so this runs on
-    /// `AtomicCell`'s lock-free path.
-    #[test]
-    fn with_mut_data_races_with_pop() {
-        fn nz(v: usize) -> std::num::NonZeroUsize {
-            std::num::NonZeroUsize::new(v).unwrap()
-        }
-
-        let rounds = if cfg!(miri) { 50 } else { 2000 };
-        for _ in 0..rounds {
-            let (tx, rx) = channel::<std::num::NonZeroUsize>();
-            let (h, _) = tx.push(nz(1));
-            let barrier = Arc::new(Barrier::new(2));
-
-            let b = barrier.clone();
-            let handle = thread::spawn(move || {
-                b.wait();
-                h.with_mut_data(|v| *v = nz(2))
-            });
-
-            barrier.wait();
-            let popped = rx.pop().expect("push was not popped");
-            let mutated = handle.join().unwrap();
-
-            // the mutation is visible to the pop exactly when it won the race
-            assert_eq!(popped.get(), if mutated { 2 } else { 1 });
-        }
     }
 
     /// the consumer popping the oldest node races with `Entry::remove` on the
