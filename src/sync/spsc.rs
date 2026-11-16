@@ -206,9 +206,8 @@ impl<T> EventSource for Park<'_, T> {
 const _: () = assert!(std::mem::align_of::<AtomicOption<CoroutineImpl>>() >= 2);
 const _: () = assert!(std::mem::align_of::<Thread>() >= 2);
 // The handle is stored verbatim in the slot, so `AtomicOption<Blocker>` must
-// use the inline `AtomicCell` path: the `RcuCell` fallback taken by
-// non-lock-free values on 64-bit would box the handle instead.
-#[cfg(target_pointer_width = "64")]
+// use the inline `AtomicCell` path: the boxed fallback would store a pointer
+// instead of the handle.
 const _: () = assert!(AtomicOption::<Blocker>::DIRECT_ATOMIC);
 
 /// A registered waiter: either a coroutine or a native thread, stored as a

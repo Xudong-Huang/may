@@ -40,11 +40,6 @@ may_queue = { version = "0.1", path = "may_queue" }
 nix = { version = "0.31", features = ["event", "socket"] }
 libc = "0.2"
 
-# Backs `AtomicOption` when `AtomicCell` would fall back to its internal lock.
-# `rcu_cell` packs the pointer and its tag into one word, so it is 64-bit only.
-[target.'cfg(target_pointer_width = "64")'.dependencies]
-rcu_cell = "1.2.4"
-
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
 features = [

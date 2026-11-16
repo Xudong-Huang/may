@@ -137,7 +137,7 @@ fn coroutine_result() {
 }
 
 // the result is too large to fit an atomic word and is not `Sync`, so the
-// result packet takes the RCU fallback
+// result packet takes the boxed fallback
 #[test]
 fn coroutine_result_non_sync_and_large() {
     use std::cell::Cell;
