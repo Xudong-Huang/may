@@ -1,3 +1,20 @@
+## v0.3.52
+
+This release hardens the IO and timer paths and overhauls the synchronization primitives.
+
+* rework the unix reactor: share one dispatch loop between epoll and kqueue, retry selector waits on `EINTR`, and wake the selector that owns a deregistered fd
+* use a high-resolution waitable timer on Windows and a libdispatch semaphore parker on macOS; fix IO timer and cancellation races, and saturate timer deadline arithmetic
+* deregister an fd from the selector before closing it, and don't deregister an existing fd when epoll `ADD` fails
+* fail a concurrent wait on the same IO object with an io error instead of stranding the earlier coroutine
+* overhaul `Mutex`, `RwLock`, `Condvar`, `Barrier`, `WaitGroup`, `Semphore`/`Semaphore`, `SyncFlag`, and the `spsc`/`mpsc`/`mpmc` channels: close cancel/hand-off races, fix poison and release-chain recursion, and align the public APIs with `std::sync`
+* add `Receiver::recv_timeout` to `spsc`, make channel waits cancellation points, make `mpsc::Receiver` `!Sync`, and fix disconnect/notification races
+* make scoped coroutines compatible with `std::thread::scope`; export `Scope` and `ScopedJoinHandle`
+* improve the scheduler: exhaustive randomized work stealing (`rand_work_steal` is folded into `work_steal`), coalesced global-queue wakeups, bounded local-queue drains, and out-of-range `Builder::id` rejection
+* catch panics in worker and timer threads, publish the scheduler only after startup succeeds, and fix coroutine-local type safety
+* raise the default coroutine stack size to 64KB to leave room for cancellation unwinds
+* update `may_queue` to 0.2.0, with miri fixes, safer block allocation/teardown, and `AtomicOption`-backed mpsc list nodes
+* update `generator` to 0.8.12, `parking_lot` to 0.13, `socket2` to 0.6, `windows-sys` to 0.61, and `nix` to 0.32; improve the sync, IO, and stack-size documentation
+
 ## v0.3.51
 
 * version bump only
