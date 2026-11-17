@@ -70,7 +70,7 @@ fn co_io_result(is_coroutine: bool) -> io::Result<()> {
         let err = ASSOCIATED_IO_RET.with(|io_ret| io_ret.take());
         match err {
             None => Ok(()),
-            Some(err) => Err(*err),
+            Some(err) => Err(err),
         }
     }
 }

@@ -12,7 +12,7 @@ use generator::{co_get_yield, co_yield_with};
 
 thread_local! {
     // SAFETY: thread and coroutine would not run in parallel
-    pub static ASSOCIATED_IO_RET: Arc<AtomicOption<Box<EventResult>>> = Arc::new(AtomicOption::none());
+    pub static ASSOCIATED_IO_RET: Arc<AtomicOption<EventResult>> = Arc::new(AtomicOption::none());
     pub static PROXY_CO_SENDER: Sender<EventSubscriber> = {
         let (tx, rx) = channel();
         let parker = std::thread::current();
@@ -23,7 +23,7 @@ thread_local! {
             while let Ok(es) = rx.recv() {
                 co_yield_with(es);
                 if let Some(r) = co_get_yield::<EventResult>() {
-                    io_ret.store(Box::new(r));
+                    io_ret.store(r);
                 }
                 // wake up the master thread
                 parker.unpark();
