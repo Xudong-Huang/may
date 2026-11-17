@@ -1,7 +1,7 @@
 # Linux `io_uring` backend — implementation plan
 
-Status: **M3/M4 implemented and active; M5/M6 and `WaitIo` landed** — M0/M1
-committed as `104d17c`, M2 as `27af31f`; latest changes uncommitted
+Status: **M0–M9 implemented** — completion backend active; batch same-shard
+submission landed. Adaptive submit tuning remains a possible follow-up.
 
 ## 1. Goal and scope
 
@@ -30,7 +30,8 @@ IOCP backend, while keeping the existing Linux `epoll` backend as the default.
   see section 3).
 - Runtime backend switching or automatic fallback to epoll (see open question 1).
 - `SQPOLL`, `IOPOLL`, registered files/buffers, multishot recv/accept, zero-copy,
-  or cross-operation batching. These are follow-up optimisations (section 7).
+  or adaptive submit policies beyond the owner-round batching. These are
+  further follow-up optimisations (section 7).
 - New filesystem APIs. `CoIo` keeps working on file fds through
   `IORING_OP_READ/WRITE`, but there is no new fs module.
 
@@ -473,11 +474,11 @@ point is M4.
 - Harness and results (section 6), committed as
   `docs/io_uring_benchmark.md` + script.
 - **Status:** `benches/io_backend_compare.sh`, `latency_client` and
-  `idle_client` added; `docs/io_uring_benchmark.md` records echo ping-pong
-  (epoll 1.023M vs io_uring 0.906M req/s), connection churn (22.4k vs
-  22.1k req/s), low-concurrency latency (parity), and idle fan-out server CPU
-  (io_uring −18% at 5,000 connections). CQ-overflow and worker-restart soak
-  cases remain unmeasured.
+  `idle_client` added. Batched same-shard submission (v2) improved echo from
+  −11.5% to −3.9% and made churn +8.6% while widening low-concurrency p99 to
+  ~500 µs; idle fan-out server CPU is 20–28% lower. Results and caveats are in
+  `docs/io_uring_benchmark.md`; CQ-overflow and worker-restart tests live in
+  M7. Adaptive submit latency/throughput tuning remains a possible follow-up.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan
@@ -570,9 +571,11 @@ the no-default combination; all gates must compile cleanly.)
   model, kernel, worker counts, and payload.
 - Report median request/s, p50/p99 RTT, server CPU%, and errors.
 - Explicitly note:
+  - May submits one operation per coroutine; v1 entered the kernel per
+    operation, so batching wins were not expected. v2 now queues same-shard
+    submissions and enters once per event-loop round, which closed most of the
+    echo gap and made churn faster, at some low-concurrency latency cost;
   - the fast path still issues a non-blocking syscall before submitting;
-  - May submits one operation per coroutine and enters the kernel per request, so
-    batching wins are not expected in v1;
   - io_uring should win on churn and idle fan-out (no `epoll_ctl`), and may lose
     on tight ping-pong because the completion hop replaces the epoll wakeup;
   - results are honest either way; they decide whether follow-ups (deferred

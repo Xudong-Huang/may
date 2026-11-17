@@ -1,8 +1,8 @@
-epoll,echo,1,1021589
-epoll,echo,2,1024076
-epoll,churn,1,22204
-epoll,churn,2,22652
-io_uring,echo,1,907539
-io_uring,echo,2,903900
-io_uring,churn,1,22108
-io_uring,churn,2,22113
+epoll,echo,1,1030253
+epoll,echo,2,1040725
+epoll,churn,1,22460
+epoll,churn,2,23173
+io_uring,echo,1,995699
+io_uring,echo,2,993474
+io_uring,churn,1,24799
+io_uring,churn,2,24752

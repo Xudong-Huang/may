@@ -20,10 +20,10 @@ impl CancelIoData {
     }
 
     pub fn cancel(&self) -> io::Result<()> {
-        // Claim the reason before submitting. If the request is not submitted
+        // Claim the reason before submitting. If the request is not queued
         // yet, `Selector::cancel_request` is a no-op and the adapter finishes
-        // the cancellation after its submission (`Selector::submit`). The
-        // fence pairs with `submit`'s set_submitted + fence + reason check.
+        // the cancellation after its push (`Selector::submit`). The fence
+        // pairs with `submit`'s set_queued + fence + reason check.
         self.ev_data.mark_cancel_reason(CANCEL_USER);
         std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
         get_scheduler().get_selector().cancel_request(&self.ev_data)

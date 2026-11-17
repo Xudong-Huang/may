@@ -41,6 +41,17 @@ struct SingleSelector {
     sleep_until: AtomicU64,
 }
 
+/// Whether the current thread is the worker that owns `shard`.
+///
+/// Same-shard submissions are queued and submitted in batch by that worker's
+/// next `io_uring_enter`. Other threads (plain-thread I/O, a coroutine stolen
+/// to another worker) submit immediately because their push may happen while
+/// the owner is blocked.
+#[inline]
+fn is_shard_owner(shard: usize) -> bool {
+    crate::scheduler::WORKER_ID.with(|id| id.get() == shard)
+}
+
 impl SingleSelector {
     fn new() -> io::Result<SingleSelector> {
         let entries = crate::config::config().get_io_uring_ring_entries();
@@ -55,39 +66,41 @@ impl SingleSelector {
 
     /// Submit `AsyncCancel` for one request.
     ///
-    /// At most one cancel is queued per request; the slot is released again if
-    /// the ring refuses the submission.
+    /// A queued but not-yet-entered target is first forced into the kernel, so
+    /// the cancel SQE cannot overtake it and fail with `ENOENT`.
     fn cancel_request(&self, data: &EventData) -> io::Result<()> {
-        // A pre-submission cancel has nothing to cancel yet. The adapter
-        // re-checks the reason after its submission and cancels then; this is
-        // the other half of the register-then-check handshake in `submit`.
-        if !data.is_submitted() {
+        if !data.is_queued() {
             return Ok(());
         }
+        self.ring.submit_queued()?;
+
         if !data.take_cancel_slot() {
             return Ok(());
         }
         let entry = opcode::AsyncCancel::new(data.user_data())
             .build()
             .user_data(CANCEL_USER_DATA);
-        match self.ring.push_submit(entry) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                data.release_cancel_slot();
-                Err(e)
-            }
+        let result = if is_shard_owner(data.shard) {
+            // The owner will enter again after processing this round.
+            self.ring.push(entry)
+        } else {
+            self.ring.push_submit(entry)
+        };
+        if result.is_err() {
+            data.release_cancel_slot();
         }
+        result
     }
 
     #[cfg(feature = "io_timeout")]
     fn timeout_handler(&self, data: std::sync::Arc<EventData>) {
         // Mark the reason before attempting the cancel. If the request is not
-        // submitted yet, `AsyncCancel` would find nothing; the adapter finishes
-        // the cancellation after its submission, see `cancel_if_reason_pending`.
+        // queued yet, the adapter finishes the cancellation after its push,
+        // see the reason check in `Selector::submit`.
         data.mark_cancel_reason(CANCEL_TIMED_OUT);
         data.take_timer();
         std::sync::atomic::fence(Ordering::SeqCst);
-        if data.is_submitted() {
+        if data.is_queued() {
             let _ = self.cancel_request(&data);
         }
     }
@@ -269,13 +282,13 @@ impl Selector {
             return;
         };
         previous.mark_cancel_reason(CANCEL_CONCURRENT_WAIT);
-        // Pair with the fence in `submit` (set_submitted then fence then read
+        // Pair with the fence in `submit` (set_queued then fence then read
         // reason): either this reason is visible to the earlier adapter, or
-        // the earlier adapter's submitted flag is visible here.
+        // the earlier adapter's queued flag is visible here.
         std::sync::atomic::fence(Ordering::SeqCst);
-        // If the earlier adapter has not submitted yet, it will observe the
-        // reason after its submission and cancel then.
-        if previous.is_submitted() {
+        // If the earlier adapter has not pushed yet, it will observe the
+        // reason after its push and cancel then.
+        if previous.is_queued() {
             if let Some(single) = self.vec.get(previous.shard) {
                 let _ = single.cancel_request(&previous);
             }
@@ -293,14 +306,15 @@ impl Selector {
         }
     }
 
-    /// Submit one SQE for `req` and finish any cancel that was requested while
-    /// the operation was being submitted.
+    /// Push one SQE for `req` and finish any cancel that was requested while
+    /// the operation was being queued.
     ///
-    /// The caller stores the coroutine in `req` first (see `submit_co!`). The
-    /// `set_submitted` + fence + reason check is the adapter half of the
-    /// handshake whose other half is the fence in `cancel_request` /
-    /// `timeout_handler`: either the submitter observes the reason, or the
-    /// canceller observes `submitted`.
+    /// Same-shard callers only push; the owning worker enters the kernel once
+    /// for everything queued in this event-loop round. Other callers push and
+    /// submit immediately. The `set_queued` + fence + reason check is the
+    /// adapter half of the handshake whose other half is the fence in
+    /// `cancel_request` / `timeout_handler`: either the submitter observes the
+    /// reason, or the canceller observes `queued`.
     pub(crate) fn submit(
         &self,
         req: &std::sync::Arc<EventData>,
@@ -315,9 +329,17 @@ impl Selector {
 
         self.begin_request(req.state(), req);
         let entry = entry.user_data(req.user_data());
-        match single.ring.push_submit(entry) {
+        let result = if is_shard_owner(req.shard) {
+            // The owner will enter the kernel again after this round.
+            single.ring.push(entry)
+        } else {
+            // The owner may be blocked in its wait; submit now.
+            single.ring.push_submit(entry)
+        };
+
+        match result {
             Ok(()) => {
-                req.set_submitted();
+                req.set_queued();
                 std::sync::atomic::fence(Ordering::SeqCst);
                 if req.cancel_reason() != CANCEL_NONE {
                     let _ = single.cancel_request(req);
@@ -325,9 +347,10 @@ impl Selector {
                 Ok(())
             }
             Err(e) => {
-                // The kernel does not own the SQE (a failed submit poisons the
-                // ring and no later enter can pick it up), so the adapter may
-                // safely resume the coroutine with the error.
+                // No SQE for this request is left that could be submitted: a
+                // failed push leaves nothing queued, and a failed immediate
+                // submit poisons the ring so no later enter can pick it up.
+                // The adapter may safely resume the coroutine with the error.
                 req.clear_active();
                 Err(e)
             }

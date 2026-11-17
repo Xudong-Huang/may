@@ -148,12 +148,13 @@ impl Ring {
         self.cq_entries
     }
 
-    /// Push one SQE and submit all queued entries.
+    /// Push one SQE into the ring without entering the kernel.
     ///
-    /// The entry must already carry the caller's `user_data`. On error the
-    /// caller must not retry with the same buffers: the SQE may be left in the
-    /// ring, which is poisoned if submission failed after the push.
-    pub(crate) fn push_submit(&self, entry: squeue::Entry) -> io::Result<()> {
+    /// The owning worker submits it (together with everything else queued) on
+    /// its next wait. The entry must already carry the caller's `user_data`.
+    /// On error the caller must not retry with the same buffers: the SQE may be
+    /// left in the ring, which is poisoned if submission failed after the push.
+    pub(crate) fn push(&self, entry: squeue::Entry) -> io::Result<()> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(self.poisoned_error());
         }
@@ -177,7 +178,7 @@ impl Ring {
             let pushed = unsafe { sq.push(&entry) };
             drop(sq);
             match pushed {
-                Ok(()) => return self.submit_all_locked(),
+                Ok(()) => return Ok(()),
                 Err(_) => self.submit_all_locked()?,
             }
         }
@@ -186,6 +187,31 @@ impl Ring {
             io::ErrorKind::WouldBlock,
             "io_uring submission queue is full",
         ))
+    }
+
+    /// Push one SQE and submit all queued entries immediately.
+    ///
+    /// Used for cross-thread submissions and for cancels that must reach the
+    /// kernel now.
+    pub(crate) fn push_submit(&self, entry: squeue::Entry) -> io::Result<()> {
+        self.push(entry)?;
+        self.submit_queued()
+    }
+
+    /// Submit every SQE currently queued in the ring.
+    ///
+    /// This performs one `io_uring_enter` for the whole queue; the owning
+    /// worker calls it from `wait`, and cancel paths call it to force a queued
+    /// target into the kernel before submitting `AsyncCancel`.
+    pub(crate) fn submit_queued(&self) -> io::Result<()> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(self.poisoned_error());
+        }
+        let _guard = self.submit_lock.lock();
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(self.poisoned_error());
+        }
+        self.submit_all_locked()
     }
 
     /// Submit every SQE currently queued in the ring.
@@ -465,6 +491,37 @@ mod tests {
         assert_eq!(ring.drain(&mut events), 0);
         assert!(elapsed >= Duration::from_millis(40), "returned too early");
         assert!(elapsed < Duration::from_secs(5), "timeout did not fire");
+    }
+
+    #[test]
+    fn queued_batch_is_submitted_together() {
+        let Some(ring) = test_ring(64) else {
+            return;
+        };
+
+        const TOTAL: u64 = 32;
+        const BASE: u64 = 2_000;
+        for i in 0..TOTAL {
+            // `push` leaves every SQE in the ring; one `submit_queued` call
+            // enters the kernel for the whole batch.
+            ring.push(opcode::Nop::new().build().user_data(BASE + i))
+                .unwrap();
+        }
+        ring.submit_queued().unwrap();
+
+        let mut seen = 0u64;
+        let mut events = [SysEvent::default(); 32];
+        while seen < TOTAL {
+            ring.wait(Some(Duration::from_secs(2))).unwrap();
+            let n = ring.drain(&mut events);
+            for event in &events[..n] {
+                if event.user_data >= BASE {
+                    assert_eq!(event.result, 0);
+                    seen += 1;
+                }
+            }
+        }
+        assert_eq!(seen, TOTAL);
     }
 
     #[test]

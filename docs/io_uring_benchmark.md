@@ -1,8 +1,9 @@
 # epoll vs io_uring — comparison
 
-Status: preliminary, but covers echo ping-pong, connection churn, low-concurrency
-latency percentiles and idle connection fan-out. CQ-overflow and worker-restart
-soak cases are still not measured.
+Status: preliminary, covering echo ping-pong, connection churn, low-concurrency
+latency percentiles and idle connection fan-out. The current io_uring build
+uses **batched submission** (see below); earlier per-op-submit numbers are kept
+where they help explain the change.
 
 ## Environment
 
@@ -11,6 +12,15 @@ soak cases are still not measured.
   poll present)
 - Rust: release profile (`lto = true`), nightly toolchain in this workspace
 - Client and server: same machine, loopback
+
+## Submission modes
+
+- **v1 — per-operation submit**: each adapter pushed an SQE and immediately
+  called `io_uring_enter`.
+- **v2 — batched submit** (current): same-shard submissions are pushed into the
+  ring and the owning worker enters once for everything queued in that
+  event-loop round. Cross-thread submissions still enter immediately. A cancel
+  of a queued request force-submits it before queueing `AsyncCancel`.
 
 ## Workloads
 
@@ -28,50 +38,51 @@ soak cases are still not measured.
   the server backend varies.
 - Epoll server and io_uring server are separate release builds.
 
-## Throughput (median of 2 runs)
+## Throughput (median of 2 runs, batched submission)
 
 | backend | echo | churn |
 |---|---:|---:|
-| epoll | 1,022,832 req/s | 22,428 req/s |
-| io_uring (v1) | 905,719 req/s | 22,110 req/s |
-| delta | −11.5% | −1.4% |
+| epoll | 1,035,489 req/s | 22,816 req/s |
+| io_uring v2 | 994,586 req/s | 24,775 req/s |
+| delta | −3.9% | +8.6% |
 
-A previous 3-run, 200-connection echo run showed the same shape: epoll
-1,036,697 vs io_uring 915,809 req/s (−11.7%).
+For reference, the v1 per-operation submit build measured epoll 1,022,832 vs
+io_uring 905,719 on echo (−11.5%) and epoll 22,428 vs io_uring 22,110 on churn
+(−1.4%).
 
 Raw data: [docs/bench/io_backend_compare.csv](bench/io_backend_compare.csv).
 
 Reproduce:
 
 ```sh
-WORKLOADS="echo churn" benches/io_backend_compare.sh 18083 8 100 5 2
-WORKLOADS=latency    benches/io_backend_compare.sh 18084 8 20 3 3
+WORKLOADS="echo churn" benches/io_backend_compare.sh 18093 8 100 5 2
+WORKLOADS=latency    benches/io_backend_compare.sh 18094 8 20 3 3
 ```
 
-## Latency (20 connections, 3 runs)
+## Latency (20 connections, 3 runs, batched submission)
 
-| backend | p50 | p95 | p99 |
-|---|---:|---:|---:|
-| epoll | 8 µs | 14–26 µs | 219–409 µs |
-| io_uring v1 | 8 µs | 16–18 µs | 240–334 µs |
+| backend | p50 | p95 | p99 | throughput |
+|---|---:|---:|---:|---:|
+| epoll | 8 µs | 15–27 µs | 368–411 µs | 890–955k req/s |
+| io_uring v2 | 8 µs | 23–25 µs | 489–503 µs | 823–834k req/s |
 
-At low concurrency the two backends are effectively at parity: same median,
-overlapping p95/p99 ranges, and both around 900–950k requests/s in these short
-runs. The earlier script run with 20 connections also showed this variance
-(epoll 880k, io_uring 741k in one pair of 2-run runs), so no strong single-run
-claim should be made.
+The v1 per-operation build had lower tail latency (p99 240–334 µs, p95 16–18
+µs) and roughly parity throughput. Batching trades some low-concurrency
+latency for higher throughput: a queued request waits for the owning worker's
+next event-loop round before the kernel sees it.
 
 ## Idle fan-out (server CPU, 3 s hold)
 
 | connections | epoll CPU | io_uring CPU | delta |
 |---:|---:|---:|---:|
-| 1,000 | 0.150 s | 0.110 s | −27% |
-| 5,000 | 0.490 s | 0.400 s | −18% |
+| 1,000 | 0.180 s | 0.130 s | −28% |
+| 5,000 | 0.560 s | 0.450 s | −20% |
 
 The io_uring backend avoids per-connection reactor registration, and this is
-the first workload where that shows up. The absolute numbers include TCP
-handshake and handler/coroutine setup, so they are not a pure registration
-cost; the difference grows only slowly with connection count in this range.
+the workload where that advantage is clearest. The absolute numbers include
+TCP handshake and handler/coroutine setup, so they are not a pure registration
+cost; an earlier v1 run measured 0.150/0.110 s at 1,000 and 0.490/0.400 s at
+5,000.
 
 Manual measurement:
 
@@ -86,26 +97,20 @@ awk -v a=$t0 -v b=$t1 -v hz=$HZ 'BEGIN {printf "%.3f s\n", (b-a)/hz}'
 
 ## Interpretation
 
-- **Ping-pong throughput**: io_uring is ~11% slower. The epoll design usually
-  gets the data in the first non-blocking `read`, then writes it, so an echo
-  message costs at most two syscalls. The io_uring design submits one SQE and
-  enters the kernel per blocked operation, then processes a CQE a round later,
-  plus active-request bookkeeping. May's one-operation-per-coroutine model does
-  not create the batches that normally make io_uring cheaper than a syscall per
-  operation.
-- **Connection churn**: at parity. The TCP handshake and coroutine/handler setup
-  dominate over `epoll_ctl(ADD/DEL)` at this rate.
-- **Low-concurrency latency**: at parity within run-to-run noise.
-- **Idle fan-out**: io_uring uses less server CPU, consistent with skipping
-  per-connection reactor registration.
+- **Echo throughput**: batching reduced the gap from −11.5% to −3.9%. The
+  remaining difference is mostly the epoll fast path: an echo message usually
+  costs two direct syscalls, while io_uring still pays completion processing
+  and an event-loop round.
+- **Churn**: batching made io_uring faster (+8.6%); accept/connect submissions
+  batch into one enter and there is no per-connection registration.
+- **Low-concurrency latency**: p50 is identical, but batching widened p99
+  (~500 µs vs ~400 µs) and lowered the 20-connection throughput. This is the
+  direct cost of deferring submission to the next round.
+- **Idle fan-out**: io_uring uses ~20–28% less server CPU.
 
-The next optimisation should target batching rather than micro-tuning the
-dispatch loop:
+A possible follow-up is an adaptive policy: submit immediately when the ring
+is otherwise empty, and batch only when there is already queued work. That
+would recover latency without giving up burst batching. Larger connection
+counts and longer runs are also needed to reduce variance before finer claims.
 
-1. Defer submission and let the owning worker enter once with several SQEs.
-2. Consider multishot accept/recv where the API allows it.
-3. Re-run the matrix with larger connection counts and longer runs to reduce
-   variance before drawing finer conclusions.
-
-No conclusion should be drawn about workloads outside these four until the
-remaining soak cases are measured.
+No conclusion should be drawn about workloads outside these four.

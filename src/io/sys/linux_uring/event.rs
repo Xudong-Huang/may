@@ -118,8 +118,10 @@ pub(crate) struct EventData {
     #[cfg(feature = "io_timeout")]
     pub(crate) timer: AtomicOption<TimerHandle>,
     co: AtomicOption<CoroutineImpl>,
-    /// Set after the SQE has been handed to the ring.
-    submitted: AtomicBool,
+    /// Set after the SQE has been pushed into the ring. The kernel may not
+    /// have seen it yet: same-shard submissions are queued and entered in
+    /// batch by the owning event loop.
+    queued: AtomicBool,
     /// Set while an `AsyncCancel` SQE has been handed to the ring for this
     /// request; keeps timeout/concurrent-wait/user-cancel paths from queuing
     /// duplicate cancels.
@@ -138,7 +140,7 @@ impl EventData {
             #[cfg(feature = "io_timeout")]
             timer: AtomicOption::none(),
             co: AtomicOption::none(),
-            submitted: AtomicBool::new(false),
+            queued: AtomicBool::new(false),
             cancel_sent: AtomicBool::new(false),
             cancel_reason: AtomicU8::new(CANCEL_NONE),
         })
@@ -188,13 +190,15 @@ impl EventData {
     }
 
     #[inline]
-    pub(crate) fn set_submitted(&self) {
-        self.submitted.store(true, Ordering::Release);
+    pub(crate) fn set_queued(&self) {
+        self.queued.store(true, Ordering::Release);
     }
 
+    /// Whether the SQE has been pushed into the ring. It may still be waiting
+    /// for the owning worker's next `io_uring_enter`.
     #[inline]
-    pub(crate) fn is_submitted(&self) -> bool {
-        self.submitted.load(Ordering::Acquire)
+    pub(crate) fn is_queued(&self) -> bool {
+        self.queued.load(Ordering::Acquire)
     }
 
     /// Claim the cancel slot for `reason`; returns false if another reason
