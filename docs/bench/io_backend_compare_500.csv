@@ -1,0 +1,12 @@
+epoll,echo,1,1086412
+epoll,echo,2,1081301
+epoll,echo,3,1078616
+epoll,churn,1,22103
+epoll,churn,2,24449
+epoll,churn,3,24336
+io_uring,echo,1,1037725
+io_uring,echo,2,1030580
+io_uring,echo,3,1024244
+io_uring,churn,1,24468
+io_uring,churn,2,21741
+io_uring,churn,3,21702

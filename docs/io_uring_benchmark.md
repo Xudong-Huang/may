@@ -38,7 +38,7 @@ each round immediately" policy was measured and rejected.
   and the next connection starts.
 - `latency`: 20 persistent connections, 100-byte payload, 3 seconds, 3 runs;
   the client records every RTT and reports p50/p95/p99.
-- `idle`: 1000/5000 connections that are opened and held without sending
+- `idle`: 1000/5000/10000 connections that are opened and held without sending
   anything; server CPU is sampled from `/proc/<pid>/stat`.
 - The clients are always the **epoll** build
   (`--no-default-features --features "io_cancel io_timeout work_steal"`), so only
@@ -74,6 +74,25 @@ WORKLOADS="echo churn" benches/io_backend_compare.sh 18093 8 100 5 3
 WORKLOADS=latency    benches/io_backend_compare.sh 18094 8 20 3 3
 ```
 
+### 500 connections
+
+The same echo/churn workload with 500 connections (three runs):
+
+| backend | echo | churn |
+|---|---:|---:|
+| epoll | 1,081,301 req/s | 24,336 req/s |
+| io_uring | 1,030,580 req/s | 21,741 req/s |
+| delta | −4.7% | within variance |
+
+Echo remains stable and the gap is slightly wider than at 100 connections.
+Churn ranges overlap heavily (epoll 22.1–24.4k, io_uring 21.7–24.5k), so no
+directional claim is made. Raw data:
+[docs/bench/io_backend_compare_500.csv](bench/io_backend_compare_500.csv).
+
+```sh
+WORKLOADS="echo churn" benches/io_backend_compare.sh 18120 8 500 5 3
+```
+
 ## Latency (20 connections, 3 runs, batched submission)
 
 | backend | p50 | p95 | p99 | throughput |
@@ -89,18 +108,21 @@ at the next event-loop turn. The round-flag adaptive variant (p99 428–472 µs)
 did not change that either. p50/p95 are close across backends; io_uring's
 20-connection throughput is a few percent below epoll in this workload.
 
-## Idle fan-out (server CPU, 3 s hold)
+## Idle fan-out (server CPU, 3 s hold, median of 3 runs)
 
 | connections | epoll CPU | io_uring CPU | delta |
 |---:|---:|---:|---:|
-| 1,000 | 0.180 s | 0.130 s | −28% |
-| 5,000 | 0.560 s | 0.450 s | −20% |
+| 1,000 | 0.150 s | 0.130 s | −13% |
+| 5,000 | 0.480 s | 0.410 s | −15% |
+| 10,000 | 0.780 s | 0.680 s | −13% |
 
 The io_uring backend avoids per-connection reactor registration, and this is
 the workload where that advantage is clearest. The absolute numbers include
 TCP handshake and handler/coroutine setup, so they are not a pure registration
-cost; an earlier v1 run measured 0.150/0.110 s at 1,000 and 0.490/0.400 s at
-5,000.
+cost. Earlier single runs measured deltas of 20–28%; with three repeats per
+point the ranges overlap more than that (for example 0.67–0.79 s versus
+0.55–0.78 s at 10,000), which is why the conservative three-run medians are
+reported. Raw data: [docs/bench/io_idle_cpu.csv](bench/io_idle_cpu.csv).
 
 Manual measurement:
 
@@ -132,10 +154,10 @@ completion processing, not syscall count.
 
 ## Interpretation
 
-- **Echo throughput**: batching reduced the gap from −11.5% to −3.7%. The
-  remaining difference is mostly the epoll fast path: an echo message usually
-  costs two direct syscalls, while io_uring still pays completion processing
-  and an event-loop round.
+- **Echo throughput**: batching reduced the gap from −11.5% to −3.7% at 100
+  connections and −4.7% at 500. The remaining difference is mostly the epoll
+  fast path: an echo message usually costs two direct syscalls, while io_uring
+  still pays completion processing and an event-loop round.
 - **Churn**: batching moved churn to parity. The earlier +8.6% result did not
   reproduce; epoll churn itself varied 22.3–24.9k across three runs, so no
   stable win or loss is claimed.
@@ -146,7 +168,9 @@ completion processing, not syscall count.
   variant measured the same p99 range in back-to-back runs, so this is not a
   batching artifact; the completion hop and wakeup/scheduling variance
   dominate at this scale.
-- **Idle fan-out**: io_uring uses ~20–28% less server CPU.
+- **Idle fan-out**: io_uring uses ~13–15% less server CPU in three-run
+  medians; earlier single runs suggested 20–28%, but the measurement includes
+  connection setup and varies run to run.
 
 Adaptive submission was evaluated and rejected: it did not reduce the tail
 latency it targeted and cost throughput (echo 973k round-flag / 915k v1 versus

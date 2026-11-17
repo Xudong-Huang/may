@@ -480,10 +480,12 @@ point is M4.
   −11.5% to −3.7%; churn is at parity within run-to-run variance (epoll itself
   varied 22.3–24.9k in a three-run set). Low-concurrency p99 stayed at
   ~480–500 µs for per-op, round-flag adaptive and batched submission alike, so
-  it is not a batching artifact. Idle fan-out server CPU is 20–28% lower.
-  Results, a context-only `strace` syscall profile and caveats are in
-  `docs/io_uring_benchmark.md`; CQ-overflow and worker-restart tests live in
-  M7. Adaptive submit policies were rejected; batched submission stays.
+  it is not a batching artifact. A 500-connection echo run keeps a −4.7% gap
+  and churn stays within variance; idle fan-out server CPU is 13–15% lower in
+  three-run medians. Results, a context-only `strace` syscall profile and
+  caveats are in `docs/io_uring_benchmark.md`; CQ-overflow and worker-restart
+  tests live in M7. Adaptive submit policies were rejected; batched submission
+  stays.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan
