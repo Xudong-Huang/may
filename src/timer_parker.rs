@@ -13,9 +13,8 @@
 //! which the timer thread joins while the scheduler and the timeout clock
 //! initialize. A wakeup token lost in that interaction left the timer thread
 //! sleeping on a long timeout while a short timer was already due. The private
-//! parkers below share nothing with std: the default uses a libdispatch
-//! counting semaphore with nanosecond `dispatch_time` deadlines, and a
-//! `parking_lot` condvar variant is kept as an alternative backend.
+//! parker below shares nothing with std: it uses a libdispatch counting
+//! semaphore with nanosecond `dispatch_time` deadlines.
 //!
 //! On Windows the standard parker is `WaitOnAddress`. Its timeout is a whole
 //! number of milliseconds, rounded up, and the wait is quantized to the
@@ -83,9 +82,7 @@ mod macos {
     use std::ffi::c_void;
     use std::sync::Arc;
     use std::thread;
-    use std::time::{Duration, Instant};
-
-    use parking_lot::{Condvar, Mutex};
+    use std::time::Duration;
 
     type dispatch_semaphore_t = *mut c_void;
     type dispatch_time_t = u64;
@@ -109,10 +106,10 @@ mod macos {
     /// semaphore and [`park`](Self::park) waits on it with a nanosecond
     /// `dispatch_time` deadline. A notification that arrives before the wait,
     /// or while the timer thread is between waits, is remembered by the
-    /// semaphore and consumed by the next wait instead of being lost. Like the
-    /// condvar parker below it shares nothing with std's per-thread `Parker`,
-    /// which std's `Once`/`OnceLock` machinery also parks on during thread and
-    /// scheduler startup.
+    /// semaphore and consumed by the next wait instead of being lost. It
+    /// shares nothing with std's per-thread `Parker`, which std's
+    /// `Once`/`OnceLock` machinery also parks on during thread and scheduler
+    /// startup.
     pub(crate) struct DispatchParker {
         sem: dispatch_semaphore_t,
     }
