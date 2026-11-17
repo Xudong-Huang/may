@@ -41,6 +41,35 @@ jobs:
         with:
           command: clippy
           args: --no-default-features -- -D warnings
+      - name: Run cargo clippy epoll backend
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --no-default-features --features "io_cancel io_timeout work_steal" -- -D warnings
+  io_uring:
+    name: io_uring backend (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      # The tests skip themselves when the runner blocks io_uring_setup, so
+      # this job stays green on hosted runners without io_uring access.
+      - name: Run io_uring tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --test io_uring --test io_uring_stress -- --test-threads=1
+      - name: Run cargo clippy io_uring minimal
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --no-default-features --features "io_uring io_cancel io_timeout work_steal" -- -D warnings
   test:
     name: Test ${{ matrix.rust }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -66,8 +95,12 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+          # Hosted runners may block io_uring; the general matrix exercises the
+          # epoll/kqueue/IOCP backends. The dedicated io_uring job above runs
+          # the completion-backend tests (and skips when the ring is blocked).
+          args: --no-default-features --features "io_cancel io_timeout work_steal"
       - name: Run cargo release test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release --no-default-features --features "io_cancel io_timeout work_steal"

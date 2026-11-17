@@ -449,7 +449,8 @@ point is M4.
   stress, worker panic/restart behaviour.
 - `cargo test --features io_uring` and feature-combination matrix.
 - **Status:** `WaitIo` and the waker race fix are implemented and stress-tested;
-  high-connection soak, CQ-overflow and worker-panic tests remain TODO.
+  `tests/io_uring_stress.rs` adds single-worker timer-starvation and
+  connection-soak scenarios. CQ-overflow and worker-panic tests remain TODO.
 - **Review:** stress-test logs and any residual unsafe invariants.
 
 ### M8 — docs and CI
@@ -458,12 +459,11 @@ point is M4.
   fast-path caveat.
 - CI: `cargo check --features io_uring` in lints; a Linux test job that skips
   when io_uring is not permitted.
-- **Status:** README and `src/io/README.txt` updated. CI is still pending: with
-  io_uring in the branch's default features, a plain `cargo test` on a hosted
-  runner may fail before the per-test skip guard runs. Options for review:
-  (a) keep default-on and run the main matrix with the epoll feature set plus a
-  dedicated `--test io_uring` job, or (b) make the feature opt-in again before
-  merging and keep the current CI matrix.
+- **Status:** README and `src/io/README.txt` updated. CI now keeps the general
+  matrix on the epoll feature set (hosted runners may block io_uring) and adds a
+  dedicated Linux `io_uring` job that runs `tests/io_uring.rs` and
+  `tests/io_uring_stress.rs`; those tests skip themselves when the runner
+  rejects `io_uring_setup`. Lints also cover the epoll-only feature set.
 - **Review:** docs wording, CI expectations.
 
 ### M9 — benchmarks
@@ -471,10 +471,10 @@ point is M4.
 - Harness and results (section 6), committed as
   `docs/io_uring_benchmark.md` + script.
 - **Status:** `benches/io_backend_compare.sh` and
-  `docs/io_uring_benchmark.md` added; first loopback ping-pong result recorded
-  (epoll 1.037M vs io_uring 0.916M req/s, same epoll client, 8 workers/200
-  connections). Churn, idle fan-out and latency percentile workloads remain
-  TODO.
+  `docs/io_uring_benchmark.md` added; loopback results recorded for echo
+  ping-pong (epoll 1.023M vs io_uring 0.906M req/s) and connection churn
+  (22.4k vs 22.1k req/s), same epoll client, 8 workers/100 connections.
+  Idle fan-out and latency percentile workloads remain TODO.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan
