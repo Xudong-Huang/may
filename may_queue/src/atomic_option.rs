@@ -134,8 +134,8 @@ mod tests {
     #[test]
     fn non_sync_payload() {
         assert_send_sync::<AtomicOption<Box<dyn Any + Send>>>();
-        // on 64-bit the 16-byte payload takes the boxed fallback
-        #[cfg(target_pointer_width = "64")]
+        // a fat pointer is two words, so it takes the boxed fallback on every
+        // pointer width
         const _: () = assert!(!AtomicOption::<Box<dyn Any + Send>>::DIRECT_ATOMIC);
         let slot = Arc::new(AtomicOption::none());
         slot.store(Box::new(7u32) as Box<dyn Any + Send>);
