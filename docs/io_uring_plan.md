@@ -1,7 +1,8 @@
 # Linux `io_uring` backend — implementation plan
 
 Status: **M0–M9 implemented** — completion backend active; batch same-shard
-submission landed. Adaptive submit tuning remains a possible follow-up.
+submission landed. Per-op and round-flag adaptive submit policies were measured
+and rejected (no tail-latency gain, less throughput); batched submission stays.
 
 ## 1. Goal and scope
 
@@ -475,10 +476,13 @@ point is M4.
   `docs/io_uring_benchmark.md` + script.
 - **Status:** `benches/io_backend_compare.sh`, `latency_client` and
   `idle_client` added. Batched same-shard submission (v2) improved echo from
-  −11.5% to −3.9% and made churn +8.6% while widening low-concurrency p99 to
-  ~500 µs; idle fan-out server CPU is 20–28% lower. Results and caveats are in
-  `docs/io_uring_benchmark.md`; CQ-overflow and worker-restart tests live in
-  M7. Adaptive submit latency/throughput tuning remains a possible follow-up.
+  −11.5% to −3.7%; churn is at parity within run-to-run variance (epoll itself
+  varied 22.3–24.9k in a three-run set). Low-concurrency p99 stayed at
+  ~480–500 µs for per-op, round-flag adaptive and batched submission alike, so
+  it is not a batching artifact. Idle fan-out server CPU is 20–28% lower.
+  Results and caveats are in `docs/io_uring_benchmark.md`; CQ-overflow and
+  worker-restart tests live in M7. Adaptive submit policies were rejected;
+  batched submission stays.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan
@@ -574,7 +578,8 @@ the no-default combination; all gates must compile cleanly.)
   - May submits one operation per coroutine; v1 entered the kernel per
     operation, so batching wins were not expected. v2 now queues same-shard
     submissions and enters once per event-loop round, which closed most of the
-    echo gap and made churn faster, at some low-concurrency latency cost;
+    echo gap; churn is at parity within variance. Per-op and round-flag
+    submission did not reduce the low-concurrency p99 tail, so v2 stays;
   - the fast path still issues a non-blocking syscall before submitting;
   - io_uring should win on churn and idle fan-out (no `epoll_ctl`), and may lose
     on tight ping-pong because the completion hop replaces the epoll wakeup;

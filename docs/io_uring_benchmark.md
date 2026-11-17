@@ -3,7 +3,8 @@
 Status: preliminary, covering echo ping-pong, connection churn, low-concurrency
 latency percentiles and idle connection fan-out. The current io_uring build
 uses **batched submission** (see below); earlier per-op-submit numbers are kept
-where they help explain the change.
+where they help explain the change. An adaptive "submit the first operation of
+each round immediately" policy was measured and rejected.
 
 ## Environment
 
@@ -21,11 +22,17 @@ where they help explain the change.
   ring and the owning worker enters once for everything queued in that
   event-loop round. Cross-thread submissions still enter immediately. A cancel
   of a queued request force-submits it before queueing `AsyncCancel`.
+- **v3 — round-flag adaptive (rejected)**: the first same-shard submission
+  after the worker woke entered immediately; the rest of that round's
+  submissions were batched. A variant that submitted whenever the SQ was
+  empty degenerated to v1, because each immediate submit emptied the queue
+  again. The round-flag variant cost throughput without reducing tail latency,
+  so v2 was kept (see Interpretation).
 
 ## Workloads
 
 - `examples/echo.rs` server, 8 workers, 100 connections, 100-byte payload,
-  5 seconds per run, 2 runs, 1 s warm-up.
+  5 seconds per run, 3 runs, 1 s warm-up.
 - `echo`: persistent connections repeatedly echo one message.
 - `churn`: each connection is opened, one message is echoed, then it is closed
   and the next connection starts.
@@ -38,24 +45,32 @@ where they help explain the change.
   the server backend varies.
 - Epoll server and io_uring server are separate release builds.
 
-## Throughput (median of 2 runs, batched submission)
+## Throughput (median of 3 runs, batched submission)
 
 | backend | echo | churn |
 |---|---:|---:|
-| epoll | 1,035,489 req/s | 22,816 req/s |
-| io_uring v2 | 994,586 req/s | 24,775 req/s |
-| delta | −3.9% | +8.6% |
+| epoll | 1,035,448 req/s | 24,736 req/s |
+| io_uring v2 | 997,613 req/s | 24,763 req/s |
+| delta | −3.7% | +0.1% |
 
-For reference, the v1 per-operation submit build measured epoll 1,022,832 vs
+Churn is reported as parity: epoll measured 22.3–24.9k and io_uring
+22.0–24.8k across the three runs, so the median difference is inside the
+run-to-run variance. Echo is stable for io_uring (992–999k) while epoll ranges
+1,033–1,062k.
+
+For reference, the v1 per-operation build measured epoll 1,022,832 vs
 io_uring 905,719 on echo (−11.5%) and epoll 22,428 vs io_uring 22,110 on churn
-(−1.4%).
+(−1.4%) in an earlier session. In a back-to-back rerun on the same host, v1
+measured 915,137 vs epoll 1,037,398 on echo and 21,993 vs 24,767 on churn; the
+round-flag variant measured 973,375 and 22,034 respectively. This is why
+churn deltas are not treated as a stable win in either direction.
 
 Raw data: [docs/bench/io_backend_compare.csv](bench/io_backend_compare.csv).
 
 Reproduce:
 
 ```sh
-WORKLOADS="echo churn" benches/io_backend_compare.sh 18093 8 100 5 2
+WORKLOADS="echo churn" benches/io_backend_compare.sh 18093 8 100 5 3
 WORKLOADS=latency    benches/io_backend_compare.sh 18094 8 20 3 3
 ```
 
@@ -63,13 +78,16 @@ WORKLOADS=latency    benches/io_backend_compare.sh 18094 8 20 3 3
 
 | backend | p50 | p95 | p99 | throughput |
 |---|---:|---:|---:|---:|
-| epoll | 8 µs | 15–27 µs | 368–411 µs | 890–955k req/s |
-| io_uring v2 | 8 µs | 23–25 µs | 489–503 µs | 823–834k req/s |
+| epoll | 8 µs | 12–22 µs | 134–314 µs | 907–948k req/s |
+| io_uring v2 | 8 µs | 21–24 µs | 477–496 µs | 826–853k req/s |
 
-The v1 per-operation build had lower tail latency (p99 240–334 µs, p95 16–18
-µs) and roughly parity throughput. Batching trades some low-concurrency
-latency for higher throughput: a queued request waits for the owning worker's
-next event-loop round before the kernel sees it.
+A same-session v1 per-operation rebuild measured p50 7 µs, p95 21 µs and p99
+470–479 µs. The earlier observation that batching widened the p99 tail
+(489–503 µs versus 240–334 µs) did not reproduce: the tail is dominated by
+wakeup/scheduling variance rather than by whether the SQE is submitted now or
+at the next event-loop turn. The round-flag adaptive variant (p99 428–472 µs)
+did not change that either. p50/p95 are close across backends; io_uring's
+20-connection throughput is a few percent below epoll in this workload.
 
 ## Idle fan-out (server CPU, 3 s hold)
 
@@ -97,20 +115,28 @@ awk -v a=$t0 -v b=$t1 -v hz=$HZ 'BEGIN {printf "%.3f s\n", (b-a)/hz}'
 
 ## Interpretation
 
-- **Echo throughput**: batching reduced the gap from −11.5% to −3.9%. The
+- **Echo throughput**: batching reduced the gap from −11.5% to −3.7%. The
   remaining difference is mostly the epoll fast path: an echo message usually
   costs two direct syscalls, while io_uring still pays completion processing
   and an event-loop round.
-- **Churn**: batching made io_uring faster (+8.6%); accept/connect submissions
-  batch into one enter and there is no per-connection registration.
-- **Low-concurrency latency**: p50 is identical, but batching widened p99
-  (~500 µs vs ~400 µs) and lowered the 20-connection throughput. This is the
-  direct cost of deferring submission to the next round.
+- **Churn**: batching moved churn to parity. The earlier +8.6% result did not
+  reproduce; epoll churn itself varied 22.3–24.9k across three runs, so no
+  stable win or loss is claimed.
+- **Low-concurrency latency**: p50 is identical and p95 is close (io_uring
+  21–24 µs, epoll 12–22 µs), but io_uring keeps a wider p99 tail
+  (477–496 µs versus 134–314 µs for epoll) and a few percent lower
+  20-connection throughput. Per-op submit (v1) and the round-flag adaptive
+  variant measured the same p99 range in back-to-back runs, so this is not a
+  batching artifact; the completion hop and wakeup/scheduling variance
+  dominate at this scale.
 - **Idle fan-out**: io_uring uses ~20–28% less server CPU.
 
-A possible follow-up is an adaptive policy: submit immediately when the ring
-is otherwise empty, and batch only when there is already queued work. That
-would recover latency without giving up burst batching. Larger connection
-counts and longer runs are also needed to reduce variance before finer claims.
+Adaptive submission was evaluated and rejected: it did not reduce the tail
+latency it targeted and cost throughput (echo 973k round-flag / 915k v1 versus
+998k batched), so batched submission stays. A more useful follow-up is reducing
+completion-processing and fast-path syscall cost, plus longer CPU-pinned runs
+to separate backend differences from run-to-run variance. Larger connection
+counts, longer runs, and a syscall profile are still needed before finer
+claims.
 
 No conclusion should be drawn about workloads outside these four.
