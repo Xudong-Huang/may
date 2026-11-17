@@ -6,9 +6,7 @@
 //! and connection-soak cases need. Keep this file to one test so the scheduler
 //! is initialized once with one worker.
 
-use std::io::{ErrorKind, Read, Write};
-use std::sync::mpsc;
-use std::time::Duration;
+use std::io::{Read, Write};
 
 #[macro_use]
 extern crate may;
@@ -34,13 +32,19 @@ fn timer_starvation_and_connection_soak() {
     // Must run before any may API initializes the scheduler.
     may::config().set_workers(1);
 
+    #[cfg(feature = "io_timeout")]
     timer_starvation();
     connection_soak();
 }
 
 /// A short io timeout must fire even while the same (single) shard is parked
 /// on a much later deadline from another request.
+#[cfg(feature = "io_timeout")]
 fn timer_starvation() {
+    use std::io::ErrorKind;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
     let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let addr = listener.local_addr().unwrap();
 
