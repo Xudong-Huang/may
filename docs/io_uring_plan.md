@@ -1,7 +1,7 @@
 # Linux `io_uring` backend — implementation plan
 
-Status: **M2 implemented, pending review** — M0/M1 committed as `104d17c`;
-latest changes are uncommitted (branch `feat/io-uring`)
+Status: **M3/M4 implemented and active; M5/M6 and `WaitIo` landed** — M0/M1
+committed as `104d17c`, M2 as `27af31f`; latest changes uncommitted
 
 ## 1. Goal and scope
 
@@ -58,7 +58,7 @@ compile time, not a conditional inside the epoll selector.
 ```toml
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.7.16", optional = true }
-rcu_cell = { version = "1.2.4", optional = true }
+rcu_cell = { version = "1.2.5", optional = true }
 
 [features]
 io_uring = ["dep:io-uring", "dep:rcu_cell"]
@@ -92,21 +92,18 @@ pub(crate) mod sys;
 
 The new tree lives under `src/io/sys/linux_uring/`: a top-level `sys` backend
 peer to `sys/unix` (epoll/kqueue) and `sys/windows` (IOCP), with its logical
-module root at `io::sys`.
-
-During bring-up, `linux_uring/mod.rs` re-exports the existing epoll tree
-(`epoll_bridge`) so the crate keeps running while the ring layer and, later,
-the completion adapters are built. The module name is already `sys` in both
-configurations; M4 replaces the bridge with the real `EventData`/`Selector`/
-adapter modules and removes the temporary `allow(dead_code)` on `ring`.
+module root at `io::sys`. The temporary epoll bridge used during M1–M3 has been
+removed; the tree now exports the real `EventData`, `Selector`, adapters and
+`WaitIo` implementation.
 
 ### New files
 
 | File | Responsibility |
 |---|---|
-| `linux_uring/mod.rs` | `EventData`, `IoData`, `add_socket`/`mod_socket`/`del_socket`, `co_io_result`, `from_nix_error`, timer type aliases, `co_try!` |
+| `linux_uring/mod.rs` | module glue, `submit_co!`, `add_socket`/`mod_socket`, re-exports |
+| `linux_uring/event.rs` | `EventData`, `IoData`, `IoState` (`RcuWeak` active slot), cancel reasons, timers, `co_io_result`, shard selection |
 | `linux_uring/ring.rs` | one `IoUring` per worker; SQE push+submit; `io_uring_enter` wait; eventfd wakeup `PollAdd`; CQ drain; thread-safety wrapper |
-| `linux_uring/selector.rs` | sharded `Selector`: `new/select/wakeup/add_fd/mod_fd/del_fd/add_io_timer`, completion dispatch, wakeup re-arm, EINTR/timeout handling |
+| `linux_uring/selector.rs` | sharded `Selector`: `select`, `submit`, `begin_request`, `cancel_request`, completion dispatch, io timers |
 | `linux_uring/co_io.rs` | `CoIo<T>` (same public surface as today, completion-based readers/writers) |
 | `linux_uring/cancel.rs` | `CancelIoData` / `CancelIoImpl` using `IORING_OP_ASYNC_CANCEL` |
 | `linux_uring/wait_io.rs` | `WaitIo` / `WaitIoWaker` using `IORING_OP_POLL_ADD` |
@@ -196,11 +193,9 @@ pub struct EventData {
   no-op. There is no kernel registration, no `io_flag`, no `publish_co`.
   `RcuWeak` gives wait-free reads and lockless writes, so submission and
   completion never block each other on this slot; the slot holds only a `Weak`
-  (no cycle), and clearing a request checks the weak pointer before taking it.
-  The check-then-take is not one atomic operation; a concurrent replacement can
-  only degrade the misuse diagnostic, never memory safety.
-  TODO(rcu_cell): replace it with `RcuWeak::compare_exchange` once that method
-  exists, making the clear atomic.
+  (no cycle). Clearing a completed request uses `RcuWeak::compare_exchange`
+  (rcu_cell 1.2.5), so it atomically removes only its own registration and can
+  never clear a newer wait.
 - Each `EventData` keeps a clone of `IoData`'s `Arc<IoState>`, so a completion
   can clear the active slot when it still points at the completing request.
   A second slow-path wait swaps in its own request, marks the previous one
@@ -382,7 +377,7 @@ point is M4.
   (Linux + feature only), with invalid-value handling.
 - Unit tests: submit/complete a `Nop` or `Read` on a pipe, wakeup round-trip,
   timeout round-trip, thread-safety smoke test (submit from two threads).
-- **Status:** implemented and unit-tested; pending review.
+- **Status:** implemented and unit-tested; committed as `104d17c`.
 - **Review:** unsafe/thread-safety rationale, locking, error handling.
 
 ### M2 — request state and selector core
@@ -392,16 +387,13 @@ point is M4.
 - `linux_uring/selector.rs`: sharded selector, `select`, completion dispatch,
   timer list, `sleep_until`, wakeup, `begin_request` concurrent-wait detection,
   `cancel_request`.
-- `co_io.rs` is deferred to M4: it implements the crate's active `AsIoData` and
-  therefore cannot compile while the epoll bridge is still selected.
+- `co_io.rs` landed with the M4 switch (it implements the crate's active
+  `AsIoData`, which was not available while the epoll bridge was selected).
 - **Review:** `select` ordering, completion lifetime, timer integration.
-- **Status:** implemented and unit-tested; pending review.
-- Compile state: `linux_uring` is already selected as `sys`, but its `mod.rs`
-  still re-exports the `epoll_bridge`. The new request/selector modules are
-  nested under `sys` during bring-up (avoiding name clashes with the bridge),
-  exercised by their own unit tests; M4 promotes them and removes the bridge.
-  Adapter files (M3) are first compiled by the crate at the M4 switch, where
-  any type/import mismatches are fixed before that milestone's review.
+- **Status:** implemented and unit-tested; committed as `27af31f`.
+- Compile state after M4: the bridge is removed and these modules are the
+  active `sys` implementation; their adapters and end-to-end tests are part of
+  the M4 diff.
 
 ### M3 — adapters (sub-commits, reviewed individually)
 
@@ -410,11 +402,12 @@ point is M4.
 2. UDP: `UdpRecvFrom`, `UdpSendTo`.
 3. Unix-domain: `UnixListenerAccept`, `UnixStreamConnect`, `UnixRecvFrom`,
    `UnixSendTo`.
-4. `mod.rs` glue: `add_socket`/`mod_socket`/`del_socket`, accepted-fd plumbing,
-   address helpers.
+4. `mod.rs` glue: `submit_co!`, `add_socket`/`mod_socket`, accepted-fd
+   plumbing, address helpers.
 - Each adapter mirrors the IOCP adapter shape: `DelayDrop` or a local `Arc`
-  clone, timer before submit, `co.store`, submit, `cancel_if_timed_out`, cancel
-  registration.
+  clone, timer before submit, `co.store`, submit, cancel registration.
+- **Status:** implemented (all 12 adapters plus `CoIo`); reviewed as part of
+  the M4 switch diff.
 - **Review:** buffer/pointer lifetimes, fast-path interaction, error paths.
 
 ### M4 — switch backend and first green end-to-end
@@ -424,13 +417,19 @@ point is M4.
   `#[cfg(unix)]` blocks still compile (no `epoll`-only assumptions).
 - Smoke tests: TCP echo, UDP echo, Unix stream/datagram, `CoIo` stdio/file,
   `SplitIo`, plain-thread I/O.
+- **Status:** implemented — the backend is active on the branch and the
+  epoll-only build still compiles via `--no-default-features`.
 - **Review:** full diff and live test output; this is the first runnable point.
 
 ### M5 — timeouts
 
-- Per-request timers, `cancel_if_timed_out`, timeout-handler `AsyncCancel`.
-- Tests: read/write timeout, zero timeout, timeout vs completion race, timeout
-  not starved by later timers (port of the IOCP shard tests where sensible).
+- Per-request timers, post-submission `AsyncCancel`, timeout-handler
+  `AsyncCancel`; the adapter arms the timer before submission and
+  `Selector::submit` finishes a cancellation that raced the submission.
+- Tests: read timeout, zero timer, timeout vs completion; starvation tests
+  still to add.
+- **Status:** implemented; TCP read-timeout test passes. Zero-timeout and
+  shard-starvation ports are still TODO.
 - **Review:** race analysis, timer shard mapping.
 
 ### M6 — cancellation
@@ -439,6 +438,8 @@ point is M4.
 - Tests: cancel waiting accept/read, cancel during submit, repeated/concurrent
   cancel, cancel stress, no buffer use-after-free (run under ASAN/Miri where
   feasible; Miri cannot drive io_uring, so use deliberate stress + `valgrind`).
+- **Status:** implemented; `tests/cancel_stress.rs` passes in debug and release.
+  Dedicated io_uring cancel tests are part of the M4 test file.
 - **Review:** safe resume ordering (CQE before resume).
 
 ### M7 — stability and `WaitIo`
@@ -447,6 +448,8 @@ point is M4.
 - Wakeup coalescing, CQ overflow, high-connection-count soak, drop-while-pending
   stress, worker panic/restart behaviour.
 - `cargo test --features io_uring` and feature-combination matrix.
+- **Status:** `WaitIo` and the waker race fix are implemented and stress-tested;
+  high-connection soak, CQ-overflow and worker-panic tests remain TODO.
 - **Review:** stress-test logs and any residual unsafe invariants.
 
 ### M8 — docs and CI
@@ -455,12 +458,23 @@ point is M4.
   fast-path caveat.
 - CI: `cargo check --features io_uring` in lints; a Linux test job that skips
   when io_uring is not permitted.
+- **Status:** README and `src/io/README.txt` updated. CI is still pending: with
+  io_uring in the branch's default features, a plain `cargo test` on a hosted
+  runner may fail before the per-test skip guard runs. Options for review:
+  (a) keep default-on and run the main matrix with the epoll feature set plus a
+  dedicated `--test io_uring` job, or (b) make the feature opt-in again before
+  merging and keep the current CI matrix.
 - **Review:** docs wording, CI expectations.
 
 ### M9 — benchmarks
 
 - Harness and results (section 6), committed as
   `docs/io_uring_benchmark.md` + script.
+- **Status:** `benches/io_backend_compare.sh` and
+  `docs/io_uring_benchmark.md` added; first loopback ping-pong result recorded
+  (epoll 1.037M vs io_uring 0.916M req/s, same epoll client, 8 workers/200
+  connections). Churn, idle fan-out and latency percentile workloads remain
+  TODO.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan

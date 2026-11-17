@@ -13,7 +13,7 @@
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU8, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use rcu_cell::RcuWeak;
 
@@ -32,6 +32,8 @@ pub(crate) const CANCEL_NONE: u8 = 0;
 pub(crate) const CANCEL_TIMED_OUT: u8 = 1;
 pub(crate) const CANCEL_USER: u8 = 2;
 pub(crate) const CANCEL_CONCURRENT_WAIT: u8 = 3;
+/// A `WaitIoWaker` forced the current `wait_io` poll to return.
+pub(crate) const CANCEL_WAKE: u8 = 4;
 
 #[cfg(feature = "io_timeout")]
 pub(crate) type TimerList = crate::timeout_list::TimeOutList<Arc<EventData>>;
@@ -47,12 +49,16 @@ pub(crate) type TimerHandle = TimeoutHandle<Arc<EventData>>;
 /// submission and completion threads never block each other on this slot.
 pub(crate) struct IoState {
     active: RcuWeak<EventData>,
+    /// Set by `WaitIoWaker` when no poll is currently registered; the next
+    /// `wait_io` consumes it and reports a forced wake instead of submitting.
+    wake_pending: AtomicBool,
 }
 
 impl IoState {
     pub(crate) fn new() -> IoState {
         IoState {
             active: RcuWeak::new(),
+            wake_pending: AtomicBool::new(false),
         }
     }
 
@@ -62,22 +68,37 @@ impl IoState {
         self.active.write_arc(req).upgrade()
     }
 
+    /// Read the current request without replacing the slot.
+    pub(crate) fn peek_active(&self) -> Option<Arc<EventData>> {
+        self.active.upgrade()
+    }
+
+    /// Mark a forced wakeup for the next `wait_io`.
+    pub(crate) fn set_wake_pending(&self) {
+        self.wake_pending.store(true, Ordering::Release);
+    }
+
+    /// Consume a pending forced wakeup.
+    pub(crate) fn take_wake_pending(&self) -> bool {
+        self.wake_pending.swap(false, Ordering::AcqRel)
+    }
+
     /// Clear the active slot if it still points at `req`.
     ///
-    /// The comparison and the clear are not one atomic operation: a concurrent
-    /// replacement can slip between them, in which case a newer (misused)
-    /// second wait loses its registration and a later third wait is not
-    /// detected. That only degrades the `concurrent io wait` diagnostic, never
-    /// memory safety: the slot holds a `Weak`, so the request and its buffers
-    /// are still owned by their adapter frames.
+    /// The compare-and-take is atomic, so a concurrent replacement can never
+    /// be removed by the old request's completion.
     pub(crate) fn clear_active(&self, req: &EventData) {
-        // TODO(rcu_cell): once `RcuWeak::compare_exchange` is available (mirroring
-        // `RcuCell::compare_exchange`), replace this `weak_eq` + `take` pair with an
-        // atomic compare-and-take. That makes the clear exact under a racing
-        // replacement instead of only degrading the misuse diagnostic.
-        if self.active.weak_eq(&req.self_weak) {
-            let _ = self.active.take();
-        }
+        // SAFETY: the returned pointer is only inspected for success/failure;
+        // the exchange releases the old weak reference, so it must not be
+        // dereferenced or turned back into a `Weak`.
+        let _ = unsafe {
+            self.active.compare_exchange(
+                req as *const EventData,
+                None,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+        };
     }
 }
 
@@ -92,9 +113,6 @@ pub(crate) struct EventData {
     /// Ring (and timer list) that will deliver this completion.
     pub(crate) shard: usize,
     io_state: Arc<IoState>,
-    /// Weak self-reference used to compare the object's active slot with this
-    /// request without cloning a `Weak` on every completion.
-    self_weak: Weak<EventData>,
     /// CQE result: bytes/positive on success, `-errno` on failure.
     result: AtomicIsize,
     #[cfg(feature = "io_timeout")]
@@ -112,11 +130,10 @@ pub(crate) struct EventData {
 
 impl EventData {
     pub(crate) fn new(fd: RawFd, shard: usize, io_state: Arc<IoState>) -> Arc<EventData> {
-        Arc::new_cyclic(|self_weak| EventData {
+        Arc::new(EventData {
             fd,
             shard,
             io_state,
-            self_weak: self_weak.clone(),
             result: AtomicIsize::new(0),
             #[cfg(feature = "io_timeout")]
             timer: AtomicOption::none(),
@@ -232,17 +249,13 @@ impl Drop for EventData {
 /// Per-object io data, like the Windows backend's unit `IoData`.
 pub struct IoData {
     fd: RawFd,
-    /// Ring shard chosen when the object is created.
-    shard: usize,
     state: Arc<IoState>,
 }
 
 impl IoData {
     pub fn new<T: AsRawFd + ?Sized>(t: &T) -> IoData {
-        let fd = t.as_raw_fd();
         IoData {
-            fd,
-            shard: shard_for_fd(fd),
+            fd: t.as_raw_fd(),
             state: Arc::new(IoState::new()),
         }
     }
@@ -253,18 +266,18 @@ impl IoData {
     }
 
     #[inline]
-    pub(crate) fn shard(&self) -> usize {
-        self.shard
-    }
-
-    #[inline]
     pub(crate) fn state(&self) -> &Arc<IoState> {
         &self.state
     }
 
     /// Allocate the completion state for one wait on this object.
+    ///
+    /// The ring shard is chosen here, not in the constructor, so creating an
+    /// `IoData` never starts the scheduler. A coroutine submits to the ring of
+    /// the worker currently running it; plain threads (including the
+    /// proxy-coroutine path) hash the fd like the epoll backend.
     pub(crate) fn new_request(&self) -> Arc<EventData> {
-        EventData::new(self.fd, self.shard, self.state.clone())
+        EventData::new(self.fd, shard_for_fd(self.fd), self.state.clone())
     }
 
     /// Kept for API compatibility with the readiness backend; there is no
@@ -283,7 +296,7 @@ impl AsFd for IoData {
 
 impl std::fmt::Debug for IoData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "IoData = {{ fd: {}, shard: {} }}", self.fd, self.shard)
+        write!(f, "IoData = {{ fd: {} }}", self.fd)
     }
 }
 
@@ -295,7 +308,7 @@ impl std::fmt::Debug for IoData {
 /// backend does.
 #[inline]
 fn shard_for_fd(fd: RawFd) -> usize {
-    let workers = get_scheduler().workers;
+    let workers = get_scheduler().workers.max(1);
     if is_coroutine() {
         let id = WORKER_ID.get();
         if id < workers {

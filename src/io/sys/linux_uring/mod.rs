@@ -5,31 +5,60 @@
 //! Windows IOCP backend: each waiter owns a per-request `EventData`, an adapter
 //! submits an SQE, and the worker's ring dispatches the CQE back to the
 //! suspended coroutine.
-//!
-//! During bring-up (M1–M3) the rest of the backend is still the epoll tree: the
-//! modules below re-export it temporarily so the crate keeps working while the
-//! ring layer and, later, the completion adapters are built. M4 replaces the
-//! bridge with the real `EventData`/`Selector`/adapter modules.
 
-#[allow(dead_code)] // consumed by the selector in M2
-pub(crate) mod ring;
+use std::io;
+use std::os::fd::AsRawFd;
 
-// Request state and selector cores. They are nested while the epoll bridge is
-// still the active `sys`; M4 removes the bridge and promotes these types.
-#[allow(dead_code)]
-pub(crate) mod event;
-#[allow(dead_code)]
-pub(crate) mod selector;
+/// Store the coroutine in `$event_data`, submit `$entry`, and resume the
+/// coroutine with the submission error if the ring refuses it.
+///
+/// Returns a local `Arc<EventData>` for the adapter's post-submission checks.
+/// The local clone keeps the request alive even when the coroutine is resumed
+/// concurrently and the adapter frame disappears.
+macro_rules! submit_co {
+    ($s:expr, $event_data:expr, $co:expr, $entry:expr) => {{
+        let event_data = $event_data.clone();
+        event_data.store_co($co);
+        match $s.get_selector().submit(&event_data, $entry) {
+            Ok(()) => {}
+            Err(err) => {
+                let mut co = event_data
+                    .take_co()
+                    .expect("can't get co in io_uring submit");
+                crate::yield_now::set_co_para(&mut co, err);
+                $s.schedule(co);
+                return;
+            }
+        }
+        event_data
+    }};
+}
 
-// Temporary bridge: compile and re-export the existing epoll backend until the
-// io_uring selector and adapters are ready. The nested path keeps the unix
-// module's internal relative imports intact.
-#[path = "../unix/mod.rs"]
-mod epoll_bridge;
+mod event;
+mod ring;
+mod selector;
 
 #[cfg(feature = "io_cancel")]
-pub(crate) use epoll_bridge::cancel;
-pub(crate) use epoll_bridge::{
-    add_socket, co_io_result, mod_socket, EventData, Selector, SysEvent,
-};
-pub use epoll_bridge::{co_io, net, wait_io, IoData};
+pub mod cancel;
+pub mod co_io;
+pub mod net;
+pub mod wait_io;
+
+pub(crate) use self::event::from_nix_error;
+pub use self::event::IoData;
+pub(crate) use self::ring::SysEvent;
+pub(crate) use self::selector::Selector;
+
+/// There is no kernel registration for a socket in completion mode; the fd and
+/// the active-request state live in `IoData`.
+#[inline]
+pub(crate) fn add_socket<T: AsRawFd + ?Sized>(t: &T) -> io::Result<IoData> {
+    Ok(IoData::new(t))
+}
+
+/// Kept for the readiness API surface (`SplitIo`); completion mode has no
+/// per-direction interest mask.
+#[inline]
+pub(crate) fn mod_socket(_io: &IoData, _is_read: bool) -> io::Result<()> {
+    Ok(())
+}

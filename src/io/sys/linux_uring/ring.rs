@@ -159,6 +159,12 @@ impl Ring {
         }
 
         let _guard = self.submit_lock.lock();
+        // Re-check after taking the lock: a thread that poisoned the ring
+        // between our first check and the lock may have left an SQE queued
+        // whose buffers are about to be freed. Never submit it later.
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(self.poisoned_error());
+        }
         // A full queue is transient: submit what is pending, then retry the
         // push. The lock is held throughout, so no other thread can fill the
         // slot in between.

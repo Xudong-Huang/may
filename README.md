@@ -74,6 +74,33 @@ fn main() {
 
 ----------
 
+## Linux I/O backends
+
+Linux builds can use either the readiness-based epoll backend or the
+completion-based io_uring backend:
+
+* **epoll** (default for a release build): `cargo build --no-default-features
+  --features "io_cancel io_timeout work_steal"`.
+* **io_uring**: `cargo build --features io_uring`. On this development branch the
+  feature is part of the default feature set, so a plain `cargo build` selects
+  io_uring on Linux. Before releasing, decide whether it stays enabled by
+  default or returns to opt-in.
+
+The io_uring backend requires Linux 5.11+ (`IORING_FEAT_EXT_ARG`); the wakeup
+poll uses the 5.13+ multishot form when available and falls back to one-shot
+re-arming on 5.11–5.12. It also requires Rust 1.84+ while the feature is enabled
+(`rcu_cell`). If ring creation is not permitted (old kernel, restricted
+container), scheduler initialization fails with a clear error; use the epoll
+feature set above instead.
+
+The submission-queue size can be set before the scheduler starts:
+
+```rust
+may::config().set_io_uring_ring_entries(2048);
+```
+
+----------
+
 ## More examples
 
 ### The CPU heavy load examples

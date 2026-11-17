@@ -9,18 +9,20 @@
 
 use std::io;
 #[cfg(feature = "io_timeout")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 #[cfg(feature = "io_timeout")]
 use std::time::Duration;
 use std::time::Duration as StdDuration;
 
-use io_uring::opcode;
+use io_uring::{opcode, squeue};
 use smallvec::SmallVec;
 
 #[cfg(feature = "io_timeout")]
 use super::event::TimerList;
 use super::event::{
-    EventData, IoData, IoState, CANCEL_CONCURRENT_WAIT, CANCEL_TIMED_OUT, CANCEL_USER,
+    EventData, IoState, CANCEL_CONCURRENT_WAIT, CANCEL_NONE, CANCEL_TIMED_OUT, CANCEL_USER,
+    CANCEL_WAKE,
 };
 use super::ring::{Ring, SysEvent, CANCEL_USER_DATA, WAKEUP_USER_DATA};
 use crate::scheduler::Scheduler;
@@ -56,6 +58,12 @@ impl SingleSelector {
     /// At most one cancel is queued per request; the slot is released again if
     /// the ring refuses the submission.
     fn cancel_request(&self, data: &EventData) -> io::Result<()> {
+        // A pre-submission cancel has nothing to cancel yet. The adapter
+        // re-checks the reason after its submission and cancels then; this is
+        // the other half of the register-then-check handshake in `submit`.
+        if !data.is_submitted() {
+            return Ok(());
+        }
         if !data.take_cancel_slot() {
             return Ok(());
         }
@@ -86,12 +94,20 @@ impl SingleSelector {
 }
 
 /// One shard per scheduler worker, mirroring the epoll selector.
+///
+/// Shared by the scheduler across worker threads; the ring's owner-only CQ
+/// consumption and SQ mutex are the only mutable parts.
 pub(crate) struct Selector {
     vec: SmallVec<[SingleSelector; 128]>,
 }
 
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Selector>();
+};
+
 impl Selector {
-    pub(super) fn new(io_workers: usize) -> io::Result<Self> {
+    pub(crate) fn new(io_workers: usize) -> io::Result<Self> {
         let mut vec = SmallVec::new();
         for id in 0..io_workers {
             let single = SingleSelector::new().map_err(|e| {
@@ -107,7 +123,7 @@ impl Selector {
 
     /// Process one reactor round: wait for completions, resume their
     /// coroutines, fire io timers and run local tasks.
-    pub(super) fn select(
+    pub(crate) fn select(
         &self,
         scheduler: &Scheduler,
         id: usize,
@@ -179,6 +195,17 @@ impl Selector {
                             // Leave `co_para` empty: `yield_back` observes the
                             // cancel bit and raises the Cancel panic.
                         }
+                        CANCEL_WAKE => {
+                            // The poll was ended by a `WaitIoWaker`. Give it an
+                            // error so a non-`wait_io` adapter using the same
+                            // object never mistakes a canceled completion for a
+                            // successful zero-byte result; `wait_io` consumes
+                            // this and reports the wake bit.
+                            set_co_para(
+                                &mut co,
+                                io::Error::new(io::ErrorKind::Interrupted, "wait_io woken"),
+                            )
+                        }
                         CANCEL_CONCURRENT_WAIT => {
                             set_co_para(&mut co, io::Error::other("concurrent io wait"))
                         }
@@ -221,25 +248,11 @@ impl Selector {
 
     /// Wake the worker that owns shard `id`.
     #[inline]
-    pub(super) fn wakeup(&self, id: usize) {
+    pub(crate) fn wakeup(&self, id: usize) {
         if let Some(single) = self.vec.get(id) {
             single.ring.wakeup();
         }
     }
-
-    // There is no kernel registration for a socket in completion mode.
-    #[inline]
-    pub(super) fn add_fd(&self, io_data: IoData) -> io::Result<IoData> {
-        Ok(io_data)
-    }
-
-    #[inline]
-    pub(super) fn mod_fd(&self, _io_data: &IoData, _is_read: bool) -> io::Result<()> {
-        Ok(())
-    }
-
-    #[inline]
-    pub(super) fn del_fd(&self, _io_data: &IoData) {}
 
     /// Register the wait for `req` on the object and cancel any earlier wait
     /// that is still outstanding.
@@ -247,7 +260,7 @@ impl Selector {
     /// The earlier waiter is resumed only by its own CQE, so its buffers stay
     /// valid; the completion maps `CANCEL_CONCURRENT_WAIT` to the same
     /// `concurrent io wait` error the readiness backend reports.
-    pub(super) fn begin_request(
+    pub(crate) fn begin_request(
         &self,
         state: &std::sync::Arc<IoState>,
         req: &std::sync::Arc<EventData>,
@@ -256,6 +269,10 @@ impl Selector {
             return;
         };
         previous.mark_cancel_reason(CANCEL_CONCURRENT_WAIT);
+        // Pair with the fence in `submit` (set_submitted then fence then read
+        // reason): either this reason is visible to the earlier adapter, or
+        // the earlier adapter's submitted flag is visible here.
+        std::sync::atomic::fence(Ordering::SeqCst);
         // If the earlier adapter has not submitted yet, it will observe the
         // reason after its submission and cancel then.
         if previous.is_submitted() {
@@ -266,7 +283,7 @@ impl Selector {
     }
 
     /// Cancel one request from any thread (user cancellation or a timeout).
-    pub(super) fn cancel_request(&self, data: &EventData) -> io::Result<()> {
+    pub(crate) fn cancel_request(&self, data: &EventData) -> io::Result<()> {
         match self.vec.get(data.shard) {
             Some(single) => single.cancel_request(data),
             None => Err(io::Error::new(
@@ -276,9 +293,50 @@ impl Selector {
         }
     }
 
+    /// Submit one SQE for `req` and finish any cancel that was requested while
+    /// the operation was being submitted.
+    ///
+    /// The caller stores the coroutine in `req` first (see `submit_co!`). The
+    /// `set_submitted` + fence + reason check is the adapter half of the
+    /// handshake whose other half is the fence in `cancel_request` /
+    /// `timeout_handler`: either the submitter observes the reason, or the
+    /// canceller observes `submitted`.
+    pub(crate) fn submit(
+        &self,
+        req: &std::sync::Arc<EventData>,
+        entry: squeue::Entry,
+    ) -> io::Result<()> {
+        let Some(single) = self.vec.get(req.shard) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "io_uring request belongs to an unknown shard",
+            ));
+        };
+
+        self.begin_request(req.state(), req);
+        let entry = entry.user_data(req.user_data());
+        match single.ring.push_submit(entry) {
+            Ok(()) => {
+                req.set_submitted();
+                std::sync::atomic::fence(Ordering::SeqCst);
+                if req.cancel_reason() != CANCEL_NONE {
+                    let _ = single.cancel_request(req);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                // The kernel does not own the SQE (a failed submit poisons the
+                // ring and no later enter can pick it up), so the adapter may
+                // safely resume the coroutine with the error.
+                req.clear_active();
+                Err(e)
+            }
+        }
+    }
+
     /// Register an io timer for one request. Only compiled with `io_timeout`.
     #[cfg(feature = "io_timeout")]
-    pub(super) fn add_io_timer(&self, io: &std::sync::Arc<EventData>, timeout: Duration) {
+    pub(crate) fn add_io_timer(&self, io: &std::sync::Arc<EventData>, timeout: Duration) {
         let Some(single) = self.vec.get(io.shard) else {
             return;
         };
