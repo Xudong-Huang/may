@@ -8,11 +8,25 @@ const IO_POLLS_MAX: usize = 1024;
 /// Single threaded IO event loop.
 pub struct EventLoop {
     selector: Selector,
+    /// Test-only fault injection: the next event-loop round panics once, so
+    /// the scheduler's worker catch/restart path can be exercised.
+    #[cfg(test)]
+    panic_next: std::sync::atomic::AtomicBool,
 }
 
 impl EventLoop {
     pub fn new(io_workers: usize) -> io::Result<EventLoop> {
-        Selector::new(io_workers).map(|selector| EventLoop { selector })
+        Selector::new(io_workers).map(|selector| EventLoop {
+            selector,
+            #[cfg(test)]
+            panic_next: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_panic(&self) {
+        self.panic_next
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 
     /// Keep spinning the event loop indefinitely, and notify the handler whenever
@@ -31,6 +45,14 @@ impl EventLoop {
         let timeout_ns = 1_000_000_000; // 1s
 
         loop {
+            #[cfg(test)]
+            if self
+                .panic_next
+                .swap(false, std::sync::atomic::Ordering::AcqRel)
+            {
+                panic!("injected worker event-loop panic");
+            }
+
             // Disarm the in-flight wakeup flag just before deciding whether
             // to block. A `true` result means a producer may have coalesced
             // its push into a wakeup we already consumed, so drain the global

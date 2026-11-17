@@ -32,6 +32,11 @@ cfg_if::cfg_if! {
 // thread id, only workers are normal ones
 thread_local! { pub static WORKER_ID: Cell<usize> = const { Cell::new(usize::MAX) }; }
 
+/// Number of times a worker event loop panicked and was restarted. Only
+/// compiled for the library's unit tests; used by the restart soak test.
+#[cfg(test)]
+pub(crate) static WORKER_RESTARTS: AtomicUsize = AtomicUsize::new(0);
+
 // the timer holds a per-wait handle, since in the select implementation
 // another event may try to consume the coroutine while the timer thread does
 type TimerThread = timeout_list::TimerThread<WaitCo>;
@@ -144,6 +149,8 @@ fn init_scheduler() {
                         "worker thread {} panicked, restarting: {:?}",
                         id, panic_info
                     );
+                    #[cfg(test)]
+                    WORKER_RESTARTS.fetch_add(1, Ordering::Relaxed);
                     // continue the loop to restart the event loop
                 } else {
                     // normal exit (should not happen as event_loop.run is infinite)
@@ -494,5 +501,74 @@ impl Scheduler {
     #[inline]
     pub fn get_selector(&self) -> &Selector {
         self.event_loop.get_selector()
+    }
+
+    /// Test-only: make the next event-loop round panic so the worker restart
+    /// path in `init_scheduler` is exercised.
+    #[cfg(test)]
+    pub(crate) fn inject_worker_panic(&self) {
+        self.event_loop.inject_panic();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    /// Inject event-loop panics and verify each worker is restarted. Afterwards
+    /// both coroutine scheduling and io_uring I/O must keep working.
+    #[test]
+    fn worker_panic_restarts_and_io_keeps_working() {
+        let scheduler = get_scheduler();
+        let mut baseline = WORKER_RESTARTS.load(Ordering::Acquire);
+
+        for round in 0..5 {
+            scheduler.inject_worker_panic();
+            // A worker may be blocked in the selector; wake every shard so the
+            // next loop round observes the injected panic.
+            for id in 0..scheduler.workers {
+                scheduler.get_selector().wakeup(id);
+            }
+
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while WORKER_RESTARTS.load(Ordering::Acquire) == baseline {
+                assert!(
+                    Instant::now() < deadline,
+                    "worker did not restart after injected panic {round}"
+                );
+                thread::sleep(Duration::from_millis(1));
+            }
+            baseline = WORKER_RESTARTS.load(Ordering::Acquire);
+        }
+
+        // Coroutine scheduling still works.
+        let join = crate::go!(|| {
+            for _ in 0..100 {
+                crate::coroutine::yield_now();
+            }
+            7
+        });
+        assert_eq!(join.join().unwrap(), 7);
+
+        // And a full io_uring round trip still works on the restarted workers.
+        let (tx, rx) = mpsc::channel();
+        let join = crate::go!(move || {
+            let listener = crate::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            tx.send(listener.local_addr().unwrap()).unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.write_all(b"pong").unwrap();
+        });
+        let addr = rx.recv().unwrap();
+        let mut client = std::net::TcpStream::connect(addr).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut buf = [0u8; 4];
+        client.read_exact(&mut buf).unwrap();
+        assert_eq!(&buf, b"pong");
+        join.join().unwrap();
     }
 }

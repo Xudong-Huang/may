@@ -450,7 +450,9 @@ point is M4.
 - `cargo test --features io_uring` and feature-combination matrix.
 - **Status:** `WaitIo` and the waker race fix are implemented and stress-tested;
   `tests/io_uring_stress.rs` adds single-worker timer-starvation and
-  connection-soak scenarios. CQ-overflow and worker-panic tests remain TODO.
+  connection-soak scenarios, a ring unit test covers completion-queue
+  overflow, and a scheduler unit test injects event-loop panics and verifies
+  the worker restart path keeps coroutine scheduling and io_uring I/O alive.
 - **Review:** stress-test logs and any residual unsafe invariants.
 
 ### M8 — docs and CI
@@ -470,11 +472,12 @@ point is M4.
 
 - Harness and results (section 6), committed as
   `docs/io_uring_benchmark.md` + script.
-- **Status:** `benches/io_backend_compare.sh` and
-  `docs/io_uring_benchmark.md` added; loopback results recorded for echo
-  ping-pong (epoll 1.023M vs io_uring 0.906M req/s) and connection churn
-  (22.4k vs 22.1k req/s), same epoll client, 8 workers/100 connections.
-  Idle fan-out and latency percentile workloads remain TODO.
+- **Status:** `benches/io_backend_compare.sh`, `latency_client` and
+  `idle_client` added; `docs/io_uring_benchmark.md` records echo ping-pong
+  (epoll 1.023M vs io_uring 0.906M req/s), connection churn (22.4k vs
+  22.1k req/s), low-concurrency latency (parity), and idle fan-out server CPU
+  (io_uring −18% at 5,000 connections). CQ-overflow and worker-restart soak
+  cases remain unmeasured.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan
