@@ -43,7 +43,8 @@ each round immediately" policy was measured and rejected.
 - The clients are always the **epoll** build
   (`--no-default-features --features "io_cancel io_timeout work_steal"`), so only
   the server backend varies.
-- Epoll server and io_uring server are separate release builds.
+- Epoll server and io_uring server are separate release builds; the io_uring
+  server is built with `--features io_uring` (the feature is opt-in).
 
 ## Throughput (median of 3 runs, batched submission)
 

@@ -79,12 +79,10 @@ fn main() {
 Linux builds can use either the readiness-based epoll backend or the
 completion-based io_uring backend:
 
-* **epoll** (default for a release build): `cargo build --no-default-features
-  --features "io_cancel io_timeout work_steal"`.
-* **io_uring**: `cargo build --features io_uring`. On this development branch the
-  feature is part of the default feature set, so a plain `cargo build` selects
-  io_uring on Linux. Before releasing, decide whether it stays enabled by
-  default or returns to opt-in.
+* **epoll** (default): a plain `cargo build` uses the epoll backend. The
+  equivalent explicit feature set is `--no-default-features --features
+  "io_cancel io_timeout work_steal"`.
+* **io_uring** (opt-in): `cargo build --features io_uring`.
 
 The io_uring backend requires Linux 5.11+ (`IORING_FEAT_EXT_ARG`); the wakeup
 poll uses the 5.13+ multishot form when available and falls back to one-shot

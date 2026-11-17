@@ -35,8 +35,8 @@ CSV="${CSV:-/tmp/may_io_backend_compare.csv}"
 log() { printf '%s\n' "$*" >&2; }
 
 build() {
-    log "building io_uring server (default features)"
-    cargo build --release --example echo --target-dir "$URING_TARGET" >/dev/null
+    log "building io_uring server (io_uring feature)"
+    cargo build --release --features io_uring --example echo --target-dir "$URING_TARGET" >/dev/null
 
     log "building epoll server/clients"
     cargo build --release --no-default-features \

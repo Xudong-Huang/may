@@ -3,6 +3,7 @@
 Status: **M0–M9 implemented** — completion backend active; batch same-shard
 submission landed. Per-op and round-flag adaptive submit policies were measured
 and rejected (no tail-latency gain, less throughput); batched submission stays.
+`io_uring` is opt-in; epoll remains the release default.
 
 ## 1. Goal and scope
 
@@ -11,10 +12,9 @@ IOCP backend, while keeping the existing Linux `epoll` backend as the default.
 
 **Goals**
 
-- Cargo feature `io_uring`, enabled by default **on this development branch**.
-  Before merge, decide whether it stays on by default or returns to opt-in
-  (`--no-default-features --features io_cancel,io_timeout,work_steal` restores
-  the epoll-only build locally).
+- Cargo feature `io_uring`, opt-in for release builds; it was default-on during
+  development for testing and returned to opt-in before merge. The default
+  feature set is the epoll configuration (`io_cancel io_timeout work_steal`).
 - Full behavioural parity for the existing I/O API:
   - `may::net::{TcpListener, TcpStream, UdpSocket}`
   - `may::os::unix::net::{UnixListener, UnixStream, UnixDatagram}`
@@ -27,8 +27,8 @@ IOCP backend, while keeping the existing Linux `epoll` backend as the default.
 
 **Non-goals for the first version**
 
-- Not making `io_uring` the release default (the branch default is temporary;
-  see section 3).
+- Not making `io_uring` the release default: resolved — the feature is opt-in
+  (see section 8).
 - Runtime backend switching or automatic fallback to epoll (see open question 1).
 - `SQPOLL`, `IOPOLL`, registered files/buffers, multishot recv/accept, zero-copy,
   or adaptive submit policies beyond the owner-round batching. These are
@@ -70,10 +70,10 @@ io_uring = ["dep:io-uring", "dep:rcu_cell"]
 requires Rust 1.84 and 64-bit targets; both apply to the io_uring backend's
 supported Linux targets.
 
-- Feature is additive. On this branch it is part of `default`, so `cargo
-  check`/`cargo test` compile the ring layer; Linux runtime still uses epoll
-  until M4 switches `sys`. The epoll-only path remains reachable with
-  `--no-default-features --features io_cancel,io_timeout,work_steal`.
+- Feature is additive and opt-in. `cargo build --features io_uring` compiles
+  the ring layer; a default Linux build selects the epoll backend. The
+  io_uring tests are gated on the feature and CI enables it for the dedicated
+  job.
 - Enabling the feature on a non-Linux target is a documented no-op rather than a
   `compile_error!`, so `--all-features` keeps working on Windows/macOS CI. All
   code/gates use `cfg(all(target_os = "linux", feature = "io_uring"))`.
@@ -613,11 +613,12 @@ the no-default combination; all gates must compile cleanly.)
 4. **Address reconstruction**: resolved — keep the `peer_addr()`/peek-based
    approaches described in section 4.4.
 5. **Scope**: resolved — full parity in v1.
-
-### Remaining open question
-
-- **CI**: GitHub-hosted runners may have io_uring restricted; tests skip rather
-   than fail. A dedicated self-hosted job is out of scope for v1.
+6. **Default policy**: resolved — `io_uring` is opt-in; the default feature set
+   remains the epoll configuration (`io_cancel io_timeout work_steal`). The
+   feature was default-on during development only.
+7. **CI**: resolved — the general matrix and release tests use the default epoll
+   feature set; a dedicated Linux job enables `io_uring` and runs the io_uring
+   tests, which skip themselves when the runner blocks `io_uring_setup`.
 
 ## 9. Suggested commit sequence
 
