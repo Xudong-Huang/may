@@ -430,8 +430,9 @@ point is M4.
   `Selector::submit` finishes a cancellation that raced the submission.
 - Tests: read timeout, zero timer, timeout vs completion; starvation tests
   still to add.
-- **Status:** implemented; TCP read-timeout test passes. Zero-timeout and
-  shard-starvation ports are still TODO.
+- **Status:** implemented; TCP read-timeout, sub-millisecond timeout and
+  zero-timer tests pass, and `tests/io_uring_stress.rs` covers single-worker
+  timer starvation with cancellation.
 - **Review:** race analysis, timer shard mapping.
 
 ### M6 — cancellation
@@ -480,9 +481,9 @@ point is M4.
   varied 22.3–24.9k in a three-run set). Low-concurrency p99 stayed at
   ~480–500 µs for per-op, round-flag adaptive and batched submission alike, so
   it is not a batching artifact. Idle fan-out server CPU is 20–28% lower.
-  Results and caveats are in `docs/io_uring_benchmark.md`; CQ-overflow and
-  worker-restart tests live in M7. Adaptive submit policies were rejected;
-  batched submission stays.
+  Results, a context-only `strace` syscall profile and caveats are in
+  `docs/io_uring_benchmark.md`; CQ-overflow and worker-restart tests live in
+  M7. Adaptive submit policies were rejected; batched submission stays.
 - **Review:** methodology, raw data, interpretation, follow-up list.
 
 ## 6. Test plan

@@ -113,6 +113,23 @@ t1=$(awk '{print $14+$15}' /proc/$pid/stat)
 awk -v a=$t0 -v b=$t1 -v hz=$HZ 'BEGIN {printf "%.3f s\n", (b-a)/hz}'
 ```
 
+## Syscall profile (context only)
+
+`strace -f -c` over a 2-second 100-connection echo run. Tracing inflates
+latency and lowers throughput, so only the call counts are meaningful:
+
+| backend | sendto | recvfrom | event wait | registration | accept4 |
+|---|---:|---:|---:|---:|---:|
+| epoll | 695,075 | 695,275 | 4,300 `epoll_wait` | 416 `epoll_ctl` | 234 |
+| io_uring | 694,741 | 694,941 | 5,074 `io_uring_enter` | none | 208 |
+
+Both backends served ~467k echoed requests almost entirely through the
+nonblocking `sendto`/`recvfrom` fast path; only a small fraction needed a ring
+submission. io_uring made slightly more enter calls than epoll made wait calls
+and avoided the `epoll_ctl` registrations, but registration is small at 100
+connections. The remaining echo difference is therefore event-loop and
+completion processing, not syscall count.
+
 ## Interpretation
 
 - **Echo throughput**: batching reduced the gap from −11.5% to −3.7%. The
