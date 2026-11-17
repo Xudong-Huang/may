@@ -218,7 +218,7 @@ impl Ring {
     fn submit_all_locked(&self) -> io::Result<()> {
         let mut attempts = 0usize;
         loop {
-            let pending = unsafe { self.uring.submission_shared().len() };
+            let pending = self.pending_locked();
             if pending == 0 {
                 return Ok(());
             }
@@ -234,7 +234,7 @@ impl Ring {
 
             attempts += 1;
             if attempts >= 8 {
-                let pending = unsafe { self.uring.submission_shared().len() };
+                let pending = self.pending_locked();
                 if pending != 0 {
                     self.poisoned.store(true, Ordering::Release);
                     return Err(io::Error::new(
@@ -245,6 +245,16 @@ impl Ring {
                 return Ok(());
             }
         }
+    }
+
+    /// Number of SQEs pushed but not yet handed to the kernel.
+    ///
+    /// Caller must hold `submit_lock`.
+    #[inline]
+    fn pending_locked(&self) -> usize {
+        // SAFETY: `submit_lock` guarantees no other `SubmissionQueue` exists,
+        // including the owner's wait path.
+        unsafe { self.uring.submission_shared().len() }
     }
 
     /// Submit any pending SQEs and wait for at least one completion event,
