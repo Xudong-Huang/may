@@ -42,6 +42,7 @@ build() {
     cargo build --release --no-default-features \
         --features "io_cancel io_timeout work_steal" \
         --example echo --example echo_client --example churn_client \
+        --example latency_client --example idle_client \
         --target-dir "$EPOLL_TARGET" >/dev/null
 }
 
@@ -60,6 +61,7 @@ client_for() {
     case "$1" in
         echo) printf '%s\n' "$EPOLL_TARGET/release/examples/echo_client" ;;
         churn) printf '%s\n' "$EPOLL_TARGET/release/examples/churn_client" ;;
+        latency) printf '%s\n' "$EPOLL_TARGET/release/examples/latency_client" ;;
         *) return 1 ;;
     esac
 }

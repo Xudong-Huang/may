@@ -468,6 +468,35 @@ mod tests {
     }
 
     #[test]
+    fn completion_queue_overflow_is_drained() {
+        // entries=4 => completion queue of 8, so 64 completions overflow it.
+        let Some(ring) = test_ring(4) else {
+            return;
+        };
+
+        const TOTAL: u64 = 64;
+        const BASE: u64 = 1_000;
+        for i in 0..TOTAL {
+            ring.push_submit(opcode::Nop::new().build().user_data(BASE + i))
+                .unwrap();
+        }
+
+        let mut seen = 0u64;
+        let mut events = [SysEvent::default(); 64];
+        while seen < TOTAL {
+            ring.wait(Some(Duration::from_secs(2))).unwrap();
+            let n = ring.drain(&mut events);
+            for event in &events[..n] {
+                if event.user_data >= BASE {
+                    assert_eq!(event.result, 0);
+                    seen += 1;
+                }
+            }
+        }
+        assert_eq!(seen, TOTAL);
+    }
+
+    #[test]
     fn wakeup_round_trip_and_rearm() {
         let Some(ring) = test_ring(1024) else {
             return;
