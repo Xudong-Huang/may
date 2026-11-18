@@ -528,10 +528,9 @@ mod tests {
         drop(g);
     }
 
-    // regression: a waiter that timed out while the notifier holds the
-    // mutex must not consume the signal meant for the live waiter behind
-    // it in the queue — the release action is registered before the
-    // blocking mutex re-lock
+    // regression: a waiter that timed out before the notify must not
+    // consume the signal meant for the live waiter queued behind it — its
+    // released blocker stays in the queue and notify_one has to skip it
     #[test]
     fn test_timed_out_waiter_forwards_notify() {
         let m = Arc::new(Mutex::new(()));
@@ -542,41 +541,50 @@ mod tests {
         let c1 = c.clone();
         let c2 = c.clone();
         let c3 = c.clone();
-        let (tx, rx) = channel();
+        let (tx1, rx1) = channel(); // W1 timed out and left the wait
+        let (tx2, rx2) = channel(); // W2 holds the mutex, about to park
 
-        // W1: first in the condvar queue, times out quickly
+        // W1: first in the condvar queue, times out before any notify
+        // shows up, so its blocker stays queued in the released state
         let h1 = go!(move || {
             let g = m1.lock().unwrap();
-            let (g, to) = c1.wait_timeout(g, Duration::from_millis(100)).unwrap();
+            let (g, to) = c1.wait_timeout(g, Duration::from_millis(10)).unwrap();
             assert!(to.timed_out());
             drop(g);
+            // the wait is over and the release action is registered: a
+            // later notify must be forwarded past this blocker
+            tx1.send(()).unwrap();
         });
+
+        // wait until W1 has left: its released blocker is queued before W2
+        // exists, so the queue order does not depend on how the two waiters
+        // get scheduled
+        rx1.recv().unwrap();
 
         // W2: second in the queue, must receive the forwarded signal
         let h2 = go!(move || {
-            sleep(Duration::from_millis(20)); // let W1 enqueue first
             let g = m2.lock().unwrap();
-            tx.send(()).unwrap(); // parked in the condvar wait below
+            tx2.send(()).unwrap(); // holds the mutex, about to park below
             let (g, to) = c2.wait_timeout(g, Duration::from_secs(2)).unwrap();
             assert!(!to.timed_out());
             drop(g);
         });
 
-        // W2 holds the mutex, about to park: this lock blocks until W2's
-        // wait unlocks the mutex. W1's 100ms timeout fires while we hold
-        // it, so W1 blocks in its mutex re-lock.
-        rx.recv().unwrap();
+        // this lock blocks until W2's wait unlocks the mutex, so W2's
+        // blocker is queued when the notify below pops it
+        rx2.recv().unwrap();
         let g = m3.lock().unwrap();
-        sleep(Duration::from_millis(200));
-        // pops W1's blocker: the signal must be forwarded to W2
+        // pops W1's released blocker first: it must forward to W2
         c3.notify_one();
         drop(g);
         h1.join().unwrap();
         h2.join().unwrap();
     }
 
-    // regression: same as above but with a canceled waiter instead of a
-    // timed out one
+    // regression: a waiter that was canceled while the notifier holds the
+    // mutex must not consume the signal meant for the live waiter behind it
+    // in the queue — the release action is registered before the blocking
+    // mutex re-lock
     #[test]
     fn test_canceled_waiter_forwards_notify() {
         let m = Arc::new(Mutex::new(()));
@@ -587,20 +595,27 @@ mod tests {
         let c1 = c.clone();
         let c2 = c.clone();
         let c3 = c.clone();
-        let (tx, rx) = channel();
+        let (tx1, rx1) = channel();
+        let (tx2, rx2) = channel();
 
         // W1: first in the condvar queue, will be canceled
         let h1 = go!(move || {
             let g = m1.lock().unwrap();
+            // signal while holding the mutex: W2's lock below can only
+            // succeed after W1's wait has queued its blocker and released
+            // the mutex, so no scheduling delay can move W1 behind W2
+            tx1.send(()).unwrap();
             let _ = c1.wait(g).unwrap(); // cancel panic propagates
             unreachable!();
         });
 
+        // W1 holds the mutex and is about to enqueue: only now let W2 in
+        rx1.recv().unwrap();
+
         // W2: second in the queue, must receive the forwarded signal
         let h2 = go!(move || {
-            sleep(Duration::from_millis(20)); // let W1 enqueue first
-            let g = m2.lock().unwrap();
-            tx.send(()).unwrap(); // parked in the condvar wait below
+            let g = m2.lock().unwrap(); // blocks until W1's wait unlocks
+            tx2.send(()).unwrap(); // holds the mutex, about to park below
             let (g, to) = c2.wait_timeout(g, Duration::from_secs(2)).unwrap();
             assert!(!to.timed_out());
             drop(g);
@@ -609,9 +624,12 @@ mod tests {
         // W2 holds the mutex, about to park: this lock blocks until W2's
         // wait unlocks the mutex. We cancel W1 while holding it: W1
         // registers its release action, then blocks in its mutex re-lock.
-        rx.recv().unwrap();
+        rx2.recv().unwrap();
         let g = m3.lock().unwrap();
         unsafe { h1.coroutine().cancel() };
+        // give W1 time to process the cancel before the notify; the result
+        // does not depend on it, since a W1 that has not run yet takes the
+        // wake itself and forwards the signal in wait_impl instead
         sleep(Duration::from_millis(100));
         // pops W1's blocker: the signal must be forwarded to W2
         c3.notify_one();
@@ -645,11 +663,17 @@ mod tests {
         }
         drop(tx_timeout);
 
+        // wait for all timed-out waiters to exit: their released blockers
+        // stay in the condvar queue, so they are guaranteed to be ahead of
+        // the live waiter spawned below, without relying on a sleep
+        for _ in 0..N - 1 {
+            rx_timeout.recv().unwrap();
+        }
+
         // live waiter: enqueues last, must receive the forwarded signal
         let m_live = m.clone();
         let c_live = c.clone();
         let h = go!(move || {
-            sleep(Duration::from_millis(30)); // let the timeouts enqueue first
             let g = m_live.lock().unwrap();
             tx_live.send(()).unwrap(); // about to park below
             let (g, to) = c_live.wait_timeout(g, Duration::from_secs(2)).unwrap();
@@ -657,10 +681,6 @@ mod tests {
             drop(g);
         });
 
-        // wait for all timed-out waiters to exit (release registered)
-        for _ in 0..N - 1 {
-            rx_timeout.recv().unwrap();
-        }
         rx_live.recv().unwrap();
         // blocks until the live waiter's wait unlocks the mutex, so the
         // notify below finds its blocker in the queue
